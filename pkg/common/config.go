@@ -168,6 +168,7 @@ func newConfig() *Configuration {
 		MinToolCallArrayParamLength:         1,
 		ToolCallNotRequiredParamProbability: 50,
 		ObjectToolCallNotRequiredParamProbability: 50,
+		EnableKVCache: false,
 	}
 }
 
