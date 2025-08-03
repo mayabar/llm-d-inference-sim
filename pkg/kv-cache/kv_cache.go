@@ -59,7 +59,7 @@ func NewKVCacheHelper(logger logr.Logger) (*KVCacheHelper, error) {
 		tokenizersPool:  tokenizersPool,
 		tokensIndexer:   tokensIndexer,
 		tokensProcessor: tokensProcessor,
-		blockCache:      newBlockCache(maxBlocks),
+		blockCache:      newBlockCache(maxBlocks, logger),
 		logger:          logger,
 	}, nil
 }
@@ -67,6 +67,7 @@ func NewKVCacheHelper(logger logr.Logger) (*KVCacheHelper, error) {
 // Run starts the helper.
 func (h *KVCacheHelper) Run(ctx context.Context) {
 	h.tokenizersPool.Run(ctx)
+	h.blockCache.start(ctx)
 }
 
 func (h *KVCacheHelper) OnRequestStart(vllmReq openaiserverapi.CompletionRequest) error {

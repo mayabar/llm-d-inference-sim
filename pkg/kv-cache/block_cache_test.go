@@ -172,7 +172,7 @@ var _ = Describe("Block cache", Ordered, func() {
 
 		for _, test := range testCases {
 			It(test.name, func() {
-				blockCache := newBlockCache(test.cacheSize)
+				blockCache := newBlockCache(test.cacheSize, GinkgoLogr)
 
 				for _, action := range test.actions {
 					var err error
@@ -251,7 +251,7 @@ var _ = Describe("Block cache", Ordered, func() {
 
 		for _, testCase := range testCases {
 			It(testCase.name, func() {
-				blockCache := newBlockCache(testCase.cacheSize)
+				blockCache := newBlockCache(testCase.cacheSize, GinkgoLogr)
 				var wg sync.WaitGroup
 
 				// Start multiple goroutines performing concurrent operations
