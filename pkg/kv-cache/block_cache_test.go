@@ -17,6 +17,7 @@ limitations under the License.
 package kvcache
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -172,7 +173,22 @@ var _ = Describe("Block cache", Ordered, func() {
 
 		for _, test := range testCases {
 			It(test.name, func() {
+				ctx, cancel := context.WithCancel(context.Background())
+
+				wg := sync.WaitGroup{}
+				wg.Add(1)
+
 				blockCache := newBlockCache(test.cacheSize, GinkgoLogr)
+
+				go func() {
+					defer wg.Done()
+					go blockCache.start(ctx)
+				}()
+
+				defer func() {
+					cancel()
+					wg.Wait() // wait for goroutine to exit
+				}()
 
 				for _, action := range test.actions {
 					var err error

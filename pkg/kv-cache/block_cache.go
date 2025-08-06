@@ -37,12 +37,13 @@ type blockCache struct {
 	unusedBlocks    map[uint64]time.Time // block hash -> last usage timestamp
 	maxBlocks       int                  // maximum number of blocks in the cache
 	eventSender     *KVEventSender       // emmits kv events
-	eventChan       chan<- EventData     // channel for asynchronous event processing
+	eventChan       chan EventData       // channel for asynchronous event processing
 	logger          logr.Logger
 }
 
 // newBlockCache creates a new blockCache with the specified maximum number of blocks
 func newBlockCache(maxBlocks int, logger logr.Logger) *blockCache {
+	// TODO read size of channel from config
 	eChan := make(chan EventData, 10000)
 
 	return &blockCache{
@@ -51,8 +52,9 @@ func newBlockCache(maxBlocks int, logger logr.Logger) *blockCache {
 		unusedBlocks:    make(map[uint64]time.Time),
 		maxBlocks:       maxBlocks,
 		eventChan:       eChan,
-		eventSender:     NewKVEventSender(&Publisher{}, "topic1", eChan, 3, 5*time.Second),
-		logger:          logger,
+		// TODO - create topic name from pod ip + model name
+		eventSender: NewKVEventSender(&Publisher{}, "topic1", eChan, 3, time.Second),
+		logger:      logger,
 	}
 }
 

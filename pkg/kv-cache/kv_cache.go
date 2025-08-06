@@ -22,10 +22,8 @@ import (
 
 	"github.com/go-logr/logr"
 	openaiserverapi "github.com/llm-d/llm-d-inference-sim/pkg/openai-server-api"
-	"github.com/llm-d/llm-d-kv-cache-manager/pkg/kvcache"
 	"github.com/llm-d/llm-d-kv-cache-manager/pkg/kvcache/kvblock"
 	"github.com/llm-d/llm-d-kv-cache-manager/pkg/tokenization"
-	"github.com/llm-d/llm-d-kv-cache-manager/pkg/tokenization/prefixstore"
 )
 
 const (
@@ -34,30 +32,26 @@ const (
 )
 
 type KVCacheHelper struct {
-	config          *kvcache.Config
-	tokenizersPool  *tokenization.Pool
-	tokensIndexer   prefixstore.Indexer    // gets tokens for a prompt
+	tokenizer       tokenization.Tokenizer
 	tokensProcessor kvblock.TokenProcessor // turns tokens to kv block keys
 	logger          logr.Logger
 	blockCache      *blockCache
 }
 
 func NewKVCacheHelper(logger logr.Logger) (*KVCacheHelper, error) {
-	config := kvcache.NewDefaultConfig()
-	tokensIndexer, err := prefixstore.NewLRUTokenStore(config.PrefixStoreConfig)
+	// TODO update config by command line params
+	tokenProcConfig := kvblock.DefaultTokenProcessorConfig()
+	tokensProcessor := kvblock.NewChunkedTokenDatabase(tokenProcConfig)
+
+	tokenizationConfig := tokenization.DefaultConfig()
+	tokenizer, err := tokenization.NewCachedHFTokenizer(tokenizationConfig.HFTokenizerConfig)
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to create prefixstore.Indexer: %w", err)
+		return nil, fmt.Errorf("failed to create tokenizer: %w", err)
 	}
-	tokenizersPool, err := tokenization.NewTokenizationPool(config.TokenizersPoolConfig, tokensIndexer)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create tokenizers pool: %w", err)
-	}
-	tokensProcessor := kvblock.NewChunkedTokenDatabase(config.TokenProcessorConfig)
 
 	return &KVCacheHelper{
-		config:          config,
-		tokenizersPool:  tokenizersPool,
-		tokensIndexer:   tokensIndexer,
+		tokenizer:       tokenizer,
 		tokensProcessor: tokensProcessor,
 		blockCache:      newBlockCache(maxBlocks, logger),
 		logger:          logger,
@@ -66,7 +60,6 @@ func NewKVCacheHelper(logger logr.Logger) (*KVCacheHelper, error) {
 
 // Run starts the helper.
 func (h *KVCacheHelper) Run(ctx context.Context) {
-	h.tokenizersPool.Run(ctx)
 	h.blockCache.start(ctx)
 }
 
@@ -77,17 +70,14 @@ func (h *KVCacheHelper) OnRequestStart(vllmReq openaiserverapi.CompletionRequest
 	modelName := vllmReq.GetModel()
 	requestID := vllmReq.GetRequestID()
 
-	// 0. add to tokenizers pool
-	h.tokenizersPool.AddTask(prompt, modelName)
-
-	// 1. get available tokens of longest prefix
-	tokens := h.tokensIndexer.FindLongestContainedTokens(prompt, modelName)
-	if len(tokens) == 0 {
-		//nolint:nilnil // no need to return an error
+	// tokenize the input
+	tokens, _, err := h.tokenizer.Encode(prompt, modelName)
+	if err != nil {
+		h.logger.Info("Prompt tokenization failed", "error", err.Error())
 		return h.blockCache.startRequest(requestID, make([]uint64, 0))
 	}
 
-	// 2. get block keys
+	// get block keys
 	blockKeys := h.tokensProcessor.TokensToKVBlockKeys(tokens, modelName)
 	h.logger.Info("found tokens", "tokens", tokens, "block-keys", blockKeys)
 

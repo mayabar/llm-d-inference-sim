@@ -18,6 +18,7 @@ package kvcache
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/llm-d/llm-d-kv-cache-manager/pkg/kvcache/kvevents"
@@ -45,15 +46,16 @@ func (p *Publisher) PublishEvent(ctx context.Context, topic string, batch interf
 }
 
 type KVEventSender struct {
+	mu           sync.RWMutex
 	publisher    *Publisher
 	topic        string
-	eventChan    <-chan EventData
+	eventChan    chan EventData
 	maxBatchSize int
 	delay        time.Duration
 	batch        []msgpack.RawMessage
 }
 
-func NewKVEventSender(publisher *Publisher, topic string, ch <-chan EventData, maxBatchSize int, delay time.Duration) *KVEventSender {
+func NewKVEventSender(publisher *Publisher, topic string, ch chan EventData, maxBatchSize int, delay time.Duration) *KVEventSender {
 	return &KVEventSender{
 		publisher:    publisher,
 		topic:        topic,
@@ -68,21 +70,17 @@ func (s *KVEventSender) Run(ctx context.Context) error {
 	timer := time.NewTimer(s.delay)
 	defer timer.Stop()
 
-	fmt.Printf("<<>> Start sender\n")
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Printf("<<>> Sender done\n")
 			// Before exit, publish remaining events if any
 			err := s.publishHelper(ctx)
 			if err != nil {
 				return err
 			}
-			// TODO return error???
 			return ctx.Err()
 
 		case eventData, ok := <-s.eventChan:
-			fmt.Printf("<<>> Sender selected data")
 			if !ok {
 				// Channel closed, publish remaining and exit
 				return s.publishHelper(ctx)
@@ -103,7 +101,10 @@ func (s *KVEventSender) Run(ctx context.Context) error {
 			if err != nil {
 				return fmt.Errorf("failed to marshal value: %w", err)
 			}
+
+			s.mu.Lock()
 			s.batch = append(s.batch, blockPayloadBytes)
+			defer s.mu.Unlock()
 
 			// check if batch is big enough to be sent
 			if len(s.batch) >= s.maxBatchSize {
@@ -129,6 +130,9 @@ func (s *KVEventSender) Run(ctx context.Context) error {
 
 // helper to publish collected batch if not empty
 func (s *KVEventSender) publishHelper(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if len(s.batch) == 0 {
 		return nil
 	}
