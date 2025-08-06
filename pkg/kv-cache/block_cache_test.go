@@ -181,8 +181,8 @@ var _ = Describe("Block cache", Ordered, func() {
 				blockCache := newBlockCache(test.cacheSize, GinkgoLogr)
 
 				go func() {
-					defer wg.Done()
-					go blockCache.start(ctx)
+					blockCache.start(ctx)
+					wg.Done()
 				}()
 
 				defer func() {

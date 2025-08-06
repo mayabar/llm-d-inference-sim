@@ -18,9 +18,9 @@ package kvcache
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
+	"github.com/go-logr/logr"
 	"github.com/llm-d/llm-d-kv-cache-manager/pkg/kvcache/kvevents"
 	"github.com/vmihailenco/msgpack/v5"
 )
@@ -46,16 +46,16 @@ func (p *Publisher) PublishEvent(ctx context.Context, topic string, batch interf
 }
 
 type KVEventSender struct {
-	mu           sync.RWMutex
 	publisher    *Publisher
 	topic        string
 	eventChan    chan EventData
 	maxBatchSize int
 	delay        time.Duration
 	batch        []msgpack.RawMessage
+	logger       logr.Logger
 }
 
-func NewKVEventSender(publisher *Publisher, topic string, ch chan EventData, maxBatchSize int, delay time.Duration) *KVEventSender {
+func NewKVEventSender(publisher *Publisher, topic string, ch chan EventData, maxBatchSize int, delay time.Duration, logger logr.Logger) *KVEventSender {
 	return &KVEventSender{
 		publisher:    publisher,
 		topic:        topic,
@@ -63,6 +63,7 @@ func NewKVEventSender(publisher *Publisher, topic string, ch chan EventData, max
 		maxBatchSize: maxBatchSize,
 		delay:        delay,
 		batch:        make([]msgpack.RawMessage, 0, maxBatchSize),
+		logger:       logger,
 	}
 }
 
@@ -73,17 +74,19 @@ func (s *KVEventSender) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			// Before exit, publish remaining events if any
-			err := s.publishHelper(ctx)
-			if err != nil {
-				return err
+			// Exiting, discard remaining events if any
+			if len(s.batch) > 0 {
+				s.logger.Info("Existing, discard remaining events", "num of events", len(s.batch))
 			}
 			return ctx.Err()
 
 		case eventData, ok := <-s.eventChan:
 			if !ok {
-				// Channel closed, publish remaining and exit
-				return s.publishHelper(ctx)
+				// Channel closed, discard remaining events and exit
+				if len(s.batch) > 0 {
+					s.logger.Info("Channel closed, discard remaining events", "num of events", len(s.batch))
+				}
+				return nil
 			}
 
 			// Encode eventData's hash value to msgpack.RawMessage
@@ -102,9 +105,7 @@ func (s *KVEventSender) Run(ctx context.Context) error {
 				return fmt.Errorf("failed to marshal value: %w", err)
 			}
 
-			s.mu.Lock()
 			s.batch = append(s.batch, blockPayloadBytes)
-			defer s.mu.Unlock()
 
 			// check if batch is big enough to be sent
 			if len(s.batch) >= s.maxBatchSize {
@@ -130,9 +131,6 @@ func (s *KVEventSender) Run(ctx context.Context) error {
 
 // helper to publish collected batch if not empty
 func (s *KVEventSender) publishHelper(ctx context.Context) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if len(s.batch) == 0 {
 		return nil
 	}

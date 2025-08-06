@@ -27,6 +27,8 @@ import (
 
 const (
 	capacityError = "the kv cache does not have sufficient capacity to store this request"
+	batchSize     = 3
+	delay         = time.Second
 )
 
 // blockCache represents a thread-safe cache for blocks with eviction policy
@@ -53,7 +55,7 @@ func newBlockCache(maxBlocks int, logger logr.Logger) *blockCache {
 		maxBlocks:       maxBlocks,
 		eventChan:       eChan,
 		// TODO - create topic name from pod ip + model name
-		eventSender: NewKVEventSender(&Publisher{}, "topic1", eChan, 3, time.Second),
+		eventSender: NewKVEventSender(&Publisher{}, "topic1", eChan, batchSize, delay, logger),
 		logger:      logger,
 	}
 }
@@ -126,13 +128,11 @@ func (bc *blockCache) startRequest(requestID string, blocks []uint64) error {
 			}
 
 			delete(bc.unusedBlocks, oldestUnusedHash)
-			fmt.Printf(">>> REMOVE block %d\n", block)
 			bc.eventChan <- EventData{action: eventActionRemove, hashValues: []uint64{block}}
 		}
 
 		// Add the new block
 		bc.usedBlocks[block] = 1
-		fmt.Printf(">>> ADD block %d \n", block)
 		bc.eventChan <- EventData{action: eventActionStore, hashValues: []uint64{block}}
 	}
 
