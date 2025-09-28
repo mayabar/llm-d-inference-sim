@@ -68,7 +68,15 @@ func printHeader() {
 
 func main() {
 	printHeader()
+
+	numOfTests := 2
+	numOfIterations := 100000
+	delays := []int{0, 10}
+
+	for i, delay := range delays {
+		oneThreadTestSequence(i, numOfTests, numOfIterations, delay)
+	}
 	// oneThreadTestSequence(1, 2, 100000, 100)
-	oneThreadTestSequence(1, 2, 100000, 10)
-	oneThreadTestSequence(2, 2, 100000, 0)
+	// oneThreadTestSequence(2, 2, 100000, 0)
+	// oneThreadTestSequence(1, 2, 100000, 10)
 }
