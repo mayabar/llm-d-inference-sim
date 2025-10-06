@@ -33,9 +33,11 @@ const (
 	eventActionRemove
 )
 
+var MediumGPU = string("GPU")
+
 type EventData struct {
 	action     EventAction
-	hashValues []uint64
+	hashValues []any
 }
 
 type KVEventSender struct {
@@ -93,9 +95,9 @@ func (s *KVEventSender) Run(ctx context.Context) error {
 
 			switch eventData.action {
 			case eventActionStore:
-				payload, err = msgpack.Marshal(kvevents.BlockStored{BlockHashes: eventData.hashValues}.ToTaggedUnion())
+				payload, err = msgpack.Marshal(kvevents.BlockStored{BlockHashes: eventData.hashValues, Medium: &MediumGPU}.ToTaggedUnion())
 			case eventActionRemove:
-				payload, err = msgpack.Marshal(kvevents.BlockRemoved{BlockHashes: eventData.hashValues}.ToTaggedUnion())
+				payload, err = msgpack.Marshal(kvevents.BlockRemoved{BlockHashes: eventData.hashValues, Medium: &MediumGPU}.ToTaggedUnion())
 			default:
 				return fmt.Errorf("invalid event action %d", eventData.action)
 			}
