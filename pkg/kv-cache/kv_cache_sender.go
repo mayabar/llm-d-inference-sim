@@ -95,6 +95,7 @@ func (s *KVEventSender) Run(ctx context.Context) error {
 
 			switch eventData.action {
 			case eventActionStore:
+				// use most recent version of kvevent (including medium)
 				payload, err = msgpack.Marshal(kvevents.BlockStored{BlockHashes: eventData.hashValues, Medium: &MediumGPU}.ToTaggedUnion())
 			case eventActionRemove:
 				payload, err = msgpack.Marshal(kvevents.BlockRemoved{BlockHashes: eventData.hashValues, Medium: &MediumGPU}.ToTaggedUnion())
