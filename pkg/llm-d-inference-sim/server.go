@@ -292,6 +292,7 @@ func (s *VllmSimulator) sendCompletionError(ctx *fasthttp.RequestCtx,
 
 // HandleModels handles /v1/models request according the data stored in the simulator
 func (s *VllmSimulator) HandleModels(ctx *fasthttp.RequestCtx) {
+	s.logger.V(logging.TRACE).Info("/models request received")
 	modelsResp := s.createModelsResponse()
 
 	data, err := json.Marshal(modelsResp)
