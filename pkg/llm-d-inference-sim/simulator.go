@@ -93,6 +93,16 @@ type metricsData struct {
 	ttftChan chan float64
 	// tpotChan is a channel to update time per output token
 	tpotChan chan float64
+	// e2eReqLatencyChan is a channel to update request e2e latency
+	e2eReqLatencyChan chan float64
+	// reqQueueTimeChan is a channel to update request queue time
+	reqQueueTimeChan chan float64
+	// reqInferenceTimeChan is a channel to update request inference time
+	reqInferenceTimeChan chan float64
+	// reqPrefillTimeChan is a channel to update request prefill time
+	reqPrefillTimeChan chan float64
+	// reqDecodeTimeChan is a channel to update request decode time
+	reqDecodeTimeChan chan float64
 	// kvCacheUsageChan is a channel to update kvCacheUsagePercentage
 	kvCacheUsageChan chan float64
 	// registry is a Prometheus registry
@@ -107,6 +117,16 @@ type metricsData struct {
 	ttft *prometheus.HistogramVec
 	// tpot is prometheus histogram for time per output token in seconds
 	tpot *prometheus.HistogramVec
+	// e2eReqLatency is prometheus histogram of end to end request latency in seconds
+	e2eReqLatency *prometheus.HistogramVec
+	// reqQueueTime is prometheus histogram of request queue time in seconds
+	reqQueueTime *prometheus.HistogramVec
+	// reqInferenceTime is prometheus histogram of request inference time in seconds
+	reqInferenceTime *prometheus.HistogramVec
+	// reqPrefillTime is prometheus histogram of request prefill time in seconds
+	reqPrefillTime *prometheus.HistogramVec
+	// reqDecodeTime is prometheus histogram of request decode time in seconds
+	reqDecodeTime *prometheus.HistogramVec
 	// kvCacheUsagePercentage is prometheus gauge
 	kvCacheUsagePercentage *prometheus.GaugeVec
 	// requestPromptTokens is prometheus histogram for number of input (prompt) tokens in request
@@ -133,6 +153,11 @@ type lorasUsageInfo struct {
 type requestCompleted struct {
 	worker *worker
 	model  string
+}
+
+type waitingQueueItem struct {
+	reqCtx      *openaiserverapi.CompletionReqCtx
+	enqueueTime time.Time
 }
 
 // VllmSimulator simulates vLLM server supporting OpenAI API
@@ -271,6 +296,11 @@ func (s *VllmSimulator) initializeSim(ctx context.Context) error {
 	s.metrics.kvCacheUsageChan = make(chan float64, maxNumberOfRequests)
 	s.metrics.ttftChan = make(chan float64, maxNumberOfRequests)
 	s.metrics.tpotChan = make(chan float64, maxNumberOfRequests)
+	s.metrics.e2eReqLatencyChan = make(chan float64, maxNumberOfRequests)
+	s.metrics.reqQueueTimeChan = make(chan float64, maxNumberOfRequests)
+	s.metrics.reqInferenceTimeChan = make(chan float64, maxNumberOfRequests)
+	s.metrics.reqPrefillTimeChan = make(chan float64, maxNumberOfRequests)
+	s.metrics.reqDecodeTimeChan = make(chan float64, maxNumberOfRequests)
 	s.metrics.requestSuccessChan = make(chan requestSuccessEvent, maxNumberOfRequests)
 
 	s.newRequests = make(chan *openaiserverapi.CompletionReqCtx, maxNumberOfRequests)
@@ -460,6 +490,11 @@ func (s *VllmSimulator) addRequestToQueue(reqCtx *openaiserverapi.CompletionReqC
 
 // handleCompletions general completion requests handler, support both text and chat completion APIs
 func (s *VllmSimulator) handleCompletions(ctx *fasthttp.RequestCtx, isChatCompletion bool) {
+	startTime := time.Now()
+	defer func() {
+		common.WriteToChannel(s.metrics.e2eReqLatencyChan, time.Since(startTime).Seconds(), s.logger, "metrics.e2eReqLatencyChan")
+	}()
+
 	// Check if we should inject a failure
 	if shouldInjectFailure(s.config) {
 		failure := getRandomFailure(s.config)
@@ -565,19 +600,22 @@ func (s *VllmSimulator) createCompletionResponse(isChatCompletion bool, respToke
 // from --served-model-name (for a base-model request) or the LoRA adapter name (for a LoRA request).
 // finishReason - a pointer to string that represents finish reason, can be nil, stop, length, or tools
 // usageData - usage (tokens statistics) for this response
-func (s *VllmSimulator) sendResponse(reqCtx *openaiserverapi.CompletionReqCtx, respTokens []string, toolCalls []openaiserverapi.ToolCall,
-	modelName string, finishReason string, usageData *openaiserverapi.Usage) {
+func (s *VllmSimulator) sendResponse(reqCtx *openaiserverapi.CompletionReqCtx, respTokens []string,
+	toolCalls []openaiserverapi.ToolCall, modelName string, finishReason string, usageData *openaiserverapi.Usage) {
 	resp := s.createCompletionResponse(reqCtx.IsChatCompletion, respTokens, toolCalls, &finishReason, usageData, modelName,
 		reqCtx.CompletionReq.IsDoRemoteDecode())
 
 	// calculate how long to wait before returning the response, time is based on number of tokens
 	nCachedPromptTokens := reqCtx.CompletionReq.GetNumberOfCachedPromptTokens()
+	startPrefill := time.Now()
 	ttft := s.getWaitTimeToFirstToken(usageData.PromptTokens, nCachedPromptTokens, reqCtx.CompletionReq.IsDoRemotePrefill())
 	time.Sleep(time.Duration(ttft) * time.Millisecond)
 
 	// report ttft in seconds
 	common.WriteToChannel(s.metrics.ttftChan, (float64(ttft) / 1000), s.logger, "metrics.ttftChan")
+	common.WriteToChannel(s.metrics.reqPrefillTimeChan, time.Since(startPrefill).Seconds(), s.logger, "metrics.reqPrefillTimeChan")
 
+	startDecode := time.Now()
 	for range usageData.CompletionTokens - 1 {
 		perTokenLatency := s.getInterTokenLatency()
 		time.Sleep(time.Duration(perTokenLatency) * time.Millisecond)
@@ -585,8 +623,9 @@ func (s *VllmSimulator) sendResponse(reqCtx *openaiserverapi.CompletionReqCtx, r
 		// report tpot in seconds
 		common.WriteToChannel(s.metrics.tpotChan, (float64(perTokenLatency) / 1000), s.logger, "metrics.tpotChan")
 	}
-	s.sendCompletionResponse(reqCtx.HTTPReqCtx, resp)
+	common.WriteToChannel(s.metrics.reqDecodeTimeChan, time.Since(startDecode).Seconds(), s.logger, "metrics.reqDecodeTimeChan")
 
+	s.sendCompletionResponse(reqCtx.HTTPReqCtx, resp)
 	s.responseSentCallback(modelName, reqCtx.IsChatCompletion, reqCtx.CompletionReq.GetRequestID())
 }
 
@@ -629,7 +668,7 @@ func (s *VllmSimulator) enqueue(req *openaiserverapi.CompletionReqCtx) error {
 	if s.waitingQueue.Len() >= s.queueCapacity {
 		return errors.New("waiting requests queue is full")
 	}
-	s.waitingQueue.PushBack(req)
+	s.waitingQueue.PushBack(waitingQueueItem{req, time.Now()})
 	return nil
 }
 
@@ -640,20 +679,22 @@ func (s *VllmSimulator) dequeue() *openaiserverapi.CompletionReqCtx {
 
 	// Find first request for a loaded LoRA
 	for elem := s.waitingQueue.Front(); elem != nil; elem = elem.Next() {
-		req, ok := elem.Value.(*openaiserverapi.CompletionReqCtx)
-		if ok && req != nil && s.loraIsLoaded(req.CompletionReq.GetModel()) {
+		item, ok := elem.Value.(waitingQueueItem)
+		if ok && item.reqCtx != nil && s.loraIsLoaded(item.reqCtx.CompletionReq.GetModel()) {
 			s.waitingQueue.Remove(elem)
-			s.incrementLora(req.CompletionReq.GetModel())
-			return req
+			s.incrementLora(item.reqCtx.CompletionReq.GetModel())
+			common.WriteToChannel(s.metrics.reqQueueTimeChan, time.Since(item.enqueueTime).Seconds(), s.logger, "metrics.reqQueueTimeChan")
+			return item.reqCtx
 		}
 	}
 
 	// All the requests require a LoRA that is not loaded, check if we can load a LoRA
 	for elem := s.waitingQueue.Front(); elem != nil; elem = elem.Next() {
-		req, ok := elem.Value.(*openaiserverapi.CompletionReqCtx)
-		if ok && req != nil && s.loadLora(req.CompletionReq.GetModel()) {
+		item, ok := elem.Value.(waitingQueueItem)
+		if ok && item.reqCtx != nil && s.loadLora(item.reqCtx.CompletionReq.GetModel()) {
 			s.waitingQueue.Remove(elem)
-			return req
+			common.WriteToChannel(s.metrics.reqQueueTimeChan, time.Since(item.enqueueTime).Seconds(), s.logger, "metrics.reqQueueTimeChan")
+			return item.reqCtx
 		}
 	}
 
