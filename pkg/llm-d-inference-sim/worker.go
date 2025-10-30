@@ -19,6 +19,7 @@ package llmdinferencesim
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -49,22 +50,31 @@ func (w *worker) waitForRequests() {
 			w.logger.V(4).Info("worker done", "id", w.id)
 			return
 		case req := <-w.reqChan:
-			w.processor.processRequest(req)
+			w.processor.processRequest(req, nil)
 			w.finishedChan <- &requestCompleted{worker: w, model: req.CompletionReq.GetModel()}
 		}
+
 	}
 }
 
 type requestProcessor interface {
-	processRequest(reqCtx *openaiserverapi.CompletionReqCtx)
+	processRequest(reqCtx *openaiserverapi.CompletionReqCtx, wg *sync.WaitGroup)
 }
 
-func (s *VllmSimulator) processRequest(reqCtx *openaiserverapi.CompletionReqCtx) {
-	start := time.Now()
-	defer func() {
-		common.WriteToChannel(s.metrics.reqInferenceTimeChan, time.Since(start).Seconds(), s.logger, "metrics.reqInferenceTimeChan")
-	}()
+func (s *VllmSimulator) processRequest(reqCtx *openaiserverapi.CompletionReqCtx, _ *sync.WaitGroup) {
+	startTime := time.Now()
+	wg := sync.WaitGroup{}
+	wg.Add(1)
 
+	go s.processRequestAsync(reqCtx, &wg)
+
+	wg.Wait()
+	// calculate inference time and finish e2e latency calculation only when sure that request processing was finished for streaming requests too
+	common.WriteToChannel(s.metrics.e2eReqLatencyChan, time.Since(reqCtx.StartProcessing).Seconds(), s.logger, "metrics.e2eReqLatencyChan")
+	common.WriteToChannel(s.metrics.reqInferenceTimeChan, time.Since(startTime).Seconds(), s.logger, "metrics.reqInferenceTimeChan")
+}
+
+func (s *VllmSimulator) processRequestAsync(reqCtx *openaiserverapi.CompletionReqCtx, wg *sync.WaitGroup) {
 	req := reqCtx.CompletionReq
 	model := req.GetModel()
 	displayModel := s.getDisplayedModelName(model)
@@ -138,7 +148,7 @@ func (s *VllmSimulator) processRequest(reqCtx *openaiserverapi.CompletionReqCtx)
 					// Logprobs configuration
 					logprobs: req.GetLogprobs(),
 				},
-				responseTokens, toolCalls, finishReason, usageDataToSend,
+				responseTokens, toolCalls, finishReason, usageDataToSend, wg,
 			)
 		} else {
 			if req.IsDoRemoteDecode() {
@@ -146,6 +156,7 @@ func (s *VllmSimulator) processRequest(reqCtx *openaiserverapi.CompletionReqCtx)
 				finishReason = dataset.RemoteDecodeFinishReason
 			}
 			s.sendResponse(reqCtx, responseTokens, toolCalls, displayModel, finishReason, &usageData)
+			wg.Done()
 		}
 
 		common.WriteToChannel(s.metrics.requestSuccessChan,
