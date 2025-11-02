@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
+	"github.com/llm-d/llm-d-inference-sim/pkg/common/logging"
 	"github.com/llm-d/llm-d-inference-sim/pkg/dataset"
 	openaiserverapi "github.com/llm-d/llm-d-inference-sim/pkg/openai-server-api"
 	"github.com/valyala/fasthttp"
@@ -74,12 +75,12 @@ func (s *VllmSimulator) sendStreamingResponse(context *streamingContext, respons
 				}
 			}
 			if len(toolCalls) > 0 {
-				s.logger.Info("Going to send tools calls")
+				s.logger.V(logging.TRACE).Info("Going to send tools calls")
 				for _, tc := range toolCalls {
 					s.sendTokenChunks(context, w, tc.Function.TokenizedArguments, &tc, finishReason)
 				}
 			} else {
-				s.logger.V(4).Info("Going to send text", "number of tokens", len(responseTokens))
+				s.logger.V(logging.TRACE).Info("Going to send text", "number of tokens", len(responseTokens))
 				s.sendTokenChunks(context, w, responseTokens, nil, finishReason)
 				s.logger.V(4).Info("Finished sending text", "number of tokens", len(responseTokens))
 			}
