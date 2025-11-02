@@ -768,7 +768,9 @@ func ParseCommandParamsAndLoadConfig() (*Configuration, error) {
 	f.AddGoFlagSet(flagSet)
 
 	// set default value for logger verbosity to INFO
-	flagSet.Set("v", "2")
+	if err := flagSet.Set("v", "2"); err != nil {
+		return nil, err
+	}
 
 	if err := f.Parse(os.Args[1:]); err != nil {
 		if err == pflag.ErrHelp {
