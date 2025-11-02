@@ -767,6 +767,9 @@ func ParseCommandParamsAndLoadConfig() (*Configuration, error) {
 	klog.InitFlags(flagSet)
 	f.AddGoFlagSet(flagSet)
 
+	// set default value for logger verbosity to INFO
+	flagSet.Set("v", "2")
+
 	if err := f.Parse(os.Args[1:]); err != nil {
 		if err == pflag.ErrHelp {
 			// --help - exit without printing an error message
