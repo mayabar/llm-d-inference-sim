@@ -34,6 +34,7 @@ In addition, it supports a subset of vLLM's Prometheus metrics. These metrics ar
 | vllm:time_to_first_token_seconds | Histogram of time to first token in seconds |
 | vllm:time_per_output_token_seconds | Histogram of time per output token in seconds |
 | vllm:request_generation_tokens | Number of generation tokens processed |
+| vllm:max_num_generation_tokens | Maximum number of requested generation tokens. Currently same as `vllm:request_generation_tokens` since always only one choice is returned |
 | vllm:request_params_max_tokens | Histogram of the max_tokens request parameter | 
 | vllm:request_prompt_tokens | Number of prefill tokens processed |
 | vllm:request_success_total | Count of successfully processed requests |
@@ -235,6 +236,7 @@ For more details see the <a href="https://docs.vllm.ai/en/stable/getting_started
     960.0, 1920.0, 7680.0, +Inf.
     - `request-prompt-tokens` - array of values for prompt-length buckets
     - `request-generation-tokens` - array of values for generation-length buckets
+    - `request-max-generation-tokens` - array of values for max_num_generation_tokens buckets
     - `request-params-max-tokens` - array of values for  max_tokens parameter buckets
     - `request-success-total` - number of successful requests per finish reason, key: finish-reason (stop, length, etc.).
     <br>
