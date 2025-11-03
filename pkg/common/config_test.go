@@ -57,6 +57,7 @@ func createDefaultConfig(model string) *Configuration {
 type testCase struct {
 	name           string
 	args           []string
+	expectedError  string
 	expectedConfig *Configuration
 }
 
@@ -284,208 +285,252 @@ var _ = Describe("Simulator configuration", func() {
 	// Invalid configurations
 	invalidTests := []testCase{
 		{
-			name: "invalid model",
-			args: []string{"cmd", "--model", "", "--config", "../../manifests/config.yaml"},
+			name:          "invalid model",
+			args:          []string{"cmd", "--model", "", "--config", "../../manifests/config.yaml"},
+			expectedError: "model parameter is empty",
 		},
 		{
-			name: "invalid port",
-			args: []string{"cmd", "--port", "-50", "--config", "../../manifests/config.yaml"},
+			name:          "invalid port",
+			args:          []string{"cmd", "--port", "-50", "--config", "../../manifests/config.yaml"},
+			expectedError: "invalid port",
 		},
 		{
-			name: "invalid max-loras",
-			args: []string{"cmd", "--max-loras", "15", "--config", "../../manifests/config.yaml"},
+			name:          "invalid max-loras",
+			args:          []string{"cmd", "--max-loras", "15", "--config", "../../manifests/config.yaml"},
+			expectedError: "max CPU LoRAs cannot be less than max LoRAs",
 		},
 		{
-			name: "invalid mode",
-			args: []string{"cmd", "--mode", "hello", "--config", "../../manifests/config.yaml"},
+			name:          "invalid mode",
+			args:          []string{"cmd", "--mode", "hello", "--config", "../../manifests/config.yaml"},
+			expectedError: "invalid mode ",
 		},
 		{
 			name: "invalid lora",
 			args: []string{"cmd", "--config", "../../manifests/config.yaml",
 				"--lora-modules", "[{\"path\":\"/path/to/lora15\"}]"},
+			expectedError: "json: cannot unmarshal array into Go value of type common.LoraModule",
 		},
 		{
-			name: "invalid max-model-len",
-			args: []string{"cmd", "--max-model-len", "0", "--config", "../../manifests/config.yaml"},
+			name:          "invalid max-model-len",
+			args:          []string{"cmd", "--max-model-len", "0", "--config", "../../manifests/config.yaml"},
+			expectedError: "max model len cannot be less than 1",
 		},
 		{
-			name: "invalid tool-call-not-required-param-probability",
-			args: []string{"cmd", "--tool-call-not-required-param-probability", "-10", "--config", "../../manifests/config.yaml"},
+			name:          "invalid tool-call-not-required-param-probability",
+			args:          []string{"cmd", "--tool-call-not-required-param-probability", "-10", "--config", "../../manifests/config.yaml"},
+			expectedError: "ToolCallNotRequiredParamProbability should be between 0 and 100",
 		},
 		{
 			name: "invalid max-tool-call-number-param",
 			args: []string{"cmd", "--max-tool-call-number-param", "-10", "--min-tool-call-number-param", "0",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "MaxToolCallNumberParam cannot be less than MinToolCallNumberParam",
 		},
 		{
 			name: "invalid max-tool-call-integer-param",
 			args: []string{"cmd", "--max-tool-call-integer-param", "-10", "--min-tool-call-integer-param", "0",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "MaxToolCallIntegerParam cannot be less than MinToolCallIntegerParam",
 		},
 		{
 			name: "invalid max-tool-call-array-param-length",
 			args: []string{"cmd", "--max-tool-call-array-param-length", "-10", "--min-tool-call-array-param-length", "0",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "MaxToolCallArrayParamLength cannot be less than MinToolCallArrayParamLength",
 		},
 		{
 			name: "invalid tool-call-not-required-param-probability",
 			args: []string{"cmd", "--tool-call-not-required-param-probability", "-10",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "ToolCallNotRequiredParamProbability should be between 0 and 100",
 		},
 		{
 			name: "invalid object-tool-call-not-required-field-probability",
 			args: []string{"cmd", "--object-tool-call-not-required-field-probability", "1210",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "ObjectToolCallNotRequiredParamProbability should be between 0 and 100",
 		},
 		{
 			name: "invalid time-to-first-token-std-dev",
 			args: []string{"cmd", "--time-to-first-token-std-dev", "3000",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "time to first token standard deviation cannot be more than 30%",
 		},
 		{
 			name: "invalid (negative) time-to-first-token-std-dev",
 			args: []string{"cmd", "--time-to-first-token-std-dev", "10", "--time-to-first-token-std-dev", "-1",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "time to first token standard deviation cannot be negative",
 		},
 		{
 			name: "invalid inter-token-latency-std-dev",
-			args: []string{"cmd", "--inter-token-latency", " 1000", "--inter-token-latency-std-dev", "301",
+			args: []string{"cmd", "--inter-token-latency", "1000", "--inter-token-latency-std-dev", "301",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "inter token latency standard deviation cannot be more than 30%",
 		},
 		{
 			name: "invalid (negative) inter-token-latency-std-dev",
-			args: []string{"cmd", "--inter-token-latency", " 1000", "--inter-token-latency-std-dev", "-1",
+			args: []string{"cmd", "--inter-token-latency", "1000", "--inter-token-latency-std-dev", "-1",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "inter token latency standard deviation cannot be negative",
 		},
 		{
 			name: "invalid kv-cache-transfer-latency-std-dev",
 			args: []string{"cmd", "--kv-cache-transfer-latency", "70", "--kv-cache-transfer-latency-std-dev", "35",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "kv-cache tranfer standard deviation cannot be more than 30% of kv-cache tranfer",
 		},
 		{
 			name: "invalid (negative) kv-cache-transfer-latency-std-dev",
 			args: []string{"cmd", "--kv-cache-transfer-latency-std-dev", "-35",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "kv-cache tranfer time standard deviation cannot be negative",
 		},
 		{
 			name: "invalid (negative) kv-cache-size",
 			args: []string{"cmd", "--kv-cache-size", "-35",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "KV cache size cannot be negative",
 		},
 		{
 			name: "invalid block-size",
 			args: []string{"cmd", "--block-size", "35",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "token block size should be one of the following",
 		},
 		{
 			name: "invalid (negative) event-batch-size",
 			args: []string{"cmd", "--event-batch-size", "-35",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "event batch size cannot less than 1",
 		},
 		{
-			name: "invalid failure injection rate > 100",
-			args: []string{"cmd", "--model", "test-model", "--failure-injection-rate", "150"},
+			name:          "invalid failure injection rate > 100",
+			args:          []string{"cmd", "--model", "test-model", "--failure-injection-rate", "150"},
+			expectedError: "failure injection rate should be between 0 and 100",
 		},
 		{
-			name: "invalid failure injection rate < 0",
-			args: []string{"cmd", "--model", "test-model", "--failure-injection-rate", "-10"},
+			name:          "invalid failure injection rate < 0",
+			args:          []string{"cmd", "--model", "test-model", "--failure-injection-rate", "-10"},
+			expectedError: "failure injection rate should be between 0 and 100",
 		},
 		{
 			name: "invalid failure type",
 			args: []string{"cmd", "--model", "test-model", "--failure-injection-rate", "50",
 				"--failure-types", "invalid_type"},
+			expectedError: "invalid failure type",
 		},
 		{
 			name: "invalid fake metrics: negative running requests",
 			args: []string{"cmd", "--fake-metrics", "{\"running-requests\":-10,\"waiting-requests\":30,\"kv-cache-usage\":0.4}",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "fake metrics request counters cannot be negative",
 		},
 		{
 			name: "invalid fake metrics: kv cache usage",
 			args: []string{"cmd", "--fake-metrics", "{\"running-requests\":10,\"waiting-requests\":30,\"kv-cache-usage\":40}",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "fake metrics KV cache usage must be between 0 and 1",
 		},
 		{
-			name: "invalid (negative) zmq-max-connect-attempts for argument",
-			args: []string{"cmd", "zmq-max-connect-attempts", "-1", "--config", "../../manifests/config.yaml"},
+			name:          "invalid (negative) zmq-max-connect-attempts for argument",
+			args:          []string{"cmd", "--zmq-max-connect-attempts", "-1", "--config", "../../manifests/config.yaml"},
+			expectedError: "for \"--zmq-max-connect-attempts\" flag: strconv.ParseUint: parsing",
 		},
 		{
-			name: "invalid (negative) zmq-max-connect-attempts for config file",
-			args: []string{"cmd", "--config", "../../manifests/invalid-config.yaml"},
+			name:          "invalid (negative) zmq-max-connect-attempts for config file",
+			args:          []string{"cmd", "--config", "../../manifests/invalid-config.yaml"},
+			expectedError: "failed to unmarshal configuration: yaml: unmarshal errors:",
 		},
 		{
 			name: "invalid (negative) prefill-overhead",
 			args: []string{"cmd", "--prefill-overhead", "-1",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "prefill overhead cannot be negative",
 		},
 		{
 			name: "invalid (negative) prefill-time-per-token",
 			args: []string{"cmd", "--prefill-time-per-token", "-1",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "prefill time per token cannot be negative",
 		},
 		{
 			name: "invalid (negative) prefill-time-std-dev",
 			args: []string{"cmd", "--prefill-time-std-dev", "-1",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "prefill time standard deviation cannot be negative",
 		},
 		{
 			name: "invalid (negative) kv-cache-transfer-time-per-token",
 			args: []string{"cmd", "--kv-cache-transfer-time-per-token", "-1",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "kv-cache tranfer time per token cannot be negative",
 		},
 		{
 			name: "invalid (negative) kv-cache-transfer-time-std-dev",
 			args: []string{"cmd", "--kv-cache-transfer-time-std-dev", "-1",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "kv-cache tranfer time standard deviation cannot be negative",
 		},
 		{
 			name: "invalid data-parallel-size",
 			args: []string{"cmd", "--data-parallel-size", "15",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "data parallel size must be between 1 ans 8",
 		},
 		{
 			name: "invalid max-num-seqs",
 			args: []string{"cmd", "--max-num-seqs", "0",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "max num seqs cannot be less than 1",
 		},
 		{
 			name: "invalid max-num-seqs",
 			args: []string{"cmd", "--max-num-seqs", "-1",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "max num seqs cannot be less than 1",
 		},
 		{
 			name: "invalid max-waiting-queue-length",
 			args: []string{"cmd", "--max-waiting-queue-length", "0",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "max waiting queue size cannot be less than 1",
 		},
 		{
 			name: "invalid max-waiting-queue-length",
 			args: []string{"cmd", "--max-waiting-queue-length", "-1",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "max waiting queue size cannot be less than 1",
 		},
 		{
 			name: "invalid time-factor-under-load",
 			args: []string{"cmd", "--time-factor-under-load", "0",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "time factor under load cannot be less than 1.0",
 		},
 		{
 			name: "invalid time-factor-under-load",
 			args: []string{"cmd", "--time-factor-under-load", "-1",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "time factor under load cannot be less than 1.0",
 		},
 		{
 			name: "invalid ttft",
-			args: []string{"cmd", "--ttft-buckets-values", "[1, 2, -10, 1]",
+			args: []string{"cmd", "--fake-metrics", "{\"ttft-buckets-values\":[1, 2, -10, 1]}",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "time-to-first-token fake metrics should contain only non-negative values",
 		},
 		{
 			name: "invalid tpot",
-			args: []string{"cmd", "--tpot-buckets-values", "[1, 2, -10, 1]",
+			args: []string{"cmd", "--fake-metrics", "{\"tpot-buckets-values\":[1, 2, -10, 1]}",
 				"--config", "../../manifests/config.yaml"},
+			expectedError: "time-per-output-token fake metrics should contain only non-negative values",
 		},
 		{
 			name: "invalid request-max-generation-tokens",
-			args: []string{"cmd", "--request-max-generation-tokens", "[1, 1, 2]"},
+			args: []string{"cmd", "--fake-metrics", "{\"request-max-generation-tokens\": [1, -1, 2]}",
+				"--config", "../../manifests/config.yaml"},
+			expectedError: "fake metrics request-max-generation-tokens cannot contain negative values",
 		},
 	}
 
@@ -493,7 +538,10 @@ var _ = Describe("Simulator configuration", func() {
 		When(test.name, func() {
 			It("should fail for invalid configuration", func() {
 				_, err := createSimConfig(test.args)
+				// ensure that error occurred
 				Expect(err).To(HaveOccurred())
+				// ensure that an expected error occurred
+				Expect(err.Error()).To(ContainSubstring(test.expectedError))
 			})
 		})
 	}

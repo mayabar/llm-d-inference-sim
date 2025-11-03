@@ -551,13 +551,13 @@ func (c *Configuration) validate() error {
 			return errors.New("fake metrics request counters cannot be negative")
 		}
 		if c.FakeMetrics.KVCacheUsagePercentage < 0 || c.FakeMetrics.KVCacheUsagePercentage > 1 {
-			return errors.New("fake metrics KV cache usage must be between 0 ans 1")
+			return errors.New("fake metrics KV cache usage must be between 0 and 1")
 		}
 		if c.FakeMetrics.TTFTBucketValues != nil {
 			if len(c.FakeMetrics.TTFTBucketValues) > len(TTFTBucketsBoundaries)+1 {
 				return errors.New("fake time-to-first-token array is too long")
 			}
-			for v := range c.FakeMetrics.TTFTBucketValues {
+			for _, v := range c.FakeMetrics.TTFTBucketValues {
 				if v < 0 {
 					return errors.New("time-to-first-token fake metrics should contain only non-negative values")
 				}
@@ -567,7 +567,7 @@ func (c *Configuration) validate() error {
 			if len(c.FakeMetrics.TPOTBucketValues) > len(TPOTBucketsBoundaries)+1 {
 				return errors.New("fake time-per-output-token array is too long")
 			}
-			for v := range c.FakeMetrics.TPOTBucketValues {
+			for _, v := range c.FakeMetrics.TPOTBucketValues {
 				if v < 0 {
 					return errors.New("time-per-output-token fake metrics should contain only non-negative values")
 				}
