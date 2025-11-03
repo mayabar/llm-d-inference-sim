@@ -16,6 +16,7 @@ fake-metrics:
   request-prompt-tokens: [ 10, 20, 30, 15 ]
   request-generation-tokens: [ 50, 60, 40 ]
   request-params-max-tokens: [ 128, 256, 512 ]
+  request-max-generation-tokens: [0, 0, 10, 20]
   loras:
   - '{"running":"lora1,lora2","waiting":"lora3","timestamp":1257894567}'
   - '{"running":"lora1,lora3","waiting":"","timestamp":1257894569}'

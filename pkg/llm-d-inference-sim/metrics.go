@@ -33,21 +33,22 @@ import (
 )
 
 const (
-	e2eReqLatencyMetricName    = "vllm:e2e_request_latency_seconds"
-	reqQueueTimeMetricName     = "vllm:request_queue_time_seconds"
-	reqInferenceTimeMetricName = "vllm:request_inference_time_seconds"
-	prefillTimeMetricName      = "vllm:request_prefill_time_seconds"
-	decodeTimeMetricName       = "vllm:request_decode_time_seconds"
-	ttftMetricName             = "vllm:time_to_first_token_seconds"
-	tpotMetricName             = "vllm:time_per_output_token_seconds"
-	generationTokensMetricName = "vllm:request_generation_tokens"
-	paramMaxTokensMetricName   = "vllm:request_params_max_tokens"
-	promptTokensMetricName     = "vllm:request_prompt_tokens"
-	successTotalMetricName     = "vllm:request_success_total"
-	loraRequestsMetricName     = "vllm:lora_requests_info"
-	reqRunningMetricName       = "vllm:num_requests_running"
-	reqWaitingMetricName       = "vllm:num_requests_waiting"
-	gpuCacheUsageMetricName    = "vllm:gpu_cache_usage_perc"
+	e2eReqLatencyMetricName          = "vllm:e2e_request_latency_seconds"
+	reqQueueTimeMetricName           = "vllm:request_queue_time_seconds"
+	reqInferenceTimeMetricName       = "vllm:request_inference_time_seconds"
+	prefillTimeMetricName            = "vllm:request_prefill_time_seconds"
+	decodeTimeMetricName             = "vllm:request_decode_time_seconds"
+	ttftMetricName                   = "vllm:time_to_first_token_seconds"
+	tpotMetricName                   = "vllm:time_per_output_token_seconds"
+	maxNumGenerationTokensMetricName = "vllm:max_num_generation_tokens"
+	generationTokensMetricName       = "vllm:request_generation_tokens"
+	paramMaxTokensMetricName         = "vllm:request_params_max_tokens"
+	promptTokensMetricName           = "vllm:request_prompt_tokens"
+	successTotalMetricName           = "vllm:request_success_total"
+	loraRequestsMetricName           = "vllm:lora_requests_info"
+	reqRunningMetricName             = "vllm:num_requests_running"
+	reqWaitingMetricName             = "vllm:num_requests_waiting"
+	gpuCacheUsageMetricName          = "vllm:gpu_cache_usage_perc"
 )
 
 // createAndRegisterPrometheus creates and registers prometheus metrics used by vLLM simulator
@@ -232,6 +233,20 @@ func (s *VllmSimulator) createAndRegisterPrometheus() error {
 		return err
 	}
 
+	s.metrics.maxNumGenerationTokens = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Subsystem: "",
+			Name:      maxNumGenerationTokensMetricName,
+			Help:      "Histogram of maximum number of requested generation tokens.",
+			Buckets:   build125Buckets(s.config.MaxModelLen),
+		},
+		[]string{vllmapi.PromLabelModelName},
+	)
+	if err := s.metrics.registry.Register(s.metrics.maxNumGenerationTokens); err != nil {
+		s.logger.Error(err, "prometheus max_num_generation_tokens histogram register failed")
+		return err
+	}
+
 	s.metrics.requestGenerationTokens = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Subsystem: "",
@@ -303,6 +318,9 @@ func (s *VllmSimulator) setInitialPrometheusMetrics() {
 		}
 		if s.config.FakeMetrics.RequestParamsMaxTokens != nil {
 			s.initFakeHistogram(s.metrics.requestGenerationTokens, buckets, s.config.FakeMetrics.RequestParamsMaxTokens)
+		}
+		if s.config.FakeMetrics.RequestMaxGenerationTokens != nil {
+			s.initFakeHistogram(s.metrics.maxNumGenerationTokens, buckets, s.config.FakeMetrics.RequestMaxGenerationTokens)
 		}
 
 		for reason, requestSuccessTotal := range s.config.FakeMetrics.RequestSuccessTotal {
@@ -644,6 +662,7 @@ func (s *VllmSimulator) recordRequestUpdater(ctx context.Context) {
 			s.recordRequestMetricsOnSuccess(
 				event.promptTokens,
 				event.generationTokens,
+				event.genTokensPerChoice,
 				event.maxTokens,
 				event.finishReason,
 			)
@@ -656,8 +675,12 @@ func (s *VllmSimulator) recordRequestUpdater(ctx context.Context) {
 type requestSuccessEvent struct {
 	// promptTokens is the number of input (prompt) tokens in the request
 	promptTokens int
-	// generationTokens is the number of generated (output) tokens in the response
+	// generationTokens is the number of generated (output) tokens in the response,
+	// in case of response with multiple choices contains sum of lengths of all choises
 	generationTokens int
+	// genTokensPerChoice array of generated tokens count per choice,
+	// sum of all elements in this array should be equal to generationTokens
+	genTokensPerChoice []int
 	// maxTokens is the maximum number of tokens allowed for generation (if specified in the request)
 	maxTokens *int64
 	// finishReason indicates why the generation stopped (e.g., "stop", "length", "tool_calls")
@@ -666,7 +689,7 @@ type requestSuccessEvent struct {
 
 // recordRequestMetricsOnSuccess records metrics for a successfully completed request
 func (s *VllmSimulator) recordRequestMetricsOnSuccess(promptTokens,
-	generationTokens int, maxTokens *int64, finishReason string) {
+	generationTokens int, genTokensPerChoice []int, maxTokens *int64, finishReason string) {
 	modelName := s.getDisplayedModelName(s.config.Model)
 	s.metrics.requestPromptTokens.WithLabelValues(modelName).Observe(float64(promptTokens))
 	s.metrics.requestGenerationTokens.WithLabelValues(modelName).Observe(float64(generationTokens))
@@ -674,6 +697,9 @@ func (s *VllmSimulator) recordRequestMetricsOnSuccess(promptTokens,
 		s.metrics.requestParamsMaxTokens.WithLabelValues(modelName).Observe(float64(*maxTokens))
 	}
 	s.metrics.requestSuccessTotal.WithLabelValues(modelName, finishReason).Inc()
+	if maxGenTokens, err := common.MaxIntSlice(genTokensPerChoice); err == nil {
+		s.metrics.maxNumGenerationTokens.WithLabelValues(modelName).Observe(float64(maxGenTokens))
+	}
 }
 
 // build125Buckets generates histogram buckets in powers of 10 scaled by [1,2,5].

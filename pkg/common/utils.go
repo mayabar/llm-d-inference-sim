@@ -17,6 +17,7 @@ limitations under the License.
 package common
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"regexp"
@@ -160,4 +161,17 @@ func WriteToChannel[T any](channel chan T, object T, logger logr.Logger, channel
 	default:
 		logger.V(logging.WARN).Info("failed to write to", "channel", channelName)
 	}
+}
+
+func MaxIntSlice(numbers []int) (int, error) {
+	if len(numbers) == 0 {
+		return 0, errors.New("cannot return maximum of an empty slice")
+	}
+	max := numbers[0]
+	for _, num := range numbers[1:] {
+		if num > max {
+			max = num
+		}
+	}
+	return max, nil
 }

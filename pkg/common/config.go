@@ -249,9 +249,10 @@ type Metrics struct {
 	TPOTBucketValues []int `yaml:"tpot-buckets-values" json:"tpot-buckets-values"`
 	// RequestPromptTokens RequestGenerationTokens RequestParamsMaxTokens Histogram fake-observation arrays for init.
 	// Each value will be passed to Observe() once at start-up.
-	RequestPromptTokens     []int `yaml:"request-prompt-tokens" json:"request-prompt-tokens"`         // prompt-length samples
-	RequestGenerationTokens []int `yaml:"request-generation-tokens" json:"request-generation-tokens"` // generation-length samples
-	RequestParamsMaxTokens  []int `yaml:"request-params-max-tokens" json:"request-params-max-tokens"` // max_tokens parameter samples
+	RequestPromptTokens        []int `yaml:"request-prompt-tokens" json:"request-prompt-tokens"`                 // prompt-length samples
+	RequestGenerationTokens    []int `yaml:"request-generation-tokens" json:"request-generation-tokens"`         // generation-length samples
+	RequestParamsMaxTokens     []int `yaml:"request-params-max-tokens" json:"request-params-max-tokens"`         // max_tokens parameter samples
+	RequestMaxGenerationTokens []int `yaml:"request-max-generation-tokens" json:"request-max-generation-tokens"` // request_max_num_generation_tokens samples
 	// RequestSuccessTotal is the number of successful requests, key: finish-reason (stop, length, etc.).
 	RequestSuccessTotal map[string]int64 `yaml:"request-success-total" json:"request-success-total"`
 
@@ -604,10 +605,9 @@ func (c *Configuration) validate() error {
 				return errors.New("fake metrics request-params-max-tokens cannot contain negative values")
 			}
 		}
-
-		for _, v := range c.FakeMetrics.RequestParamsMaxTokens {
+		for _, v := range c.FakeMetrics.RequestMaxGenerationTokens {
 			if v < 0 {
-				return errors.New("fake metrics request-params-max-tokens cannot contain negative values")
+				return errors.New("fake metrics request-max-generation-tokens cannot contain negative values")
 			}
 		}
 

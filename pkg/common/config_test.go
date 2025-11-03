@@ -203,11 +203,12 @@ var _ = Describe("Simulator configuration", func() {
 			"{\"running\":\"lora1,lora2\",\"waiting\":\"lora3\",\"timestamp\":1257894567}",
 			"{\"running\":\"lora1,lora3\",\"waiting\":\"\",\"timestamp\":1257894569}",
 		},
-		TTFTBucketValues:        []int{10, 20, 30, 10},
-		TPOTBucketValues:        []int{0, 0, 10, 20, 30},
-		RequestPromptTokens:     []int{10, 20, 30, 15},
-		RequestGenerationTokens: []int{50, 60, 40},
-		RequestParamsMaxTokens:  []int{128, 256, 512},
+		TTFTBucketValues:           []int{10, 20, 30, 10},
+		TPOTBucketValues:           []int{0, 0, 10, 20, 30},
+		RequestPromptTokens:        []int{10, 20, 30, 15},
+		RequestGenerationTokens:    []int{50, 60, 40},
+		RequestParamsMaxTokens:     []int{128, 256, 512},
+		RequestMaxGenerationTokens: []int{0, 0, 10, 20},
 		RequestSuccessTotal: map[string]int64{
 			StopFinishReason:         20,
 			LengthFinishReason:       0,
@@ -481,6 +482,10 @@ var _ = Describe("Simulator configuration", func() {
 			name: "invalid tpot",
 			args: []string{"cmd", "--tpot-buckets-values", "[1, 2, -10, 1]",
 				"--config", "../../manifests/config.yaml"},
+		},
+		{
+			name: "invalid request-max-generation-tokens",
+			args: []string{"cmd", "--request-max-generation-tokens", "[1, 1, 2]"},
 		},
 	}
 
