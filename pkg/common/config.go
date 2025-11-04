@@ -546,7 +546,7 @@ func (c *Configuration) validate() error {
 		return errors.New("zmq retries times cannot be more than 10")
 	}
 	if c.ZMQMaxConnectAttempts < 0 {
-		return errors.New("zmq retries times cannot be more negative")
+		return errors.New("zmq retries times cannot be negative")
 	}
 
 	if c.FakeMetrics != nil {

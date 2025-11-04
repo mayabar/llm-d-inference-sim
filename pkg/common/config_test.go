@@ -435,12 +435,12 @@ var _ = Describe("Simulator configuration", func() {
 		{
 			name:          "invalid (negative) zmq-max-connect-attempts for argument",
 			args:          []string{"cmd", "--zmq-max-connect-attempts", "-1", "--config", "../../manifests/config.yaml"},
-			expectedError: "zmq retries times cannot be more negative",
+			expectedError: "zmq retries times cannot be negative",
 		},
 		{
 			name:          "invalid (negative) zmq-max-connect-attempts for config file",
 			args:          []string{"cmd", "--config", "../../manifests/invalid-config.yaml"},
-			expectedError: "zmq retries times cannot be more negative",
+			expectedError: "zmq retries times cannot be negative",
 		},
 		{
 			name: "invalid (negative) prefill-overhead",
