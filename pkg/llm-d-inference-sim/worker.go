@@ -164,8 +164,10 @@ func (s *VllmSimulator) processRequestAsync(reqCtx *openaiserverapi.CompletionRe
 			requestSuccessEvent{
 				promptTokens:     usageData.PromptTokens,
 				generationTokens: usageData.CompletionTokens,
-				maxTokens:        reqCtx.CompletionReq.GetMaxCompletionTokens(),
-				finishReason:     finishReason},
+				// currently only responses with a single choice are supported
+				genTokensPerChoice: []int{usageData.CompletionTokens},
+				maxTokens:          reqCtx.CompletionReq.GetMaxCompletionTokens(),
+				finishReason:       finishReason},
 			s.logger, "metrics.requestSuccessChan")
 	}
 

@@ -182,7 +182,7 @@ type Configuration struct {
 	// ZMQEndpoint is the ZMQ address to publish events, the default value is tcp://localhost:5557
 	ZMQEndpoint string `yaml:"zmq-endpoint" json:"zmq-endpoint"`
 	// ZMQMaxConnectAttempts defines the maximum number (10) of retries when ZMQ connection fails
-	ZMQMaxConnectAttempts uint `yaml:"zmq-max-connect-attempts" json:"zmq-max-connect-attempts"`
+	ZMQMaxConnectAttempts int `yaml:"zmq-max-connect-attempts" json:"zmq-max-connect-attempts"`
 
 	// EventBatchSize is the maximum number of kv-cache events to be sent together, defaults to 16
 	EventBatchSize int `yaml:"event-batch-size" json:"event-batch-size"`
@@ -249,9 +249,10 @@ type Metrics struct {
 	TPOTBucketValues []int `yaml:"tpot-buckets-values" json:"tpot-buckets-values"`
 	// RequestPromptTokens RequestGenerationTokens RequestParamsMaxTokens Histogram fake-observation arrays for init.
 	// Each value will be passed to Observe() once at start-up.
-	RequestPromptTokens     []int `yaml:"request-prompt-tokens" json:"request-prompt-tokens"`         // prompt-length samples
-	RequestGenerationTokens []int `yaml:"request-generation-tokens" json:"request-generation-tokens"` // generation-length samples
-	RequestParamsMaxTokens  []int `yaml:"request-params-max-tokens" json:"request-params-max-tokens"` // max_tokens parameter samples
+	RequestPromptTokens        []int `yaml:"request-prompt-tokens" json:"request-prompt-tokens"`                 // prompt-length samples
+	RequestGenerationTokens    []int `yaml:"request-generation-tokens" json:"request-generation-tokens"`         // generation-length samples
+	RequestParamsMaxTokens     []int `yaml:"request-params-max-tokens" json:"request-params-max-tokens"`         // max_tokens parameter samples
+	RequestMaxGenerationTokens []int `yaml:"request-max-generation-tokens" json:"request-max-generation-tokens"` // request_max_num_generation_tokens samples
 	// RequestSuccessTotal is the number of successful requests, key: finish-reason (stop, length, etc.).
 	RequestSuccessTotal map[string]int64 `yaml:"request-success-total" json:"request-success-total"`
 
@@ -544,19 +545,22 @@ func (c *Configuration) validate() error {
 	if c.ZMQMaxConnectAttempts > 10 {
 		return errors.New("zmq retries times cannot be more than 10")
 	}
+	if c.ZMQMaxConnectAttempts < 0 {
+		return errors.New("zmq retries times cannot be negative")
+	}
 
 	if c.FakeMetrics != nil {
 		if c.FakeMetrics.RunningRequests < 0 || c.FakeMetrics.WaitingRequests < 0 {
 			return errors.New("fake metrics request counters cannot be negative")
 		}
 		if c.FakeMetrics.KVCacheUsagePercentage < 0 || c.FakeMetrics.KVCacheUsagePercentage > 1 {
-			return errors.New("fake metrics KV cache usage must be between 0 ans 1")
+			return errors.New("fake metrics KV cache usage must be between 0 and 1")
 		}
 		if c.FakeMetrics.TTFTBucketValues != nil {
 			if len(c.FakeMetrics.TTFTBucketValues) > len(TTFTBucketsBoundaries)+1 {
 				return errors.New("fake time-to-first-token array is too long")
 			}
-			for v := range c.FakeMetrics.TTFTBucketValues {
+			for _, v := range c.FakeMetrics.TTFTBucketValues {
 				if v < 0 {
 					return errors.New("time-to-first-token fake metrics should contain only non-negative values")
 				}
@@ -566,7 +570,7 @@ func (c *Configuration) validate() error {
 			if len(c.FakeMetrics.TPOTBucketValues) > len(TPOTBucketsBoundaries)+1 {
 				return errors.New("fake time-per-output-token array is too long")
 			}
-			for v := range c.FakeMetrics.TPOTBucketValues {
+			for _, v := range c.FakeMetrics.TPOTBucketValues {
 				if v < 0 {
 					return errors.New("time-per-output-token fake metrics should contain only non-negative values")
 				}
@@ -604,10 +608,9 @@ func (c *Configuration) validate() error {
 				return errors.New("fake metrics request-params-max-tokens cannot contain negative values")
 			}
 		}
-
-		for _, v := range c.FakeMetrics.RequestParamsMaxTokens {
+		for _, v := range c.FakeMetrics.RequestMaxGenerationTokens {
 			if v < 0 {
-				return errors.New("fake metrics request-params-max-tokens cannot contain negative values")
+				return errors.New("fake metrics request-max-generation-tokens cannot contain negative values")
 			}
 		}
 
@@ -730,7 +733,7 @@ func ParseCommandParamsAndLoadConfig() (*Configuration, error) {
 	f.StringVar(&config.TokenizersCacheDir, "tokenizers-cache-dir", config.TokenizersCacheDir, "Directory for caching tokenizers")
 	f.StringVar(&config.HashSeed, "hash-seed", config.HashSeed, "Seed for hash generation (if not set, is read from PYTHONHASHSEED environment variable)")
 	f.StringVar(&config.ZMQEndpoint, "zmq-endpoint", config.ZMQEndpoint, "ZMQ address to publish events")
-	f.UintVar(&config.ZMQMaxConnectAttempts, "zmq-max-connect-attempts", config.ZMQMaxConnectAttempts, "Maximum number of times to try ZMQ connect")
+	f.IntVar(&config.ZMQMaxConnectAttempts, "zmq-max-connect-attempts", config.ZMQMaxConnectAttempts, "Maximum number of times to try ZMQ connect")
 	f.IntVar(&config.EventBatchSize, "event-batch-size", config.EventBatchSize, "Maximum number of kv-cache events to be sent together")
 	f.IntVar(&config.DPSize, "data-parallel-size", config.DPSize, "Number of ranks to run")
 

@@ -617,6 +617,7 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 					`},` +
 					`"request-prompt-tokens":[10,20,30],` +
 					`"request-generation-tokens":[10,20,30],` +
+					`"request-max-generation-tokens":[10,20,30],` +
 					`"request-params-max-tokens":[10,20,30],` +
 					`"ttft-buckets-values":[1,2,3],` +
 					`"tpot-buckets-values":[0,0,1,2,3],` +
@@ -677,6 +678,7 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 				}
 
 				Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(testModel, generationTokensMetricName, boundary, expectedCount)))
+				Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(testModel, maxNumGenerationTokensMetricName, boundary, expectedCount)))
 				Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(testModel, promptTokensMetricName, boundary, expectedCount)))
 				Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(testModel, paramMaxTokensMetricName, boundary, expectedCount)))
 
