@@ -52,7 +52,7 @@ func newBlockCache(config *common.Configuration, logger logr.Logger, usageChan c
 	var publisher *common.Publisher
 	var err error
 	if config.ZMQEndpoint != "" {
-		publisher, err = common.NewPublisher(config.ZMQEndpoint, config.ZMQMaxConnectAttempts)
+		publisher, err = common.NewPublisher(config.ZMQEndpoint, uint(config.ZMQMaxConnectAttempts))
 		if err != nil {
 			return nil, err
 		}
