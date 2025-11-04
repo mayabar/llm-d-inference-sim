@@ -163,8 +163,8 @@ func WriteToChannel[T any](channel chan T, object T, logger logr.Logger, channel
 	}
 }
 
-// MaxIntSlice receives a slice of ints, returns the maximum value of slice is not empty
-// and error is the slice is empty
+// MaxIntSlice receives a slice of ints, returns the maximum value in the slice if not empty,
+// and error if the slice is empty
 func MaxIntSlice(numbers []int) (int, error) {
 	if len(numbers) == 0 {
 		return 0, errors.New("cannot return maximum of an empty slice")
