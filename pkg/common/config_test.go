@@ -307,8 +307,8 @@ var _ = Describe("Simulator configuration", func() {
 		{
 			name: "invalid lora",
 			args: []string{"cmd", "--config", "../../manifests/config.yaml",
-				"--lora-modules", "[{\"path\":\"/path/to/lora15\"}]"},
-			expectedError: "json: cannot unmarshal array into Go value of type common.LoraModule",
+				"--lora-modules", "{\"path\":\"/path/to/lora15\"}"},
+			expectedError: "empty LoRA name",
 		},
 		{
 			name:          "invalid max-model-len",
@@ -435,12 +435,12 @@ var _ = Describe("Simulator configuration", func() {
 		{
 			name:          "invalid (negative) zmq-max-connect-attempts for argument",
 			args:          []string{"cmd", "--zmq-max-connect-attempts", "-1", "--config", "../../manifests/config.yaml"},
-			expectedError: "for \"--zmq-max-connect-attempts\" flag: strconv.ParseUint: parsing",
+			expectedError: "zmq retries times cannot be more negative",
 		},
 		{
 			name:          "invalid (negative) zmq-max-connect-attempts for config file",
 			args:          []string{"cmd", "--config", "../../manifests/invalid-config.yaml"},
-			expectedError: "failed to unmarshal configuration: yaml: unmarshal errors:",
+			expectedError: "zmq retries times cannot be more negative",
 		},
 		{
 			name: "invalid (negative) prefill-overhead",

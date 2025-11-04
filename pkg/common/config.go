@@ -182,7 +182,7 @@ type Configuration struct {
 	// ZMQEndpoint is the ZMQ address to publish events, the default value is tcp://localhost:5557
 	ZMQEndpoint string `yaml:"zmq-endpoint" json:"zmq-endpoint"`
 	// ZMQMaxConnectAttempts defines the maximum number (10) of retries when ZMQ connection fails
-	ZMQMaxConnectAttempts uint `yaml:"zmq-max-connect-attempts" json:"zmq-max-connect-attempts"`
+	ZMQMaxConnectAttempts int `yaml:"zmq-max-connect-attempts" json:"zmq-max-connect-attempts"`
 
 	// EventBatchSize is the maximum number of kv-cache events to be sent together, defaults to 16
 	EventBatchSize int `yaml:"event-batch-size" json:"event-batch-size"`
@@ -545,6 +545,9 @@ func (c *Configuration) validate() error {
 	if c.ZMQMaxConnectAttempts > 10 {
 		return errors.New("zmq retries times cannot be more than 10")
 	}
+	if c.ZMQMaxConnectAttempts < 0 {
+		return errors.New("zmq retries times cannot be more negative")
+	}
 
 	if c.FakeMetrics != nil {
 		if c.FakeMetrics.RunningRequests < 0 || c.FakeMetrics.WaitingRequests < 0 {
@@ -730,7 +733,7 @@ func ParseCommandParamsAndLoadConfig() (*Configuration, error) {
 	f.StringVar(&config.TokenizersCacheDir, "tokenizers-cache-dir", config.TokenizersCacheDir, "Directory for caching tokenizers")
 	f.StringVar(&config.HashSeed, "hash-seed", config.HashSeed, "Seed for hash generation (if not set, is read from PYTHONHASHSEED environment variable)")
 	f.StringVar(&config.ZMQEndpoint, "zmq-endpoint", config.ZMQEndpoint, "ZMQ address to publish events")
-	f.UintVar(&config.ZMQMaxConnectAttempts, "zmq-max-connect-attempts", config.ZMQMaxConnectAttempts, "Maximum number of times to try ZMQ connect")
+	f.IntVar(&config.ZMQMaxConnectAttempts, "zmq-max-connect-attempts", config.ZMQMaxConnectAttempts, "Maximum number of times to try ZMQ connect")
 	f.IntVar(&config.EventBatchSize, "event-batch-size", config.EventBatchSize, "Maximum number of kv-cache events to be sent together")
 	f.IntVar(&config.DPSize, "data-parallel-size", config.DPSize, "Number of ranks to run")
 

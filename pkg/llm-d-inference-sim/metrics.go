@@ -676,7 +676,7 @@ type requestSuccessEvent struct {
 	// promptTokens is the number of input (prompt) tokens in the request
 	promptTokens int
 	// generationTokens is the number of generated (output) tokens in the response,
-	// in case of response with multiple choices contains sum of lengths of all choises
+	// in case of response with multiple choices contains sum of lengths of all choices
 	generationTokens int
 	// genTokensPerChoice array of generated tokens count per choice,
 	// sum of all elements in this array should be equal to generationTokens
