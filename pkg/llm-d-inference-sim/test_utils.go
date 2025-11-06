@@ -58,6 +58,7 @@ func startServer(ctx context.Context, mode string) (*http.Client, error) {
 }
 
 // Starts server in the given mode and environment variables
+// nolint
 func startServerWithEnv(ctx context.Context, mode string, envs map[string]string) (*http.Client, error) {
 	return startServerWithArgsAndEnv(ctx, mode, nil, envs)
 }
@@ -211,6 +212,15 @@ func sendSimpleChatRequest(envs map[string]string, streaming bool) *http.Respons
 	gomega.Expect(string(resp.Object)).To(gomega.Equal(chatCompletionObject))
 
 	return httpResp
+}
+
+// sendTextCompletionRequest sends one text completions request
+func sendTextCompletionRequest(ctx context.Context, client *http.Client) {
+	message := "aa bb cc dd ee ff gg hh ii jj aa bb cc dd ee ff gg hh ii jj"
+	openaiclient, params := getOpenAIClientAndTextParams(client, qwenModelName, message, false)
+	resp, err := openaiclient.Completions.New(ctx, params)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	gomega.Expect(resp).NotTo(gomega.BeNil())
 }
 
 // getOpenAIClientAndChatParams - creates an openai client and params for /chat/completions call based on the given parameters
@@ -512,4 +522,19 @@ func checkLatencyMetrics(client *http.Client, modelName string, numOfInputTokens
 	checkBucketBoundary(metrics, modelName, prefillTimeMetricName, math.Inf(1), lastBoundary, expectedPrefillTimeInSecs)
 	checkBucketBoundary(metrics, modelName, decodeTimeMetricName, math.Inf(1), lastBoundary, expectedDecodeTimeInSecs)
 	checkBucketBoundary(metrics, modelName, e2eReqLatencyMetricName, math.Inf(1), lastBoundary, expectedE2ELatency)
+}
+
+func checkSimSleeping(client *http.Client, expectedToSleep bool) {
+	resp, err := client.Get("http://localhost/is_sleeping")
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	gomega.Expect(resp.StatusCode).To(gomega.Equal(http.StatusOK))
+	defer func() {
+		err := resp.Body.Close()
+		gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	}()
+
+	body, err := io.ReadAll(resp.Body)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	expect := fmt.Sprintf("{\"is_sleeping\":%t}", expectedToSleep)
+	gomega.Expect(string(body)).To(gomega.Equal(expect))
 }
