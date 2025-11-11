@@ -22,11 +22,13 @@ import (
 	"os"
 	"time"
 
+	"k8s.io/klog/v2"
+
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	openaiserverapi "github.com/llm-d/llm-d-inference-sim/pkg/openai-server-api"
 	. "github.com/onsi/ginkgo/v2"
+
 	. "github.com/onsi/gomega"
-	"k8s.io/klog/v2"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -53,8 +55,14 @@ var _ = Describe("CustomDataset", Ordered, func() {
 		random = common.NewRandom(time.Now().UnixNano(), 8080)
 	})
 
-	BeforeEach(func() {
+	createDataset := func() {
 		dataset = &CustomDataset{}
+		err := dataset.Init(context.Background(), klog.Background(), common.NewRandom(time.Now().UnixNano(), 8080), "", "", true, 1024)
+		Expect(err).ShouldNot(HaveOccurred())
+	}
+
+	BeforeEach(func() {
+		createDataset()
 		file_folder = ".llm-d"
 		path = file_folder + "/test.sqlite3"
 		err := os.MkdirAll(file_folder, os.ModePerm)
@@ -68,14 +76,14 @@ var _ = Describe("CustomDataset", Ordered, func() {
 	})
 
 	AfterEach(func() {
-		if dataset.db != nil {
-			err := dataset.db.Close()
+		if dataset.sqliteHelper.db != nil {
+			err := dataset.sqliteHelper.db.Close()
 			Expect(err).NotTo(HaveOccurred())
 		}
 	})
 
 	It("should return error for invalid DB path", func() {
-		err := dataset.connectToDB("/invalid/path/to/db.sqlite", false)
+		err := dataset.sqliteHelper.connectToDB("/invalid/path/to/db.sqlite", false)
 		Expect(err).To(HaveOccurred())
 	})
 
@@ -103,17 +111,17 @@ var _ = Describe("CustomDataset", Ordered, func() {
 	})
 
 	It("should successfully init dataset", func() {
-		err := dataset.Init(context.Background(), klog.Background(), validDBPath, "", false)
+		err := dataset.Init(context.Background(), klog.Background(), random, validDBPath, "", false, 1024)
 		Expect(err).NotTo(HaveOccurred())
 
-		row := dataset.db.QueryRow("SELECT n_gen_tokens FROM llmd WHERE prompt_hash=X'74bf14c09c038321cba39717dae1dc732823ae4abd8e155959367629a3c109a8';")
+		row := dataset.sqliteHelper.db.QueryRow("SELECT n_gen_tokens FROM llmd WHERE prompt_hash=X'74bf14c09c038321cba39717dae1dc732823ae4abd8e155959367629a3c109a8';")
 		var n_gen_tokens int
 		err = row.Scan(&n_gen_tokens)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(n_gen_tokens).To(Equal(4))
 
 		var jsonStr string
-		row = dataset.db.QueryRow("SELECT gen_tokens FROM llmd WHERE prompt_hash=X'74bf14c09c038321cba39717dae1dc732823ae4abd8e155959367629a3c109a8';")
+		row = dataset.sqliteHelper.db.QueryRow("SELECT gen_tokens FROM llmd WHERE prompt_hash=X'74bf14c09c038321cba39717dae1dc732823ae4abd8e155959367629a3c109a8';")
 		err = row.Scan(&jsonStr)
 		Expect(err).NotTo(HaveOccurred())
 		var tokens []string
@@ -124,30 +132,30 @@ var _ = Describe("CustomDataset", Ordered, func() {
 	})
 
 	It("should return error for non-existing DB path", func() {
-		err := dataset.connectToDB(pathNotExist, false)
+		err := dataset.sqliteHelper.connectToDB(pathNotExist, false)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("database file does not exist"))
 	})
 
 	It("should return error for invalid DB file", func() {
-		err := dataset.connectToDB(pathToInvalidDB, false)
+		err := dataset.sqliteHelper.connectToDB(pathToInvalidDB, false)
 		Expect(err).To(HaveOccurred())
 	})
 
 	It("should return error for DB with invalid table", func() {
-		err := dataset.connectToDB(pathToInvalidTableDB, false)
+		err := dataset.sqliteHelper.connectToDB(pathToInvalidTableDB, false)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("failed to verify database"))
 	})
 
 	It("should return error for DB with invalid column", func() {
-		err := dataset.connectToDB(pathToInvalidColumnDB, false)
+		err := dataset.sqliteHelper.connectToDB(pathToInvalidColumnDB, false)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("missing expected column"))
 	})
 
 	It("should return error for DB with invalid column type", func() {
-		err := dataset.connectToDB(pathToInvalidTypeDB, false)
+		err := dataset.sqliteHelper.connectToDB(pathToInvalidTypeDB, false)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("incorrect type"))
 	})
@@ -160,7 +168,7 @@ var _ = Describe("CustomDataset", Ordered, func() {
 			Prompt: testPrompt,
 		}
 
-		hashBytes := dataset.GetPromptHash(req)
+		hashBytes := dataset.getPromptHash(req)
 		Expect(hashBytes).To(Equal(expectedHashBytes))
 	})
 
@@ -171,21 +179,21 @@ var _ = Describe("CustomDataset", Ordered, func() {
 			Prompt: testPrompt,
 		}
 
-		hashBytes := dataset.GetPromptHash(req)
-		hashHex := dataset.GetPromptHashHex(hashBytes)
+		hashBytes := dataset.getPromptHash(req)
+		hashHex := dataset.getPromptHashHex(hashBytes)
 		Expect(hashHex).To(Equal(expectedHashHex))
 	})
 
 	It("should return tokens for existing prompt", func() {
-		err := dataset.Init(context.Background(), klog.Background(), validDBPath, "", false)
+		err := dataset.Init(context.Background(), klog.Background(), random, validDBPath, "", false, 1024)
 		Expect(err).NotTo(HaveOccurred())
 
 		req := &openaiserverapi.TextCompletionRequest{
 			Prompt: testPrompt,
 		}
-		tokens, finishReason, err := dataset.GetTokens(req, common.ModeRandom, random)
+		tokens, finishReason, err := dataset.GetTokens(req, common.ModeRandom)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(finishReason).To(Equal(StopFinishReason))
+		Expect(finishReason).To(Equal(common.StopFinishReason))
 		if len(tokens) >= 4 {
 			// The number of tokens to generate is random, and if it's less than 4
 			// we will not get these tokens
@@ -194,28 +202,45 @@ var _ = Describe("CustomDataset", Ordered, func() {
 	})
 
 	It("should return at most 2 tokens for existing prompt", func() {
-		err := dataset.Init(context.Background(), klog.Background(), validDBPath, "", false)
+		err := dataset.Init(context.Background(), klog.Background(), random, validDBPath, "", false, 1024)
 		Expect(err).NotTo(HaveOccurred())
 		n := int64(2)
 		req := &openaiserverapi.TextCompletionRequest{
 			Prompt:    testPrompt,
 			MaxTokens: &n,
 		}
-		tokens, _, err := dataset.GetTokens(req, common.ModeRandom, random)
+		tokens, _, err := dataset.GetTokens(req, common.ModeRandom)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(len(tokens)).To(BeNumerically("<=", 2))
 	})
 
 	It("should successfully init dataset with in-memory option", func() {
-		err := dataset.Init(context.Background(), klog.Background(), validDBPath, "", true)
+		err := dataset.Init(context.Background(), klog.Background(), random, validDBPath, "", true, 1024)
 		Expect(err).NotTo(HaveOccurred())
 
 		req := &openaiserverapi.TextCompletionRequest{
 			Prompt: testPrompt,
 		}
-		tokens, finishReason, err := dataset.GetTokens(req, common.ModeRandom, random)
+		tokens, finishReason, err := dataset.GetTokens(req, common.ModeRandom)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(finishReason).To(Equal(StopFinishReason))
+		Expect(finishReason).To(Equal(common.StopFinishReason))
 		Expect(tokens).To(Equal([]string{"Hello", " llm-d ", "world", "!"}))
+	})
+})
+
+var _ = Describe("custom dataset for multiple simulators", Ordered, func() {
+	It("should not fail on custom datasets initialization", func() {
+		file_folder := ".llm-d"
+		validDBPath := file_folder + "/test.valid.sqlite3"
+
+		random1 := common.NewRandom(time.Now().UnixNano(), 8081)
+		dataset1 := &CustomDataset{}
+		err := dataset1.Init(context.Background(), klog.Background(), random1, validDBPath, "", false, 1024)
+		Expect(err).NotTo(HaveOccurred())
+
+		random2 := common.NewRandom(time.Now().UnixNano(), 8082)
+		dataset2 := &CustomDataset{}
+		err = dataset2.Init(context.Background(), klog.Background(), random2, validDBPath, "", false, 1024)
+		Expect(err).NotTo(HaveOccurred())
 	})
 })

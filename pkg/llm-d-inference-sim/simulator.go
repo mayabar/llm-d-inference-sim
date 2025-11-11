@@ -371,29 +371,22 @@ func (s *VllmSimulator) initializeSim(ctx context.Context) error {
 }
 
 func (s *VllmSimulator) initDataset(ctx context.Context) error {
-	randDataset := &dataset.BaseDataset{}
-	err := randDataset.Init(ctx, s.logger, "", "", false)
-	if err != nil {
-		return fmt.Errorf("failed to initialize random dataset: %w", err)
-	}
-
 	if s.config.DatasetPath == "" && s.config.DatasetURL == "" {
+		randDataset := &dataset.BaseDataset{}
+		err := randDataset.Init(ctx, s.logger, s.random, s.config.DatasetPath, s.config.DatasetURL, s.config.DatasetInMemory, s.config.MaxModelLen)
+		if err != nil {
+			return fmt.Errorf("failed to initialize random dataset: %w", err)
+		}
 		s.logger.V(logging.INFO).Info("No dataset path or URL provided, using random text for responses")
 		s.dataset = randDataset
 		return nil
 	}
 
 	custDataset := &dataset.CustomDataset{}
-	err = custDataset.Init(ctx, s.logger, s.config.DatasetPath, s.config.DatasetURL, s.config.DatasetInMemory)
+	err := custDataset.Init(ctx, s.logger, s.random, s.config.DatasetPath, s.config.DatasetURL, s.config.DatasetInMemory, s.config.MaxModelLen)
 
 	if err == nil {
 		s.dataset = custDataset
-		return nil
-	}
-
-	if strings.HasPrefix(err.Error(), "database is locked") {
-		s.logger.V(logging.WARN).Info("Database is locked by another process, will use preset text for responses instead")
-		s.dataset = randDataset
 		return nil
 	}
 
