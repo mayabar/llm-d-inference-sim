@@ -42,8 +42,6 @@ var completionFakeResponses = []string{
 }
 
 type Dataset interface {
-	// Init initializes the dataset using configs
-	Init(ctx context.Context, logger logr.Logger, random *common.Random, path string, url string, useInMemory bool, maxModelLen int) error
 	// Close closes the dataset
 	Close() error
 	// GetTokens returns tokens for the given request and mode (echo or random)
@@ -57,8 +55,7 @@ type BaseDataset struct {
 	histogramHelper *histogramHelper
 }
 
-func (d *BaseDataset) Init(ctx context.Context, logger logr.Logger, random *common.Random,
-	path string, url string, useInMemory bool, maxModelLen int) error {
+func (d *BaseDataset) Init(ctx context.Context, logger logr.Logger, random *common.Random, maxModelLen int) error {
 	d.logger = logger
 	d.maxModelLen = maxModelLen
 	d.random = random

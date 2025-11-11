@@ -48,7 +48,7 @@ var _ = Describe("Dataset", Ordered, func() {
 
 	createDataset := func() {
 		dataset = &BaseDataset{}
-		err := dataset.Init(context.Background(), NewStdoutLogger(), common.NewRandom(time.Now().UnixNano(), 8080), "", "", true, 1024)
+		err := dataset.Init(context.Background(), NewStdoutLogger(), common.NewRandom(time.Now().UnixNano(), 8080), 1024)
 		Expect(err).ShouldNot(HaveOccurred())
 	}
 
@@ -175,8 +175,6 @@ var _ = Describe("Dataset", Ordered, func() {
 	})
 
 	Context("IsValidText", func() {
-		fmt.Println(">>> in IsValidText", dataset)
-
 		validTxts := make([]string, 0)
 		invalidTxts := make([]string, 0)
 

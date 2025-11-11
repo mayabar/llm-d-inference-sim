@@ -39,7 +39,8 @@ const (
 
 var _ = Describe("CustomDataset", Ordered, func() {
 	var (
-		dataset               *CustomDataset
+		sqliteHelper          *sqliteHelper
+		dsDownloader          *CustomDatasetDownloader
 		file_folder           string
 		path                  string
 		validDBPath           string
@@ -55,14 +56,9 @@ var _ = Describe("CustomDataset", Ordered, func() {
 		random = common.NewRandom(time.Now().UnixNano(), 8080)
 	})
 
-	createDataset := func() {
-		dataset = &CustomDataset{}
-		err := dataset.Init(context.Background(), klog.Background(), common.NewRandom(time.Now().UnixNano(), 8080), "", "", true, 1024)
-		Expect(err).ShouldNot(HaveOccurred())
-	}
-
 	BeforeEach(func() {
-		createDataset()
+		sqliteHelper = newSqliteHelper(klog.Background())
+		dsDownloader = NewDsDownloader(klog.Background())
 		file_folder = ".llm-d"
 		path = file_folder + "/test.sqlite3"
 		err := os.MkdirAll(file_folder, os.ModePerm)
@@ -75,15 +71,8 @@ var _ = Describe("CustomDataset", Ordered, func() {
 		pathToInvalidTypeDB = file_folder + "/test.invalid.type.sqlite3"
 	})
 
-	AfterEach(func() {
-		if dataset.sqliteHelper.db != nil {
-			err := dataset.sqliteHelper.db.Close()
-			Expect(err).NotTo(HaveOccurred())
-		}
-	})
-
 	It("should return error for invalid DB path", func() {
-		err := dataset.sqliteHelper.connectToDB("/invalid/path/to/db.sqlite", false)
+		err := sqliteHelper.connectToDB("/invalid/path/to/db.sqlite", false)
 		Expect(err).To(HaveOccurred())
 	})
 
@@ -94,9 +83,8 @@ var _ = Describe("CustomDataset", Ordered, func() {
 			err = os.Remove(path)
 			Expect(err).NotTo(HaveOccurred())
 		}
-
 		url := "https://llm-d.ai"
-		err = dataset.downloadDataset(context.Background(), url, path)
+		err = dsDownloader.DownloadDataset(context.Background(), url, path)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = os.Stat(path)
 		Expect(err).NotTo(HaveOccurred())
@@ -106,12 +94,13 @@ var _ = Describe("CustomDataset", Ordered, func() {
 
 	It("should not download file from url", func() {
 		url := "https://256.256.256.256" // invalid url
-		err := dataset.downloadDataset(context.Background(), url, path)
+		err := dsDownloader.DownloadDataset(context.Background(), url, path)
 		Expect(err).To(HaveOccurred())
 	})
 
 	It("should successfully init dataset", func() {
-		err := dataset.Init(context.Background(), klog.Background(), random, validDBPath, "", false, 1024)
+		dataset := &CustomDataset{}
+		err := dataset.Init(context.Background(), klog.Background(), random, validDBPath, false, 1024)
 		Expect(err).NotTo(HaveOccurred())
 
 		row := dataset.sqliteHelper.db.QueryRow("SELECT n_gen_tokens FROM llmd WHERE prompt_hash=X'74bf14c09c038321cba39717dae1dc732823ae4abd8e155959367629a3c109a8';")
@@ -129,33 +118,35 @@ var _ = Describe("CustomDataset", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(tokens).To(Equal([]string{"Hello", " llm-d ", "world", "!"}))
 
+		err = dataset.sqliteHelper.db.Close()
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("should return error for non-existing DB path", func() {
-		err := dataset.sqliteHelper.connectToDB(pathNotExist, false)
+		err := sqliteHelper.connectToDB(pathNotExist, false)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("database file does not exist"))
 	})
 
 	It("should return error for invalid DB file", func() {
-		err := dataset.sqliteHelper.connectToDB(pathToInvalidDB, false)
+		err := sqliteHelper.connectToDB(pathToInvalidDB, false)
 		Expect(err).To(HaveOccurred())
 	})
 
 	It("should return error for DB with invalid table", func() {
-		err := dataset.sqliteHelper.connectToDB(pathToInvalidTableDB, false)
+		err := sqliteHelper.connectToDB(pathToInvalidTableDB, false)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("failed to verify database"))
 	})
 
 	It("should return error for DB with invalid column", func() {
-		err := dataset.sqliteHelper.connectToDB(pathToInvalidColumnDB, false)
+		err := sqliteHelper.connectToDB(pathToInvalidColumnDB, false)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("missing expected column"))
 	})
 
 	It("should return error for DB with invalid column type", func() {
-		err := dataset.sqliteHelper.connectToDB(pathToInvalidTypeDB, false)
+		err := sqliteHelper.connectToDB(pathToInvalidTypeDB, false)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("incorrect type"))
 	})
@@ -167,7 +158,7 @@ var _ = Describe("CustomDataset", Ordered, func() {
 		req := &openaiserverapi.TextCompletionRequest{
 			Prompt: testPrompt,
 		}
-
+		dataset := &CustomDataset{}
 		hashBytes := dataset.getPromptHash(req)
 		Expect(hashBytes).To(Equal(expectedHashBytes))
 	})
@@ -178,14 +169,15 @@ var _ = Describe("CustomDataset", Ordered, func() {
 		req := &openaiserverapi.TextCompletionRequest{
 			Prompt: testPrompt,
 		}
-
+		dataset := &CustomDataset{}
 		hashBytes := dataset.getPromptHash(req)
 		hashHex := dataset.getPromptHashHex(hashBytes)
 		Expect(hashHex).To(Equal(expectedHashHex))
 	})
 
 	It("should return tokens for existing prompt", func() {
-		err := dataset.Init(context.Background(), klog.Background(), random, validDBPath, "", false, 1024)
+		dataset := &CustomDataset{}
+		err := dataset.Init(context.Background(), klog.Background(), random, validDBPath, false, 1024)
 		Expect(err).NotTo(HaveOccurred())
 
 		req := &openaiserverapi.TextCompletionRequest{
@@ -199,10 +191,13 @@ var _ = Describe("CustomDataset", Ordered, func() {
 			// we will not get these tokens
 			Expect(tokens).To(Equal([]string{"Hello", " llm-d ", "world", "!"}))
 		}
+		err = dataset.sqliteHelper.db.Close()
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("should return at most 2 tokens for existing prompt", func() {
-		err := dataset.Init(context.Background(), klog.Background(), random, validDBPath, "", false, 1024)
+		dataset := &CustomDataset{}
+		err := dataset.Init(context.Background(), klog.Background(), random, validDBPath, false, 1024)
 		Expect(err).NotTo(HaveOccurred())
 		n := int64(2)
 		req := &openaiserverapi.TextCompletionRequest{
@@ -212,10 +207,13 @@ var _ = Describe("CustomDataset", Ordered, func() {
 		tokens, _, err := dataset.GetTokens(req, common.ModeRandom)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(len(tokens)).To(BeNumerically("<=", 2))
+		err = dataset.sqliteHelper.db.Close()
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("should successfully init dataset with in-memory option", func() {
-		err := dataset.Init(context.Background(), klog.Background(), random, validDBPath, "", true, 1024)
+		dataset := &CustomDataset{}
+		err := dataset.Init(context.Background(), klog.Background(), random, validDBPath, true, 1024)
 		Expect(err).NotTo(HaveOccurred())
 
 		req := &openaiserverapi.TextCompletionRequest{
@@ -225,6 +223,8 @@ var _ = Describe("CustomDataset", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(finishReason).To(Equal(common.StopFinishReason))
 		Expect(tokens).To(Equal([]string{"Hello", " llm-d ", "world", "!"}))
+		err = dataset.sqliteHelper.db.Close()
+		Expect(err).NotTo(HaveOccurred())
 	})
 })
 
@@ -235,12 +235,32 @@ var _ = Describe("custom dataset for multiple simulators", Ordered, func() {
 
 		random1 := common.NewRandom(time.Now().UnixNano(), 8081)
 		dataset1 := &CustomDataset{}
-		err := dataset1.Init(context.Background(), klog.Background(), random1, validDBPath, "", false, 1024)
+		err := dataset1.Init(context.Background(), klog.Background(), random1, validDBPath, false, 1024)
 		Expect(err).NotTo(HaveOccurred())
 
 		random2 := common.NewRandom(time.Now().UnixNano(), 8082)
 		dataset2 := &CustomDataset{}
-		err = dataset2.Init(context.Background(), klog.Background(), random2, validDBPath, "", false, 1024)
+		err = dataset2.Init(context.Background(), klog.Background(), random2, validDBPath, false, 1024)
+		Expect(err).NotTo(HaveOccurred())
+	})
+})
+
+var _ = Describe("download custom dataset from HF", Ordered, func() {
+	// currently there is only one dataset which is too large
+	// one we will create a small sample dataset - restore this test
+	XIt("should download and save ds", func() {
+		url := "https://huggingface.co/datasets/hf07397/inference-sim-datasets/resolve/91ffa7aafdfd6b3b1af228a517edc1e8f22cd274/huggingface/ShareGPT_Vicuna_unfiltered/conversations.sqlite3"
+		downloader := NewDsDownloader(klog.Background())
+		tempFile := "./ds1.sqlite3"
+
+		if _, err := os.Stat(tempFile); err == nil {
+			err := os.Remove(tempFile)
+			Expect(err).NotTo(HaveOccurred())
+		}
+		err := downloader.DownloadDataset(context.Background(), url, tempFile)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = os.Remove(tempFile)
 		Expect(err).NotTo(HaveOccurred())
 	})
 })
