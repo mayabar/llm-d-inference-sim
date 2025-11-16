@@ -289,8 +289,12 @@ func (s *sqliteHelper) getResponsesForPrompt(promptHashHex string) ([][]string, 
 	return s.query(query)
 }
 
-func (s *sqliteHelper) getResponsesForLen(maxLen int) ([][]string, error) {
-	query := s.buildQuery(nGenTokensCol+"<="+strconv.Itoa(maxLen), true, true)
+func (s *sqliteHelper) getResponsesForLen(maxLen int, isExact bool) ([][]string, error) {
+	sign := "<="
+	if isExact {
+		sign = "="
+	}
+	query := s.buildQuery(nGenTokensCol+sign+strconv.Itoa(maxLen), true, true)
 	return s.query(query)
 }
 

@@ -136,15 +136,15 @@ func (d *CustomDataset) GetTokens(req openaiserverapi.CompletionRequest, mode st
 				// has responses shorter or equal length than required - return randomly selected response
 				responseTokens = d.getRandomResponse(shorterOrEqLenResponses)
 			} else {
-				// all responses are longer than required, use randomly sleected trimmed response
+				// all responses are longer than required, use randomly selected trimmed response
 				responseTokens = d.getRandomResponse(longerLenResponses)[:maxResponseLen]
 			}
 		}
 	} else {
-		// no resopnses for the given request
-		d.logger.V(logging.TRACE).Info("No reponses in the dataset for the request's prompt")
+		// no responses for the given request
+		d.logger.V(logging.TRACE).Info("No responses in the dataset for the request's prompt")
 		// try to find a random response with number of tokens <= tokens limit
-		randomResponses, err := d.sqliteHelper.getResponsesForLen(maxResponseLen)
+		randomResponses, err := d.sqliteHelper.getResponsesForLen(maxResponseLen, req.GetIgnoreEOS())
 		if err != nil {
 			return responseTokens, "", err
 		}
@@ -162,6 +162,11 @@ func (d *CustomDataset) GetTokens(req openaiserverapi.CompletionRequest, mode st
 		// if response has too much tokens, trim it
 		if len(randomResponses[0]) > maxResponseLen {
 			responseTokens = randomResponses[0][:maxResponseLen]
+		} else {
+			responseTokens = randomResponses[0]
+			if req.GetIgnoreEOS() {
+				responseTokens = append(responseTokens, d.generatePresetRandomTokens(maxResponseLen-len(responseTokens))...)
+			}
 		}
 	}
 

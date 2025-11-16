@@ -37,6 +37,14 @@ const (
 	testPrompt = "Hello world!"
 )
 
+type reqData struct {
+	prompt               string
+	maxTokens            *int64
+	ignoreEos            bool
+	isChat               bool
+	expectedFinishReason string
+}
+
 var _ = Describe("CustomDataset", Ordered, func() {
 	var (
 		sqliteHelper          *sqliteHelper
@@ -175,6 +183,96 @@ var _ = Describe("CustomDataset", Ordered, func() {
 		Expect(hashHex).To(Equal(expectedHashHex))
 	})
 
+	It("should return prompt for echo mode", func() {
+		// tests that in echo mode the right response is returned
+		dataset := &CustomDataset{}
+		err := dataset.Init(context.Background(), klog.Background(), random, validDBPath, false, 1024)
+		Expect(err).NotTo(HaveOccurred())
+
+		promptTokens := common.Tokenize(testPrompt)
+		maxTokens := int64(10)
+		smallMaxToken := int64(2)
+
+		requestsData := []reqData{
+			{testPrompt, nil, false, false, common.StopFinishReason},
+			{testPrompt, &maxTokens, false, false, common.StopFinishReason},
+			{testPrompt, &maxTokens, true, false, common.StopFinishReason},
+			{testPrompt, nil, false, true, common.StopFinishReason},
+			{testPrompt, &maxTokens, false, true, common.StopFinishReason},
+			{testPrompt, &maxTokens, true, true, common.StopFinishReason},
+			{testPrompt, &smallMaxToken, false, false, common.LengthFinishReason},
+		}
+
+		for _, rData := range requestsData {
+			var req openaiserverapi.CompletionRequest
+			if rData.isChat {
+				chatReq := openaiserverapi.ChatCompletionRequest{MaxTokens: rData.maxTokens}
+				chatReq.Messages = []openaiserverapi.Message{{Role: openaiserverapi.RoleUser, Content: openaiserverapi.Content{Raw: rData.prompt}}}
+				chatReq.IgnoreEOS = rData.ignoreEos
+				req = &chatReq
+			} else {
+				textReq := openaiserverapi.TextCompletionRequest{Prompt: rData.prompt, MaxTokens: rData.maxTokens}
+				textReq.IgnoreEOS = rData.ignoreEos
+				req = &textReq
+			}
+
+			tokens, finishReason, err := dataset.GetTokens(req, common.ModeEcho)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(finishReason).To(Equal(rData.expectedFinishReason))
+			Expect(tokens).To(Equal(promptTokens))
+			err = dataset.sqliteHelper.db.Close()
+			Expect(err).NotTo(HaveOccurred())
+		}
+	})
+
+	It("should return prompt for random mode with ignore eos", func() {
+		// tests that in random mode with ignore eos - in all cases the finish reason is length
+		dataset := &CustomDataset{}
+		err := dataset.Init(context.Background(), klog.Background(), random, validDBPath, false, 1024)
+		Expect(err).NotTo(HaveOccurred())
+
+		longText := "1, 2, 3, 4, 5, 6"
+		maxTokens := int64(20)
+		smallMaxToken := int64(2)
+		exactMaxToken := int64(4)
+
+		requestsData := []reqData{
+			{longText, &maxTokens, true, false, common.LengthFinishReason},
+			{longText, &maxTokens, true, true, common.LengthFinishReason},
+			{longText, &smallMaxToken, true, false, common.LengthFinishReason},
+			{longText, &smallMaxToken, true, true, common.LengthFinishReason},
+			{testPrompt, &maxTokens, true, false, common.LengthFinishReason},
+			{testPrompt, &maxTokens, true, true, common.LengthFinishReason},
+			{testPrompt, &smallMaxToken, true, false, common.LengthFinishReason},
+			{testPrompt, &smallMaxToken, true, true, common.LengthFinishReason},
+			{testPrompt, &exactMaxToken, true, false, common.LengthFinishReason},
+			{testPrompt, &exactMaxToken, true, true, common.LengthFinishReason},
+		}
+
+		for _, rData := range requestsData {
+			var req openaiserverapi.CompletionRequest
+			if rData.isChat {
+				chatReq := openaiserverapi.ChatCompletionRequest{MaxTokens: rData.maxTokens}
+				chatReq.Messages = []openaiserverapi.Message{{Role: openaiserverapi.RoleUser, Content: openaiserverapi.Content{Raw: rData.prompt}}}
+				chatReq.IgnoreEOS = rData.ignoreEos
+				req = &chatReq
+			} else {
+				textReq := openaiserverapi.TextCompletionRequest{Prompt: rData.prompt, MaxTokens: rData.maxTokens}
+				textReq.IgnoreEOS = rData.ignoreEos
+				req = &textReq
+			}
+
+			tokens, finishReason, err := dataset.GetTokens(req, common.ModeRandom)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(finishReason).To(Equal(rData.expectedFinishReason))
+			if rData.maxTokens != nil {
+				Expect(len(tokens)).To(BeNumerically("==", *rData.maxTokens))
+			}
+		}
+		err = dataset.sqliteHelper.db.Close()
+		Expect(err).NotTo(HaveOccurred())
+	})
+
 	It("should return tokens for existing prompt", func() {
 		dataset := &CustomDataset{}
 		err := dataset.Init(context.Background(), klog.Background(), random, validDBPath, false, 1024)
@@ -186,11 +284,7 @@ var _ = Describe("CustomDataset", Ordered, func() {
 		tokens, finishReason, err := dataset.GetTokens(req, common.ModeRandom)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(finishReason).To(Equal(common.StopFinishReason))
-		if len(tokens) >= 4 {
-			// The number of tokens to generate is random, and if it's less than 4
-			// we will not get these tokens
-			Expect(tokens).To(Equal([]string{"Hello", " llm-d ", "world", "!"}))
-		}
+		Expect(tokens).To(Equal([]string{"Hello", " llm-d ", "world", "!"}))
 		err = dataset.sqliteHelper.db.Close()
 		Expect(err).NotTo(HaveOccurred())
 	})
