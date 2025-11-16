@@ -99,6 +99,11 @@ func (d *DefaultDataset) GetTokens(req openaiserverapi.CompletionRequest, mode s
 	return d.generatePresetRandomTokens(numOfRespTokens), finishReason, nil
 }
 
+// getTokensInEchoMode returns response tokens when simulator is in echo mode
+// for /completion request the prompt is returned
+// for /chat/completion request the last user message is returned (if there is no user messages, last message is used)
+// if max-tokens is defined in the request and response's length is >= it value, finish reason is set to LENGTH,
+// otherwise finish reason is STOP
 func (d *DefaultDataset) getTokensInEchoMode(req openaiserverapi.CompletionRequest) ([]string, string, error) {
 	tokens := common.Tokenize(req.GetPromptForEcho())
 	maxTokens := req.GetMaxCompletionTokens()
