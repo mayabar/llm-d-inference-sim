@@ -368,7 +368,11 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 The `/v1/completions` and `/v1/chat/completions` endpoints produce responses based on simulator configurations and the specific request parameters.
 
 ### Echo mode
-In `echo` mode, responses always mirror the request content. Parameters `max_tokens`, `max_completions_tokens` or `ignore_eos` are ignored in this mode.
+In `echo` mode, responses always mirror the request content. 
+In case of /v1/completions the prompt fields is returned.
+In case of /v1/chat/completions the last message is returned.
+
+Parameters `max_tokens`, `max_completions_tokens` or `ignore_eos` are ignored in this mode.
 
 ### Random mode
 In `random` mode, the fields `max_tokens`, `max_completions_tokens` and `ignore_eos` from the request are used during response generation.

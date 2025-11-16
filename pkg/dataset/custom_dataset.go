@@ -29,13 +29,13 @@ import (
 )
 
 type CustomDataset struct {
-	BaseDataset
+	DefaultDataset
 	sqliteHelper *sqliteHelper
 }
 
 func (d *CustomDataset) Init(ctx context.Context, logger logr.Logger, random *common.Random,
 	path string, useInMemory bool, maxModelLen int) error {
-	if err := d.BaseDataset.Init(ctx, logger, random, maxModelLen); err != nil {
+	if err := d.DefaultDataset.Init(ctx, logger, random, maxModelLen); err != nil {
 		return err
 	}
 	if path == "" {

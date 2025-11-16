@@ -48,14 +48,14 @@ type Dataset interface {
 	GetTokens(req openaiserverapi.CompletionRequest, mode string) ([]string, string, error)
 }
 
-type BaseDataset struct {
+type DefaultDataset struct {
 	logger          logr.Logger
 	maxModelLen     int
 	random          *common.Random
 	histogramHelper *histogramHelper
 }
 
-func (d *BaseDataset) Init(ctx context.Context, logger logr.Logger, random *common.Random, maxModelLen int) error {
+func (d *DefaultDataset) Init(ctx context.Context, logger logr.Logger, random *common.Random, maxModelLen int) error {
 	d.logger = logger
 	d.maxModelLen = maxModelLen
 	d.random = random
@@ -64,12 +64,12 @@ func (d *BaseDataset) Init(ctx context.Context, logger logr.Logger, random *comm
 	return nil
 }
 
-func (d *BaseDataset) Close() error {
+func (d *DefaultDataset) Close() error {
 	return nil
 }
 
 // GetTokens returns tokens and finishReason for the given request and mode (echo or random)
-func (d *BaseDataset) GetTokens(req openaiserverapi.CompletionRequest, mode string) ([]string, string, error) {
+func (d *DefaultDataset) GetTokens(req openaiserverapi.CompletionRequest, mode string) ([]string, string, error) {
 	if mode == common.ModeEcho {
 		return d.getTokensInEchoMode(req)
 	}
@@ -92,15 +92,15 @@ func (d *BaseDataset) GetTokens(req openaiserverapi.CompletionRequest, mode stri
 	}
 
 	if numOfRespTokens == maxRespTokens {
-		// if response should be create with maximum number of tokens - finish reason will be 'length'
+		// if response should be created with maximum number of tokens - finish reason will be 'length'
 		finishReason = common.LengthFinishReason
 	}
 
 	return d.generatePresetRandomTokens(numOfRespTokens), finishReason, nil
 }
 
-func (d *BaseDataset) getTokensInEchoMode(req openaiserverapi.CompletionRequest) ([]string, string, error) {
-	tokens := common.Tokenize(req.ExtractPrompt())
+func (d *DefaultDataset) getTokensInEchoMode(req openaiserverapi.CompletionRequest) ([]string, string, error) {
+	tokens := common.Tokenize(req.GetPromptForEcho())
 	maxTokens := req.GetMaxCompletionTokens()
 	finishReason := common.StopFinishReason
 
@@ -116,19 +116,19 @@ func (d *BaseDataset) getTokensInEchoMode(req openaiserverapi.CompletionRequest)
 // If max-tokens/max-completion-tokens is defined - use it,
 // otherwise use <model content window size> - <number of input tokens>
 // boolean returned value defines whether max tokens number was passed in the request
-func (d *BaseDataset) calculateResponseMaxLen(req openaiserverapi.CompletionRequest) (int, bool) {
+func (d *DefaultDataset) calculateResponseMaxLen(req openaiserverapi.CompletionRequest) (int, bool) {
 	maxTokens := req.GetMaxCompletionTokens()
 
 	if maxTokens != nil {
 		return int(*maxTokens), true
 	}
 
-	return d.maxModelLen - len(common.Tokenize(req.GetFullPrompt())), false
+	return d.maxModelLen - len(common.Tokenize(req.GetPrompt())), false
 }
 
 // getRandomResponseLenByDistribution returns int in range [1, responseLenMax]
 // numbers are chosen according a gaussian distribution with mean responseLenMean, and standard deviation responseLenStddev
-func (d *BaseDataset) getRandomResponseLenByGaussian(maxLen int) int {
+func (d *DefaultDataset) getRandomResponseLenByGaussian(maxLen int) int {
 	for {
 		val := d.random.RandomNorm(responseLenMean, responseLenStddev)
 		if val >= 1 && val <= float64(maxLen) {
@@ -143,7 +143,7 @@ func (d *BaseDataset) getRandomResponseLenByGaussian(maxLen int) int {
 // if number of tokens is lower than required - select another sentence,
 // continue until the required number of tokens is achieved,
 // returned exactly <numOfTokens> tokens
-func (d BaseDataset) generatePresetRandomTokens(numOfTokens int) []string {
+func (d DefaultDataset) generatePresetRandomTokens(numOfTokens int) []string {
 	allTokens := make([]string, 0)
 
 	for len(allTokens) < numOfTokens {

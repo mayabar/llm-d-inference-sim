@@ -381,7 +381,7 @@ func (s *VllmSimulator) initializeSim(ctx context.Context) error {
 func (s *VllmSimulator) initDataset(ctx context.Context) error {
 	if s.config.DatasetPath == "" && s.config.DatasetURL == "" {
 		// use predefined sentences as responses
-		randDataset := &dataset.BaseDataset{}
+		randDataset := &dataset.DefaultDataset{}
 		err := randDataset.Init(ctx, s.logger, s.random, s.config.MaxModelLen)
 		if err != nil {
 			return fmt.Errorf("failed to initialize random dataset: %w", err)

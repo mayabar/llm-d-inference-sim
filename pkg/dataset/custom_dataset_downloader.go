@@ -173,9 +173,7 @@ func (pr *progressReader) logProgress(pct int) {
 	remainingTime := float64(pr.total-pr.downloaded) / (float64(pr.downloaded) / elapsedTime)
 	if pct != 100 {
 		pr.logger.V(logging.INFO).Info("Dataset download progress", "%", pct, "speed (MB/s)", speed, "remaining time (s)", remainingTime)
-		fmt.Println("Dataset download progress", "%", pct, "speed (MB/s)", speed, "remaining time (s)", remainingTime)
 	} else {
 		pr.logger.V(logging.INFO).Info("Download completed", "average speed (MB/s)", speed, "total time (s)", elapsedTime)
-		fmt.Println("Download completed", "average speed (MB/s)", speed, "total time (s)", elapsedTime)
 	}
 }

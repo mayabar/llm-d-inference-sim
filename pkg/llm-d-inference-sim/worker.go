@@ -126,10 +126,11 @@ func (s *VllmSimulator) processRequestAsync(reqCtx *openaiserverapi.CompletionRe
 		s.logger.Error(err, prefix)
 		reqCtx.HTTPReqCtx.Error(prefix+err.Error(), fasthttp.StatusBadRequest)
 	} else {
+		numOfInputTokens := s.getNumberOfPromptTokens(req)
 		usageData := openaiserverapi.Usage{
-			PromptTokens:     s.getNumberOfPromptTokens(req),
+			PromptTokens:     numOfInputTokens,
 			CompletionTokens: completionTokens,
-			TotalTokens:      s.getNumberOfPromptTokens(req) + completionTokens,
+			TotalTokens:      numOfInputTokens + completionTokens,
 		}
 		if req.IsStream() {
 			var usageDataToSend *openaiserverapi.Usage

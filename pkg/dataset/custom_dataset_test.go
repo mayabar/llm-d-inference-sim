@@ -247,7 +247,7 @@ var _ = Describe("custom dataset for multiple simulators", Ordered, func() {
 
 var _ = Describe("download custom dataset from HF", Ordered, func() {
 	// currently there is only one dataset which is too large
-	// one we will create a small sample dataset - restore this test
+	// once we will create a small sample dataset - restore this test
 	XIt("should download and save ds", func() {
 		url := "https://huggingface.co/datasets/hf07397/inference-sim-datasets/resolve/91ffa7aafdfd6b3b1af228a517edc1e8f22cd274/huggingface/ShareGPT_Vicuna_unfiltered/conversations.sqlite3"
 		downloader := NewDsDownloader(klog.Background())

@@ -43,11 +43,11 @@ func NewStdoutLogger() logr.Logger {
 
 var _ = Describe("Dataset", Ordered, func() {
 	var (
-		dataset *BaseDataset
+		dataset *DefaultDataset
 	)
 
 	createDataset := func() {
-		dataset = &BaseDataset{}
+		dataset = &DefaultDataset{}
 		err := dataset.Init(context.Background(), NewStdoutLogger(), common.NewRandom(time.Now().UnixNano(), 8080), 1024)
 		Expect(err).ShouldNot(HaveOccurred())
 	}
