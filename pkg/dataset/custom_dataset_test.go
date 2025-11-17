@@ -266,7 +266,7 @@ var _ = Describe("CustomDataset", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(finishReason).To(Equal(rData.expectedFinishReason))
 			if rData.maxTokens != nil {
-				Expect(len(tokens)).To(BeNumerically("==", *rData.maxTokens))
+				Expect(tokens).To(HaveLen(int(*rData.maxTokens)))
 			}
 		}
 		err = dataset.sqliteHelper.db.Close()
