@@ -23,22 +23,21 @@ import (
 
 	"time"
 
-	"github.com/go-logr/logr"
-	"github.com/go-logr/logr/funcr"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	openaiserverapi "github.com/llm-d/llm-d-inference-sim/pkg/openai-server-api"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func NewStdoutLogger() logr.Logger {
-	return funcr.New(func(prefix, args string) {
-		if prefix != "" {
-			fmt.Printf("%s: %s\n", prefix, args)
-		} else {
-			fmt.Println(args)
-		}
-	}, funcr.Options{})
+func createDataset() *DefaultDataset {
+	ds := DefaultDataset{}
+	ctx := context.Background()
+	logger := log.FromContext(ctx)
+	err := ds.Init(context.Background(), logger, common.NewRandom(time.Now().UnixNano(), 8080), 1024)
+	Expect(err).ShouldNot(HaveOccurred())
+
+	return &ds
 }
 
 var _ = Describe("Dataset", Ordered, func() {
@@ -46,14 +45,12 @@ var _ = Describe("Dataset", Ordered, func() {
 		dataset *DefaultDataset
 	)
 
-	createDataset := func() {
-		dataset = &DefaultDataset{}
-		err := dataset.Init(context.Background(), NewStdoutLogger(), common.NewRandom(time.Now().UnixNano(), 8080), 1024)
-		Expect(err).ShouldNot(HaveOccurred())
-	}
-
 	BeforeEach(func() {
-		createDataset()
+		dataset = createDataset()
+	})
+
+	AfterEach(func() {
+		dataset.Close()
 	})
 
 	Context("GetRandomTokens", func() {
@@ -125,7 +122,7 @@ var _ = Describe("Dataset", Ordered, func() {
 		)
 	})
 
-	Context("GetResponseTokens", func() {
+	Context("getTokensInEchoMode", func() {
 		theText := "Give a man a fish and you feed him for a day; teach a man to fish and you feed him for a lifetime"
 		theTokens := common.Tokenize(theText)
 
@@ -200,34 +197,36 @@ var _ = Describe("Dataset", Ordered, func() {
 			})
 		}
 	})
+})
 
-	Context("validateBucketsBoundaries", func() {
-		// create dataset earlier than BeforeEach since it's helper is used before It execution
-		createDataset()
+var _ = Describe("cumulativeBucketsProbabilities", Ordered, func() {
+	type bucketBoundaries struct {
+		start int
+		end   int
+	}
 
-		type bucketBoundaries struct {
-			start int
-			end   int
-		}
-		type bucketTest struct {
-			maxTokens       int
-			expectedBuckets []bucketBoundaries
-		}
+	dataset := createDataset()
 
-		tests := []bucketTest{{500, []bucketBoundaries{{1, 20}, {21, 40}, {41, 60}, {61, 480}, {481, 499}}},
-			{47, []bucketBoundaries{{1, 9}, {10, 18}, {19, 27}, {28, 36}, {37, 46}}},
-			{50, []bucketBoundaries{{1, 9}, {10, 19}, {20, 29}, {30, 39}, {40, 49}}}}
+	DescribeTable("calcBucketBoundaries",
+		func(maxTokens int, expectedBuckets []bucketBoundaries) {
+			Expect(expectedBuckets).To(HaveLen(len(dataset.histogramHelper.cumulativeBucketsProbabilities) - 1))
 
-		for _, test := range tests {
-			Expect(test.expectedBuckets).To(HaveLen(len(dataset.histogramHelper.cumulativeBucketsProbabilities) - 1))
+			for i := range len(dataset.histogramHelper.cumulativeBucketsProbabilities) - 1 {
+				start, end := dataset.histogramHelper.calcBucketBoundaries(maxTokens, i)
+				Expect(start).To(Equal(expectedBuckets[i].start))
+				Expect(end).To(Equal(expectedBuckets[i].end))
+			}
 
-			It(fmt.Sprintf("should return bucket boundaries for maxTokens %d", test.maxTokens), func() {
-				for i := range len(dataset.histogramHelper.cumulativeBucketsProbabilities) - 1 {
-					start, end := dataset.histogramHelper.calcBucketBoundaries(test.maxTokens, i)
-					Expect(start).To(Equal(test.expectedBuckets[i].start))
-					Expect(end).To(Equal(test.expectedBuckets[i].end))
-				}
-			})
-		}
-	})
+		},
+		func(maxTokens int, expectedBuckets []bucketBoundaries) string {
+			bucketsStr := ""
+			for _, b := range expectedBuckets {
+				bucketsStr += fmt.Sprintf("<%d, %d>, ", b.start, b.end)
+			}
+			return fmt.Sprintf("maxTokens: %d,expectedBuckets: %s", maxTokens, bucketsStr)
+		},
+		Entry(nil, 500, []bucketBoundaries{{1, 20}, {21, 40}, {41, 60}, {61, 480}, {481, 499}}),
+		Entry(nil, 47, []bucketBoundaries{{1, 9}, {10, 18}, {19, 27}, {28, 36}, {37, 46}}),
+		Entry(nil, 50, []bucketBoundaries{{1, 9}, {10, 19}, {20, 29}, {30, 39}, {40, 49}}),
+	)
 })

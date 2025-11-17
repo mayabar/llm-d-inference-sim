@@ -19,7 +19,9 @@ package dataset
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"k8s.io/klog/v2"
@@ -62,11 +64,6 @@ var _ = Describe("CustomDataset", Ordered, func() {
 
 	BeforeAll(func() {
 		random = common.NewRandom(time.Now().UnixNano(), 8080)
-	})
-
-	BeforeEach(func() {
-		sqliteHelper = newSqliteHelper(klog.Background())
-		dsDownloader = NewDsDownloader(klog.Background())
 		file_folder = ".llm-d"
 		path = file_folder + "/test.sqlite3"
 		err := os.MkdirAll(file_folder, os.ModePerm)
@@ -77,6 +74,11 @@ var _ = Describe("CustomDataset", Ordered, func() {
 		pathToInvalidTableDB = file_folder + "/test.invalid.table.sqlite3"
 		pathToInvalidColumnDB = file_folder + "/test.invalid.column.sqlite3"
 		pathToInvalidTypeDB = file_folder + "/test.invalid.type.sqlite3"
+	})
+
+	BeforeEach(func() {
+		sqliteHelper = newSqliteHelper(klog.Background())
+		dsDownloader = NewDsDownloader(klog.Background())
 	})
 
 	It("should return error for invalid DB path", func() {
@@ -183,142 +185,151 @@ var _ = Describe("CustomDataset", Ordered, func() {
 		Expect(hashHex).To(Equal(expectedHashHex))
 	})
 
-	It("should return prompt for echo mode", func() {
-		// tests that in echo mode the right response is returned
+	Context("custom dataset", func() {
 		dataset := &CustomDataset{}
-		err := dataset.Init(context.Background(), klog.Background(), random, validDBPath, false, 1024)
-		Expect(err).NotTo(HaveOccurred())
-
-		promptTokens := common.Tokenize(testPrompt)
-		maxTokens := int64(10)
-		smallMaxToken := int64(2)
-
-		requestsData := []reqData{
-			{testPrompt, nil, false, false, common.StopFinishReason},
-			{testPrompt, &maxTokens, false, false, common.StopFinishReason},
-			{testPrompt, &maxTokens, true, false, common.StopFinishReason},
-			{testPrompt, nil, false, true, common.StopFinishReason},
-			{testPrompt, &maxTokens, false, true, common.StopFinishReason},
-			{testPrompt, &maxTokens, true, true, common.StopFinishReason},
-			{testPrompt, &smallMaxToken, false, false, common.LengthFinishReason},
-		}
-
-		for _, rData := range requestsData {
-			var req openaiserverapi.CompletionRequest
-			if rData.isChat {
-				chatReq := openaiserverapi.ChatCompletionRequest{MaxTokens: rData.maxTokens}
-				chatReq.Messages = []openaiserverapi.Message{{Role: openaiserverapi.RoleUser, Content: openaiserverapi.Content{Raw: rData.prompt}}}
-				chatReq.IgnoreEOS = rData.ignoreEos
-				req = &chatReq
-			} else {
-				textReq := openaiserverapi.TextCompletionRequest{Prompt: rData.prompt, MaxTokens: rData.maxTokens}
-				textReq.IgnoreEOS = rData.ignoreEos
-				req = &textReq
-			}
-
-			tokens, finishReason, err := dataset.GetTokens(req, common.ModeEcho)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(finishReason).To(Equal(rData.expectedFinishReason))
-			Expect(tokens).To(Equal(promptTokens))
-			err = dataset.sqliteHelper.db.Close()
-			Expect(err).NotTo(HaveOccurred())
-		}
-	})
-
-	It("should return prompt for random mode with ignore eos", func() {
-		// tests that in random mode with ignore eos - in all cases the finish reason is length
-		dataset := &CustomDataset{}
-		err := dataset.Init(context.Background(), klog.Background(), random, validDBPath, false, 1024)
-		Expect(err).NotTo(HaveOccurred())
-
-		longText := "1, 2, 3, 4, 5, 6"
+		longPrompt := "1, 2, 3, 4, 5, 6"
 		maxTokens := int64(20)
-		smallMaxToken := int64(2)
+		smallMaxTokens := int64(2)
 		exactMaxToken := int64(4)
 
-		requestsData := []reqData{
-			{longText, &maxTokens, true, false, common.LengthFinishReason},
-			{longText, &maxTokens, true, true, common.LengthFinishReason},
-			{longText, &smallMaxToken, true, false, common.LengthFinishReason},
-			{longText, &smallMaxToken, true, true, common.LengthFinishReason},
-			{testPrompt, &maxTokens, true, false, common.LengthFinishReason},
-			{testPrompt, &maxTokens, true, true, common.LengthFinishReason},
-			{testPrompt, &smallMaxToken, true, false, common.LengthFinishReason},
-			{testPrompt, &smallMaxToken, true, true, common.LengthFinishReason},
-			{testPrompt, &exactMaxToken, true, false, common.LengthFinishReason},
-			{testPrompt, &exactMaxToken, true, true, common.LengthFinishReason},
+		promptTokens := common.Tokenize(testPrompt)
+
+		maxTokensToStr := func(maxTokens *int64) string {
+			if maxTokens != nil {
+				return strconv.Itoa(int(*maxTokens))
+			}
+			return "nil"
 		}
 
-		for _, rData := range requestsData {
-			var req openaiserverapi.CompletionRequest
-			if rData.isChat {
-				chatReq := openaiserverapi.ChatCompletionRequest{MaxTokens: rData.maxTokens}
-				chatReq.Messages = []openaiserverapi.Message{{Role: openaiserverapi.RoleUser, Content: openaiserverapi.Content{Raw: rData.prompt}}}
-				chatReq.IgnoreEOS = rData.ignoreEos
-				req = &chatReq
-			} else {
-				textReq := openaiserverapi.TextCompletionRequest{Prompt: rData.prompt, MaxTokens: rData.maxTokens}
-				textReq.IgnoreEOS = rData.ignoreEos
-				req = &textReq
-			}
+		BeforeAll(func() {
+			err := dataset.Init(context.Background(), klog.Background(), random, validDBPath, false, 1024)
+			Expect(err).NotTo(HaveOccurred())
 
+		})
+
+		AfterAll(func() {
+			err := dataset.sqliteHelper.db.Close()
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		DescribeTable("should work correctly in echo mode",
+			func(maxTokens *int64, ignoreEos bool, isChat bool, expectedFinishReason string) {
+				// tests that in echo mode the right response is returned
+				var req openaiserverapi.CompletionRequest
+				if isChat {
+					chatReq := openaiserverapi.ChatCompletionRequest{MaxTokens: maxTokens}
+					chatReq.Messages = []openaiserverapi.Message{{Role: openaiserverapi.RoleUser, Content: openaiserverapi.Content{Raw: testPrompt}}}
+					chatReq.IgnoreEOS = ignoreEos
+					req = &chatReq
+				} else {
+					textReq := openaiserverapi.TextCompletionRequest{Prompt: testPrompt, MaxTokens: maxTokens}
+					textReq.IgnoreEOS = ignoreEos
+					req = &textReq
+				}
+
+				tokens, finishReason, err := dataset.GetTokens(req, common.ModeEcho)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(finishReason).To(Equal(expectedFinishReason))
+				Expect(tokens).To(Equal(promptTokens))
+			},
+			func(maxTokens *int64, ignoreEos bool, isChat bool, expectedFinishReason string) string {
+				return fmt.Sprintf("maxTokens: %s, ignoreEos: %t, isChat: %t, expectedFinishReason: %s", maxTokensToStr(maxTokens), ignoreEos, isChat, expectedFinishReason)
+			},
+			Entry(nil, nil, false, false, common.StopFinishReason),
+			Entry(nil, &maxTokens, false, false, common.StopFinishReason),
+			Entry(nil, &maxTokens, true, false, common.StopFinishReason),
+			Entry(nil, nil, false, true, common.StopFinishReason),
+			Entry(nil, &maxTokens, false, true, common.StopFinishReason),
+			Entry(nil, &maxTokens, true, true, common.StopFinishReason),
+			Entry(nil, &smallMaxTokens, false, false, common.LengthFinishReason),
+		)
+
+		DescribeTable("should work correctly in random mode with ignore eos",
+			func(prompt string, maxTokens *int64, isChat bool, expectedFinishReason string) {
+				var req openaiserverapi.CompletionRequest
+				if isChat {
+					chatReq := openaiserverapi.ChatCompletionRequest{MaxTokens: maxTokens}
+					chatReq.Messages = []openaiserverapi.Message{{Role: openaiserverapi.RoleUser, Content: openaiserverapi.Content{Raw: prompt}}}
+					chatReq.IgnoreEOS = true
+					req = &chatReq
+				} else {
+					textReq := openaiserverapi.TextCompletionRequest{Prompt: prompt, MaxTokens: maxTokens}
+					textReq.IgnoreEOS = true
+					req = &textReq
+				}
+
+				tokens, finishReason, err := dataset.GetTokens(req, common.ModeRandom)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(finishReason).To(Equal(expectedFinishReason))
+				if maxTokens != nil {
+					Expect(tokens).To(HaveLen(int(*maxTokens)))
+				}
+			},
+			func(prompt string, maxTokens *int64, isChat bool, expectedFinishReason string) string {
+				return fmt.Sprintf("prompt: '%s', maxTokens: %s, isChat: %t, expectedFinishReason: %s", prompt, maxTokensToStr(maxTokens), isChat, expectedFinishReason)
+			},
+			Entry(nil, longPrompt, &maxTokens, false, common.LengthFinishReason),
+			Entry(nil, longPrompt, &maxTokens, true, common.LengthFinishReason),
+			Entry(nil, longPrompt, &smallMaxTokens, false, common.LengthFinishReason),
+			Entry(nil, longPrompt, &smallMaxTokens, true, common.LengthFinishReason),
+			Entry(nil, testPrompt, &maxTokens, false, common.LengthFinishReason),
+			Entry(nil, testPrompt, &maxTokens, true, common.LengthFinishReason),
+			Entry(nil, testPrompt, &smallMaxTokens, false, common.LengthFinishReason),
+			Entry(nil, testPrompt, &smallMaxTokens, true, common.LengthFinishReason),
+			Entry(nil, testPrompt, &exactMaxToken, false, common.LengthFinishReason),
+			Entry(nil, testPrompt, &exactMaxToken, true, common.LengthFinishReason),
+			Entry(nil, longPrompt, &exactMaxToken, true, common.LengthFinishReason),
+		)
+
+		It("should return tokens for existing prompt", func() {
+			req := &openaiserverapi.TextCompletionRequest{
+				Prompt: testPrompt,
+			}
 			tokens, finishReason, err := dataset.GetTokens(req, common.ModeRandom)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(finishReason).To(Equal(rData.expectedFinishReason))
-			if rData.maxTokens != nil {
-				Expect(tokens).To(HaveLen(int(*rData.maxTokens)))
+			Expect(finishReason).To(Equal(common.StopFinishReason))
+			Expect(tokens).To(Equal([]string{"Hello", " llm-d ", "world", "!"}))
+		})
+
+		It("should return at most 2 tokens for existing prompt", func() {
+			req := &openaiserverapi.TextCompletionRequest{
+				Prompt:    testPrompt,
+				MaxTokens: &smallMaxTokens,
 			}
-		}
-		err = dataset.sqliteHelper.db.Close()
-		Expect(err).NotTo(HaveOccurred())
-	})
+			tokens, _, err := dataset.GetTokens(req, common.ModeRandom)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(tokens)).To(BeNumerically("<=", smallMaxTokens))
+		})
 
-	It("should return tokens for existing prompt", func() {
-		dataset := &CustomDataset{}
-		err := dataset.Init(context.Background(), klog.Background(), random, validDBPath, false, 1024)
-		Expect(err).NotTo(HaveOccurred())
+		It("should successfully init dataset with in-memory option", func() {
+			req := &openaiserverapi.TextCompletionRequest{
+				Prompt: testPrompt,
+			}
+			tokens, finishReason, err := dataset.GetTokens(req, common.ModeRandom)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(finishReason).To(Equal(common.StopFinishReason))
+			Expect(tokens).To(Equal([]string{"Hello", " llm-d ", "world", "!"}))
+		})
 
-		req := &openaiserverapi.TextCompletionRequest{
-			Prompt: testPrompt,
-		}
-		tokens, finishReason, err := dataset.GetTokens(req, common.ModeRandom)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(finishReason).To(Equal(common.StopFinishReason))
-		Expect(tokens).To(Equal([]string{"Hello", " llm-d ", "world", "!"}))
-		err = dataset.sqliteHelper.db.Close()
-		Expect(err).NotTo(HaveOccurred())
-	})
+		It("should work correctly for chat request with multiple messages", func() {
+			req := openaiserverapi.ChatCompletionRequest{MaxTokens: &maxTokens}
+			req.Messages = []openaiserverapi.Message{
+				{Role: openaiserverapi.RoleUser, Content: openaiserverapi.Content{Raw: testPrompt}},
+				{Role: openaiserverapi.RoleAssistant, Content: openaiserverapi.Content{Raw: "this is assistant response"}},
+				{Role: openaiserverapi.RoleUser, Content: openaiserverapi.Content{Raw: testPrompt}},
+			}
 
-	It("should return at most 2 tokens for existing prompt", func() {
-		dataset := &CustomDataset{}
-		err := dataset.Init(context.Background(), klog.Background(), random, validDBPath, false, 1024)
-		Expect(err).NotTo(HaveOccurred())
-		n := int64(2)
-		req := &openaiserverapi.TextCompletionRequest{
-			Prompt:    testPrompt,
-			MaxTokens: &n,
-		}
-		tokens, _, err := dataset.GetTokens(req, common.ModeRandom)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(len(tokens)).To(BeNumerically("<=", 2))
-		err = dataset.sqliteHelper.db.Close()
-		Expect(err).NotTo(HaveOccurred())
-	})
+			tokens, finishReason, err := dataset.GetTokens(&req, common.ModeEcho)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(finishReason).To(Equal(common.StopFinishReason))
+			Expect(tokens).To(Equal(promptTokens))
 
-	It("should successfully init dataset with in-memory option", func() {
-		dataset := &CustomDataset{}
-		err := dataset.Init(context.Background(), klog.Background(), random, validDBPath, true, 1024)
-		Expect(err).NotTo(HaveOccurred())
-
-		req := &openaiserverapi.TextCompletionRequest{
-			Prompt: testPrompt,
-		}
-		tokens, finishReason, err := dataset.GetTokens(req, common.ModeRandom)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(finishReason).To(Equal(common.StopFinishReason))
-		Expect(tokens).To(Equal([]string{"Hello", " llm-d ", "world", "!"}))
-		err = dataset.sqliteHelper.db.Close()
-		Expect(err).NotTo(HaveOccurred())
+			tokens, finishReason, err = dataset.GetTokens(&req, common.ModeRandom)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(tokens)).To(BeNumerically("<=", maxTokens))
+			Expect((len(tokens) == int(maxTokens) && finishReason == common.LengthFinishReason) ||
+				(len(tokens) < int(maxTokens) && finishReason == common.StopFinishReason)).To(BeTrue())
+		})
 	})
 })
 

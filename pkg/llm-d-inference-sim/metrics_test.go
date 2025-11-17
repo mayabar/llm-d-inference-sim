@@ -804,7 +804,7 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 		It("should calculate waiting and inference time correctly", func() {
 			ctx := context.TODO()
 			args := []string{"cmd", "--model", testModel, "--mode", common.ModeEcho,
-				"--time-to-first-token", "1000", "--max-num-seqs", "1",
+				"--time-to-first-token", "1200", "--max-num-seqs", "1",
 			}
 
 			client, err := startServerWithArgs(ctx, args)
