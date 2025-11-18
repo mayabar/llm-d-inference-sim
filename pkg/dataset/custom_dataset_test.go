@@ -39,14 +39,6 @@ const (
 	testPrompt = "Hello world!"
 )
 
-type reqData struct {
-	prompt               string
-	maxTokens            *int64
-	ignoreEos            bool
-	isChat               bool
-	expectedFinishReason string
-}
-
 var _ = Describe("CustomDataset", Ordered, func() {
 	var (
 		sqliteHelper          *sqliteHelper

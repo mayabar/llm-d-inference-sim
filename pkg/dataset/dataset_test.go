@@ -50,7 +50,8 @@ var _ = Describe("Dataset", Ordered, func() {
 	})
 
 	AfterEach(func() {
-		dataset.Close()
+		err := dataset.Close()
+		Expect(err).ShouldNot(HaveOccurred())
 	})
 
 	Context("GetRandomTokens", func() {
