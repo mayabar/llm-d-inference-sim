@@ -18,6 +18,7 @@ limitations under the License.
 package openaiserverapi
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -27,6 +28,8 @@ import (
 const (
 	RoleAssistant = "assistant"
 	RoleUser      = "user"
+	// template used to convert request content to a plain string for dataset usage
+	rolePrefixTemplate = "### %s:\n%s\n"
 )
 
 // CompletionRequest interface representing both completion request types (text and chat)
@@ -64,11 +67,12 @@ type CompletionRequest interface {
 	// whereas decode phase is done on local pod, thus this is a decode request
 	IsDoRemotePrefill() bool
 	// GetFullPrompt returns the full prompt including system and user prompts
+	// in format compatible to responses custom dataset
 	GetFullPrompt() string
-	// ExtractPrompt extracts the prompt from the request
-	// for chat completion - the last user message is used as the prompt
-	// for text completion - the prompt field is used
-	ExtractPrompt() string
+	// GetPromptForEcho extracts the prompt from the request to be used for response in echo mode
+	// for chat completion - the last user message is returned
+	// for text completion - the prompt field is retured
+	GetPromptForEcho() string
 	// ExtractMaxTokens extracts the max tokens from the request
 	// for chat completion - max_completion_tokens field is used
 	// for text completion - max_tokens field is used
@@ -155,6 +159,10 @@ func (b *baseCompletionRequest) SetIgnoreEOS(ignorEOS bool) {
 // in the local KV Cache
 func (b *baseCompletionRequest) SetNumberOfCachedPromptTokens(cachedPromptTokens int) {
 	b.cachedPromptTokens = cachedPromptTokens
+}
+
+func (b *baseCompletionRequest) addRoleToMessage(role, msg string) string {
+	return fmt.Sprintf(rolePrefixTemplate, role, msg)
 }
 
 // CompletionReqCtx is a context passed in the simulator's flow, it contains the request data needed
@@ -246,33 +254,32 @@ func (c *ChatCompletionRequest) GetMaxCompletionTokens() *int64 {
 // getLastUserMsg returns last message from this request's messages with user role,
 // if does not exist - returns an empty string
 func (req *ChatCompletionRequest) GetLastUserMsg() string {
+	if len(req.Messages) == 0 {
+		return ""
+	}
+
 	for i := len(req.Messages) - 1; i >= 0; i-- {
 		if req.Messages[i].Role == RoleUser {
+			// return last user message
 			return req.Messages[i].Content.PlainText()
 		}
 	}
 
-	return ""
+	// return last message
+	return req.Messages[len(req.Messages)-1].Content.PlainText()
 }
 
 func (req *ChatCompletionRequest) GetFullPrompt() string {
 	prompt := ""
 	for _, msg := range req.Messages {
-		switch msg.Role {
-		case RoleUser:
-			prompt += "### user:\n" + msg.Content.Raw + "\n"
-		case RoleAssistant:
-			prompt += "### assistant:\n" + msg.Content.Raw + "\n"
-		default:
-			prompt += "### unknown:\n" + msg.Content.Raw + "\n"
-		}
+		prompt += req.addRoleToMessage(msg.Role, msg.Content.Raw)
 	}
 	return prompt
 }
 
-// ExtractPrompt extracts the prompt from the request
+// GetPromptForEcho extracts the prompt from the request
 // for chat completion - the last user message is used as the prompt
-func (req *ChatCompletionRequest) ExtractPrompt() string {
+func (req *ChatCompletionRequest) GetPromptForEcho() string {
 	return req.GetLastUserMsg()
 }
 
@@ -334,12 +341,12 @@ func (c *TextCompletionRequest) GetMaxCompletionTokens() *int64 {
 }
 
 func (t *TextCompletionRequest) GetFullPrompt() string {
-	return "### user:\n" + t.Prompt + "\n"
+	return t.addRoleToMessage(RoleUser, t.Prompt)
 }
 
-// ExtractPrompt extracts the prompt from the request
+// GetPromptForEcho extracts the prompt from the request
 // for text completion - the prompt field is used
-func (req *TextCompletionRequest) ExtractPrompt() string {
+func (req *TextCompletionRequest) GetPromptForEcho() string {
 	return req.GetPrompt()
 }
 
