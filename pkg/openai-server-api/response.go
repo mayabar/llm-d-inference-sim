@@ -40,18 +40,8 @@ type baseCompletionResponse struct {
 	Usage *Usage `json:"usage"`
 	// Object is the Object type, "text_completion", "chat.completion", or "chat.completion.chunk"
 	Object string `json:"object"`
-	// DoRemoteDecode boolean value, true when request's decode will be done on remote pod
-	DoRemoteDecode bool `json:"do_remote_decode"`
-	// DoRemotePrefill boolean value, true when request's prefill was done on remote pod
-	DoRemotePrefill bool `json:"do_remote_prefill"`
-	// RemoteBlockIds is a list of block identifiers to process remotely for distributed decoding
-	RemoteBlockIds []string `json:"remote_block_ids"`
-	// RemoteEngineId is an identifier of the remote inference engine or backend to use for processing requests
-	RemoteEngineId string `json:"remote_engine_id"`
-	// RemoteHost is a hostname or IP address of the remote server handling prefill
-	RemoteHost string `json:"remote_host"`
-	// RemotePort is a port of the remote server handling prefill
-	RemotePort int `json:"remote_port"`
+	// KVParams kv transfer related fields
+	KVParams *KVTransferParams `json:"kv_transfer_params"`
 }
 
 // Usage contains token Usage statistics

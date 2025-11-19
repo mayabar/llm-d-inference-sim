@@ -576,14 +576,16 @@ func (s *VllmSimulator) createCompletionResponse(logprobs *int, isChatCompletion
 		time.Now().Unix(), modelName, usageData)
 
 	if doRemoteDecode {
+		baseResp.KVParams = &openaiserverapi.KVTransferParams{}
 		// add special fields related to the prefill pod special behavior
-		baseResp.DoRemoteDecode = true
-		baseResp.DoRemotePrefill = false
+		baseResp.KVParams.DoRemoteDecode = false
+		baseResp.KVParams.DoRemotePrefill = true
 		// currently remote prefill information is hard-coded
-		baseResp.RemoteBlockIds = []string{"DUMMY_ID"}
-		baseResp.RemoteEngineId = "DUMMY_ID"
-		baseResp.RemoteHost = "DUMMY"
-		baseResp.RemotePort = 1234
+		baseResp.KVParams.RemoteBlockIds = []string{"DUMMY_ID"}
+		baseResp.KVParams.RemoteEngineId = "DUMMY_ID"
+		baseResp.KVParams.RemoteHost = "DUMMY"
+		baseResp.KVParams.RemotePort = 1234
+		baseResp.KVParams.TPSize = 1
 	}
 
 	baseChoice := openaiserverapi.CreateBaseResponseChoice(0, finishReason)

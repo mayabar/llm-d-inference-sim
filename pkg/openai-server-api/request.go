@@ -91,22 +91,29 @@ type baseCompletionRequest struct {
 	StreamOptions StreamOptions `json:"stream_options"`
 	// Model defines Model name to use for "inference", could be base Model name or one of available LoRA adapters
 	Model string `json:"model"`
-	// DoRemoteDecode boolean value, true when request's decode will be done on remote pod
-	DoRemoteDecode bool `json:"do_remote_decode"`
-	// DoRemotePrefill boolean value, true when request's prefill was done on remote pod
-	DoRemotePrefill bool `json:"do_remote_prefill"`
-	// RemoteBlockIds is a list of block identifiers to process remotely for distributed decoding
-	RemoteBlockIds []string `json:"remote_block_ids"`
-	// RemoteEngineId is an identifier of the remote inference engine or backend to use for processing requests
-	RemoteEngineId string `json:"remote_engine_id"`
-	// RemoteHost is a hostname or IP address of the remote server handling prefill
-	RemoteHost string `json:"remote_host"`
-	// RemotePort is a port of the remote server handling prefill
-	RemotePort int `json:"remote_port"`
+	// KVParams kv transfer related fields
+	KVParams *KVTransferParams `json:"kv_transfer_params"`
 	// The number of tokens in the prompt that are in the local KV Cache
 	cachedPromptTokens int
 	// IgnoreEOS is a boolean value, true when the model should ignore end-of-sequence tokens
 	IgnoreEOS bool `json:"ignore_eos"`
+}
+
+type KVTransferParams struct {
+	// DoRemoteDecode boolean value, true when request's decode will be done on remote pod
+	DoRemoteDecode bool `json:"do_remote_decode"`
+	// DoRemotePrefill boolean value, true when request's prefill was done on remote pod
+	DoRemotePrefill bool `json:"do_remote_prefill"`
+	// RemoteEngineId is an identifier of the remote inference engine or backend to use for processing requests
+	RemoteEngineId string `json:"remote_engine_id"`
+	// RemoteBlockIds is a list of block identifiers to process remotely for distributed decoding
+	RemoteBlockIds []string `json:"remote_block_ids"`
+	// RemoteHost is a hostname or IP address of the remote server handling prefill
+	RemoteHost string `json:"remote_host"`
+	// RemotePort is a port of the remote server handling prefill
+	RemotePort int `json:"remote_port"`
+	// TPSize is the tensor parallelism size for KV cache transfer
+	TPSize int `json:"tp_size" default:"1"`
 }
 
 // StreamOptions defines streaming options for streaming requests
@@ -132,11 +139,11 @@ func (b *baseCompletionRequest) IncludeUsage() bool {
 }
 
 func (b *baseCompletionRequest) IsDoRemoteDecode() bool {
-	return b.DoRemoteDecode
+	return b.KVParams != nil && b.KVParams.DoRemoteDecode
 }
 
 func (b *baseCompletionRequest) IsDoRemotePrefill() bool {
-	return b.DoRemotePrefill
+	return b.KVParams != nil && b.KVParams.DoRemotePrefill
 }
 
 // GetNumberOfCachedPromptTokens returns the number of tokens in the prompt that are
