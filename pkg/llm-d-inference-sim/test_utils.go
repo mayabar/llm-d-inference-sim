@@ -19,6 +19,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -33,6 +34,7 @@ import (
 	"time"
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
+	openaiserverapi "github.com/llm-d/llm-d-inference-sim/pkg/openai-server-api"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 	"github.com/openai/openai-go/v3/packages/param"
@@ -169,14 +171,15 @@ func singleRequestLatencyTest(ttft int, prefillTimePerToken int, interTokenLaten
 func sendCompletionRequestForLatencyTest(client *http.Client, modelName string, prompt string, isStreaming bool, doRemotePrefill bool) {
 	// send completions request using http post because disagregated PD fields should be included
 	// Test with raw HTTP to verify the error response format
-	reqBody := fmt.Sprintf(`{
-				"prompt": "%s",
-				"model": "%s",
-				"stream": %t,
-				"do_remote_prefill": %t
-			}`, prompt, modelName, isStreaming, doRemotePrefill)
+	req := &openaiserverapi.TextCompletionRequest{Prompt: prompt}
+	req.KVParams = &openaiserverapi.KVTransferParams{DoRemotePrefill: doRemotePrefill}
+	req.Model = modelName
+	req.Stream = isStreaming
 
-	resp, err := client.Post("http://localhost/v1/completions", "application/json", strings.NewReader(reqBody))
+	body, err := json.Marshal(req)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+
+	resp, err := client.Post("http://localhost/v1/completions", "application/json", strings.NewReader(string(body)))
 	gomega.Expect(err).NotTo(gomega.HaveOccurred())
 	defer func() {
 		err := resp.Body.Close()

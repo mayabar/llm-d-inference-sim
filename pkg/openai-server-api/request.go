@@ -112,7 +112,8 @@ type KVTransferParams struct {
 	RemoteHost string `json:"remote_host"`
 	// RemotePort is a port of the remote server handling prefill
 	RemotePort int `json:"remote_port"`
-	TPSize     int `json:"tp_size" default:"1"`
+	// TPSize is the tensor parallelism size for KV cache transfer
+	TPSize int `json:"tp_size" default:"1"`
 }
 
 // StreamOptions defines streaming options for streaming requests
