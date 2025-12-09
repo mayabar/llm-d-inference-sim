@@ -32,6 +32,7 @@ const (
 	req2ID           = "req2"
 	req3ID           = "req3"
 	wildcardEndpoint = "tcp://*:*"
+	localhost        = "localhost"
 )
 
 type ActionType int
@@ -195,6 +196,7 @@ var _ = Describe("KV cache", Ordered, func() {
 				time.Sleep(300 * time.Millisecond)
 
 				config := &common.Configuration{
+					IP:                    localhost,
 					Port:                  1234,
 					Model:                 "model",
 					KVCacheSize:           test.cacheSize,
@@ -202,7 +204,7 @@ var _ = Describe("KV cache", Ordered, func() {
 					EventBatchSize:        1,
 				}
 
-				topic := CreateKVEventsTopic(config.Port, config.Model)
+				topic := CreateKVEventsTopic(localhost, config.Model)
 				sub, endpoint := common.CreateSub(topic)
 				config.ZMQEndpoint = endpoint
 				//nolint
@@ -300,13 +302,14 @@ var _ = Describe("KV cache", Ordered, func() {
 
 		It("should send events correctly", func() {
 			config := &common.Configuration{
+				IP:                    localhost,
 				Port:                  1234,
 				Model:                 "model",
 				KVCacheSize:           4,
 				ZMQMaxConnectAttempts: 3,
 			}
 
-			topic := CreateKVEventsTopic(config.Port, config.Model)
+			topic := CreateKVEventsTopic(localhost, config.Model)
 			sub, endpoint := common.CreateSub(topic)
 			config.ZMQEndpoint = endpoint
 			//nolint
@@ -416,6 +419,7 @@ var _ = Describe("KV cache", Ordered, func() {
 		for _, testCase := range testCases {
 			It(testCase.name, func() {
 				config := common.Configuration{
+					IP:                    localhost,
 					Port:                  1234,
 					Model:                 "model",
 					KVCacheSize:           testCase.cacheSize,

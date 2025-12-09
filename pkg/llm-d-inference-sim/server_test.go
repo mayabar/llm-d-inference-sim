@@ -359,7 +359,7 @@ var _ = Describe("Server", func() {
 		})
 
 		It("Should enter sleep mode and wake up", func() {
-			topic := kvcache.CreateKVEventsTopic(8000, qwenModelName)
+			topic := kvcache.CreateKVEventsTopic("localhost", qwenModelName)
 			sub, endpoint := common.CreateSub(topic)
 
 			ctx := context.TODO()
@@ -367,7 +367,7 @@ var _ = Describe("Server", func() {
 				[]string{"cmd", "--model", qwenModelName, "--mode", common.ModeRandom, "--enable-sleep-mode",
 					"--enable-kvcache", "--v", "5", "--port", "8000", "--zmq-endpoint", endpoint,
 					"--tokenizers-cache-dir", tmpDir},
-				map[string]string{"VLLM_SERVER_DEV_MODE": "1"})
+				map[string]string{"VLLM_SERVER_DEV_MODE": "1", "POD_IP": "localhost"})
 			Expect(err).NotTo(HaveOccurred())
 
 			//nolint
