@@ -25,7 +25,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y pkg-config python3-dev python3-pip
-          make install-dependencies
+          make download-tokenizer 
+          make download-zmq
+          make install-python-deps
           pip3 install transformers --break-system-packages
 
       - name: Run lint checks

@@ -148,7 +148,7 @@ format: ## Format Go source files
 	@gofmt -l -w $(SRC)
 
 .PHONY: test
-test: download-tokenizer install-python-deps # download-zmq ## Run unit tests
+test: download-tokenizer install-python-deps ## Run unit tests
 	@printf "\033[33;1m==== Running unit tests ====\033[0m\n"
 	if [ -n "$(GINKGO_FOCUS)" ] && [ -z "$(GINKGO_FOCUS_PKG)" ]; then \
 		echo "Error: GINKGO_FOCUS is defined without GINKGO_FOCUS_PKG. Both required or neither."; \
