@@ -332,7 +332,7 @@ make build
 ### Running
 To run the vLLM simulator in a standalone test environment, run:
 ```bash
-./bin/llm-d-inference-sim --model my_model --port 8000
+make run ARGS='--model="Qwen/Qwen2.5-1.5B-Instruct" --port 8000 -v=4'
 ```
 
 ## Kubernetes testing
