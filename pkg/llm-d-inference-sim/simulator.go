@@ -380,7 +380,7 @@ func (s *VllmSimulator) initializeSim(ctx context.Context) error {
 		}
 		s.logger.V(logging.DEBUG).Info("Chat template loaded", "template", s.chatTemplate, "params", s.chatTemplateKWArgs)
 
-		s.kvcacheHelper, err = kvcache.NewKVCacheHelper(ctx, s.config, s.logger, s.metrics.kvCacheUsageChan, s.tokenizer)
+		s.kvcacheHelper, err = kvcache.NewKVCacheHelper(s.config, s.logger, s.metrics.kvCacheUsageChan, s.tokenizer)
 		if err != nil {
 			return err
 		}
@@ -789,4 +789,38 @@ func (s *VllmSimulator) dequeue() *openaiserverapi.CompletionReqCtx {
 	}
 
 	return nil
+}
+
+func (s *VllmSimulator) getPromptForKVCache(reqCtx *openaiserverapi.CompletionReqCtx) (string, error) {
+	if reqCtx.IsChatCompletion {
+		renderReq := preprocessing.RenderJinjaTemplateRequest{
+			Conversations:             make([]preprocessing.ChatMessage, 0),
+			Tools:                     make([]interface{}, 0),
+			Documents:                 make([]interface{}, 0),
+			ReturnAssistantTokensMask: false,
+			ContinueFinalMessage:      false,
+			AddGenerationPrompt:       false,
+			ChatTemplate:              s.chatTemplate,
+			ChatTemplateKWArgs:        s.chatTemplateKWArgs,
+		}
+		// Convert messages to the format expected by the renderer
+		for _, msg := range reqCtx.CompletionReq.GetMessages() {
+			renderReq.Conversations = append(renderReq.Conversations, preprocessing.ChatMessage{
+				Role:    msg.Role,
+				Content: msg.Content.Raw,
+			})
+		}
+
+		// Don't use vllmReq.GetModel() - it may include LoRA's name.
+		// This call requires the base model name instead.
+		prompt, err := s.tokenizer.RenderChatTemplate(s.config.Model, &renderReq)
+		if err != nil {
+			s.logger.Error(err, "failed to render template")
+			return "", err
+		}
+		s.logger.Info("Convert prompt", "rendered", prompt)
+		return prompt, nil
+	}
+
+	return reqCtx.CompletionReq.GetPrompt(), nil
 }

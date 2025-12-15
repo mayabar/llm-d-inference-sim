@@ -35,7 +35,7 @@ type KVCacheHelper struct {
 	blockSize       int
 }
 
-func NewKVCacheHelper(ctx context.Context, config *common.Configuration, logger logr.Logger, usageChan chan float64,
+func NewKVCacheHelper(config *common.Configuration, logger logr.Logger, usageChan chan float64,
 	tokenizer tokenization.Tokenizer) (*KVCacheHelper, error) {
 	tokenProcConfig := kvblock.DefaultTokenProcessorConfig()
 	tokenProcConfig.BlockSize = config.TokenBlockSize
@@ -71,6 +71,8 @@ func (h *KVCacheHelper) Activate() {
 	h.blockCache.activate()
 }
 
+// OnRequestStart called when request received, simulates KV-cache block management
+// Returns number of tokens found in the cache.
 func (h *KVCacheHelper) OnRequestStart(prompt, modelName, requestID string) (int, error) {
 	h.logger.V(logging.TRACE).Info("KV cache - process request")
 

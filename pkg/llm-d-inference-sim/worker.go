@@ -26,7 +26,6 @@ import (
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common/logging"
 	openaiserverapi "github.com/llm-d/llm-d-inference-sim/pkg/openai-server-api"
-	preprocessing "github.com/llm-d/llm-d-kv-cache-manager/pkg/preprocessing/chat_completions"
 	"github.com/valyala/fasthttp"
 )
 
@@ -91,40 +90,14 @@ func (s *VllmSimulator) processRequestAsync(reqCtx *openaiserverapi.CompletionRe
 	}
 
 	if s.config.EnableKVCache {
-		var prompt string
+		prompt, err := s.getPromptForKVCache(reqCtx)
 
-		if reqCtx.IsChatCompletion {
-			renderReq := preprocessing.RenderJinjaTemplateRequest{
-				Conversations:             make([]preprocessing.ChatMessage, 0),
-				Tools:                     make([]interface{}, 0),
-				Documents:                 make([]interface{}, 0),
-				ReturnAssistantTokensMask: false,
-				ContinueFinalMessage:      false,
-				AddGenerationPrompt:       false,
-				ChatTemplate:              s.chatTemplate,
-				ChatTemplateKWArgs:        s.chatTemplateKWArgs,
-			}
-			// Convert messages to the format expected by the renderer
-			for _, msg := range req.GetMessages() {
-				renderReq.Conversations = append(renderReq.Conversations, preprocessing.ChatMessage{
-					Role:    msg.Role,
-					Content: msg.Content.Raw,
-				})
-			}
-
-			var err error
-			// Don't use vllmReq.GetModel() - it may include LoRA's name.
-			// This call requires the base model name instead.
-			prompt, err = s.tokenizer.RenderChatTemplate(s.config.Model, &renderReq)
-			if err != nil {
-				s.logger.Error(err, "failed to render template")
-				s.sendCompletionError(reqCtx.HTTPReqCtx,
-					openaiserverapi.NewCompletionError(err.Error(), fasthttp.StatusInternalServerError, nil),
-					false)
-				return
-			}
-		} else {
-			prompt = req.GetPrompt()
+		if err != nil {
+			s.logger.Error(err, "failed to render template")
+			s.sendCompletionError(reqCtx.HTTPReqCtx,
+				openaiserverapi.NewCompletionError(err.Error(), fasthttp.StatusInternalServerError, nil),
+				false)
+			return
 		}
 
 		if numOfCachedTokens, err := s.kvcacheHelper.OnRequestStart(prompt, req.GetModel(), req.GetRequestID()); err != nil {
