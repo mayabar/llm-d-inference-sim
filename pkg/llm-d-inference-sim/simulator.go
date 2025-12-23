@@ -216,6 +216,8 @@ type VllmSimulator struct {
 	queueCapacity int
 	// a channel for incoming requests
 	newRequests chan *openaiserverapi.CompletionReqCtx
+
+	latencyCalculator LatencyCalculator
 }
 
 // New creates a new VllmSimulator instance with the given logger
@@ -310,6 +312,15 @@ func (s *VllmSimulator) startSim(ctx context.Context) error {
 
 func (s *VllmSimulator) initializeSim(ctx context.Context) error {
 	s.random = common.NewRandom(s.config.Seed, s.config.Port)
+
+	switch s.config.LatencyCalculator {
+	case common.DefaultLatencyCalculator:
+		s.latencyCalculator = newDefaultCalculator(s.config, s.random)
+	case common.ConstantLatencyCalculator:
+		s.latencyCalculator = newConstantCalculator(s.config, s.random)
+	case common.PerPromptTokenLatencyCalculator:
+		s.latencyCalculator = newPerTokenCalculator(s.config, s.random)
+	}
 
 	for _, lora := range s.config.LoraModules {
 		s.loraAdaptors.Store(lora.Name, "")
@@ -677,7 +688,13 @@ func (s *VllmSimulator) sendResponse(reqCtx *openaiserverapi.CompletionReqCtx, r
 	// calculate how long to wait before returning the response, time is based on number of tokens
 	nCachedPromptTokens := reqCtx.CompletionReq.GetNumberOfCachedPromptTokens()
 	startPrefill := time.Now()
-	ttft := s.getWaitTimeToFirstToken(usageData.PromptTokens, nCachedPromptTokens, reqCtx.CompletionReq.IsDoRemotePrefill())
+	params := TTFTParams{
+		PromptTokens:       usageData.PromptTokens,
+		CachedPromptTokens: nCachedPromptTokens,
+		DoRemotePrefill:    reqCtx.CompletionReq.IsDoRemotePrefill(),
+		RunningReqs:        s.metrics.nRunningReqs,
+	}
+	ttft := s.latencyCalculator.GetTimeToFirstToken(&params)
 	time.Sleep(ttft)
 
 	// report ttft in seconds
@@ -686,8 +703,8 @@ func (s *VllmSimulator) sendResponse(reqCtx *openaiserverapi.CompletionReqCtx, r
 
 	startDecode := time.Now()
 	for range usageData.CompletionTokens - 1 {
-		perTokenLatency := s.getInterTokenLatency()
-		time.Sleep(time.Duration(perTokenLatency) * time.Millisecond)
+		perTokenLatency := s.latencyCalculator.GetInterTokenLatency(&InterTokenParams{RunningReqs: s.metrics.nRunningReqs})
+		time.Sleep(perTokenLatency)
 
 		// report tpot in seconds
 		common.WriteToChannel(s.metrics.tpotChan, perTokenLatency.Seconds(), s.logger, "metrics.tpotChan")

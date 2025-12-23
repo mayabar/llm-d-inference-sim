@@ -50,6 +50,10 @@ const (
 	RemoteDecodeFinishReason = "remote_decode"
 
 	podIPEnv = "POD_IP"
+
+	DefaultLatencyCalculator        = ""
+	ConstantLatencyCalculator       = "constant"
+	PerPromptTokenLatencyCalculator = "per-token"
 )
 
 var (
@@ -236,6 +240,11 @@ type Configuration struct {
 
 	// EnableRequestIDHeaders enables including X-Request-Id header in responses
 	EnableRequestIDHeaders bool `yaml:"enable-request-id-headers" json:"enable-request-id-headers"`
+
+	// LatencyCalculator is the name of the latency calculator to use in the simulation of the response latencies.
+	// The default calculation is based on the current load of the simulator and on the configured latency
+	// parameters, e.g., time-to-first-token and prefill-time-per-token.
+	LatencyCalculator string `yaml:"latency-calculator" json:"latency-calculator"`
 }
 
 type Metrics struct {
@@ -694,6 +703,12 @@ func (c *Configuration) validate() error {
 		return errors.New("dataset cannot be defined in echo mode")
 	}
 
+	if c.LatencyCalculator != DefaultLatencyCalculator && c.LatencyCalculator != ConstantLatencyCalculator &&
+		c.LatencyCalculator != PerPromptTokenLatencyCalculator {
+		return fmt.Errorf("unknown latency-calculator %s, supported calculators are: %s and %s",
+			c.LatencyCalculator, ConstantLatencyCalculator, PerPromptTokenLatencyCalculator)
+	}
+
 	return nil
 }
 
@@ -794,6 +809,10 @@ func ParseCommandParamsAndLoadConfig() (*Configuration, error) {
 	f.StringVar(&config.SSLCertFile, "ssl-certfile", config.SSLCertFile, "Path to SSL certificate file for HTTPS (optional)")
 	f.StringVar(&config.SSLKeyFile, "ssl-keyfile", config.SSLKeyFile, "Path to SSL private key file for HTTPS (optional)")
 	f.BoolVar(&config.SelfSignedCerts, "self-signed-certs", config.SelfSignedCerts, "Enable automatic generation of self-signed certificates for HTTPS")
+
+	f.StringVar(&config.LatencyCalculator, "latency-calculator", config.LatencyCalculator,
+		`Name of the latency calculator to be used in the response generation (optional). The default calculation is based on the current load of the simulator and on 
+		the configured latency parameters, e.g., time-to-first-token and prefill-time-per-token`)
 
 	// These values were manually parsed above in getParamValueFromArgs, we leave this in order to get these flags in --help
 	var dummyString string

@@ -183,6 +183,7 @@ For more details see the <a href="https://docs.vllm.ai/en/stable/getting_started
     - `echo`: returns the same text that was sent in the request
     - `random`: returns a sentence chosen at random from a set of pre-defined sentences
 ---
+- `latency-calculator`: specifies the latency calculator to be used to simulate response times. By default, the latency is computed based on the simulator’s current load and the configured latency parameters, such as `time-to-first-token` and `prefill-time-per-token`. Supported values are `per-token` and `constant`, indicating whether or not the calculation accounts for the prompt size.
 - `time-to-first-token`: the time to the first token (e.g. 100ms. Integer format is deprecated), optional, by default zero
 - `time-to-first-token-std-dev`: standard deviation for time before the first token will be returned, e.g., 100ms. in milliseconds if unit is missing, optional, default is 0, can't be more than 30% of `time-to-first-token`, will not cause the actual time to first token to differ by more than 70% from `time-to-first-token`
 - `inter-token-latency`: the time to 'generate' each additional token (e.g. 100ms. Integer format is deprecated), optional, by default zero
@@ -196,7 +197,7 @@ For more details see the <a href="https://docs.vllm.ai/en/stable/getting_started
 - `kv-cache-transfer-time-per-token`: time taken to transfer cache for each token in case P/D is enabled (e.g. 100ms. Integer format is deprecated), optional, by default zero, this will be ignored if `kv-cache-transfer-latency` is not `0`
 - `kv-cache-transfer-time-std-dev`: similar to `time-to-first-token-std-dev`, but is applied on the final kv cache transfer time in case P/D is enabled (e.g. 100ms. Integer format is deprecated), which is calculated by `kv-cache-transfer-time-per-token` and number of prompt tokens, this will be ignored if `kv-cache-transfer-latency` is not `0`
 ---
-- `time-factor-under-load`: a multiplicative factor that affects the overall time taken for requests when parallelrequests are being processed. The value of this factor must be >= 1.0, with a default of 1.0. If this factor is 1.0, no extra time is added.  When the factor is x (where x > 1.0) and there are `max-num-seqs` requests, the total time will be multiplied by x. The extra time then decreases multiplicatively to 1.0 when the number of requests is less than MaxNumSeqs.
+- `time-factor-under-load`: a multiplicative factor that affects the overall time taken for requests when parallel requests are being processed. The value of this factor must be >= 1.0, with a default of 1.0. If this factor is 1.0, no extra time is added.  When the factor is x (where x > 1.0) and there are `max-num-seqs` requests, the total time will be multiplied by x. The extra time then decreases multiplicatively to 1.0 when the number of requests is less than MaxNumSeqs.
 - `seed`: random seed for operations (if not set, current Unix time in nanoseconds is used)
 ---
 - `max-tool-call-integer-param`: the maximum possible value of integer parameters in a tool call, optional, defaults to 100
