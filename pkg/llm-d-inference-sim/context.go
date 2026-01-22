@@ -23,12 +23,13 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/valyala/fasthttp"
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common/logging"
 	"github.com/llm-d/llm-d-inference-sim/pkg/dataset"
 	kvcache "github.com/llm-d/llm-d-inference-sim/pkg/kv-cache"
-	"github.com/llm-d/llm-d-kv-cache-manager/pkg/tokenization"
+	"github.com/llm-d/llm-d-inference-sim/pkg/tokenizer"
 )
 
 const (
@@ -148,8 +149,8 @@ type simContext struct {
 	loras *lorasUsageInfo
 	// rand with a configurable seed to generate reproducible random responses
 	random *common.Random
-	// tokenizer is currently used in kv-cache and in /tokenize
-	tokenizer tokenization.Tokenizer
+	// tokenizer used for request tokenization and in /tokenize
+	tokenizer tokenizer.Tokenizer
 	// kv cache functionality
 	kvcacheHelper *kvcache.KVCacheHelper
 	// dataset is used for token generation in responses
@@ -182,21 +183,9 @@ func (s *simContext) initialize(ctx context.Context) error {
 		return err
 	}
 
-	tokenizationConfig, err := tokenization.DefaultConfig()
-	if err != nil {
-		return fmt.Errorf("failed to create default tokenization configuration: %w", err)
-	}
-
-	if s.config.TokenizersCacheDir != "" {
-		if tokenizationConfig.HFTokenizerConfig == nil {
-			tokenizationConfig.HFTokenizerConfig = &tokenization.HFTokenizerConfig{}
-		}
-		tokenizationConfig.HFTokenizerConfig.TokenizersCacheDir = s.config.TokenizersCacheDir
-	}
-
-	s.tokenizer, err = tokenization.NewCachedHFTokenizer(tokenizationConfig.HFTokenizerConfig)
-	if err != nil {
-		return fmt.Errorf("failed to create hf tokenizer: %w", err)
+	// create and initialize tokenizer
+	if err = s.initTokenizer(); err != nil {
+		return err
 	}
 
 	if s.config.EnableKVCache {
@@ -215,6 +204,28 @@ func (s *simContext) initialize(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (s *simContext) modelExists() bool {
+	url := "https://huggingface.co/api/models/%s" + s.config.Model
+
+	statusCode, _, err := fasthttp.Get(nil, url)
+	if err != nil {
+		return false
+	}
+
+	return statusCode == fasthttp.StatusOK
+}
+
+func (s *simContext) initTokenizer() error {
+	if s.modelExists() {
+		s.tokenizer = tokenizer.CreateHFTokenizer()
+	} else {
+		s.logger.Info("Model is not a real HF model, using simulated tokenizer", "model", s.config.Model)
+		s.tokenizer = tokenizer.CreateSimpleTokenizer()
+	}
+
+	return s.tokenizer.Init(*s.config)
 }
 
 func (s *simContext) initDataset(ctx context.Context) error {
