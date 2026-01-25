@@ -212,7 +212,7 @@ For more details see the <a href="https://docs.vllm.ai/en/stable/getting_started
 - `enable-kvcache`: if true, the KV cache support will be enabled in the simulator. In this case, the KV cache will be simulated, and ZQM events will be published when a KV cache block is added or evicted. 
 - `kv-cache-size`: the maximum number of token blocks in kv cache
 - `block-size`: token block size for contiguous chunks of tokens, possible values: 8,16,32,64,128
-- `tokenizers-cache-dir`: the directory for caching tokenizers
+- `tokenizers-cache-dir`: the directory for caching tokenizers, default is hf_cache
 - `hash-seed`: seed for hash generation (if not set, is read from PYTHONHASHSEED environment variable)
 - `zmq-endpoint`: ZMQ address to publish events
 - `zmq-max-connect-attempts`: the maximum number of ZMQ connection attempts, defaults to 0, maximum: 10
@@ -299,6 +299,48 @@ Example of definition in yaml:
         fieldRef:
           fieldPath: status.podIP
   ```
+
+## Tokenization
+
+The simulator supports two tokenization modes that are automatically selected based on the model name:
+
+### HuggingFace Tokenization (Existing Models)
+When the `--model` parameter specifies a valid HuggingFace model name (e.g., `meta-llama/Llama-3.1-8B-Instruct`, `Qwen/Qwen2.5-1.5B-Instruct`), the simulator will:
+- Download and cache the actual tokenizer from HuggingFace
+- Store tokenizers in the directory specified by `--tokenizers-cache-dir` (default: `hf_cache`)
+- Require the `HF_TOKEN` environment variable if the model is gated or private
+- Use the model's tokenizer for incoming requests (currently is used only for /tokenize API and kv-cache)
+
+**Note:** HuggingFace tokenization adds overhead as it downloads tokenizers on first use and performs tokenization on each request.
+
+### Simulated Tokenization (Non-existent Models)
+When the `--model` parameter specifies a model name that does not exist in HuggingFace (e.g., `my_fake_model`, `test-model-123`), the simulator will:
+- Use a simple regex-based tokenizer that splits text into tokens
+- Avoid downloading any files from HuggingFace
+- Process requests faster without tokenization overhead
+- Generate token hashes using FNV-32a algorithm
+
+### Performance Considerations
+**Important:** If you want to avoid the time and network overhead of HuggingFace tokenization:
+- Use a "fake" or non-existent model name (e.g., `--model fake-model`)
+- This is recommended for testing scenarios where exact tokenization accuracy is not required
+- HuggingFace tokenization is only necessary when you need accurate token counts matching actual HuggingFace models
+
+### Configuration
+- `--tokenizers-cache-dir`: Directory for caching HuggingFace tokenizers (default: `hf_cache`)
+- `HF_TOKEN`: Environment variable for HuggingFace authentication (required for gated/private models)
+
+### Examples
+```bash
+# HuggingFace tokenization (downloads tokenizer from HuggingFace)
+./bin/llm-d-inference-sim --model meta-llama/Llama-3.1-8B-Instruct --port 8000
+
+# Simulated tokenization (fast, no downloads)
+./bin/llm-d-inference-sim --model fake-model --port 8000
+
+# HuggingFace tokenization with custom cache directory
+./bin/llm-d-inference-sim --model Qwen/Qwen2.5-1.5B-Instruct --tokenizers-cache-dir /tmp/tokenizers --port 8000
+```
 
 ## Migrating from releases prior to v0.2.0
 - `max-running-requests` was replaced by `max-num-seqs`
