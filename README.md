@@ -307,9 +307,9 @@ The simulator supports two tokenization modes that are automatically selected ba
 ### HuggingFace Tokenization (Existing Models)
 When the `--model` parameter specifies a valid HuggingFace model name (e.g., `meta-llama/Llama-3.1-8B-Instruct`, `Qwen/Qwen2.5-1.5B-Instruct`), the simulator will:
 - Download and cache the actual tokenizer from HuggingFace
-- Use the model's tokenizer for incoming requests
 - Store tokenizers in the directory specified by `--tokenizers-cache-dir` (default: `hf_cache`)
 - Require the `HF_TOKEN` environment variable if the model is gated or private
+- Use the model's tokenizer for incoming requests (currently is used only for /tokenize API and kv-cache)
 
 **Note:** HuggingFace tokenization adds overhead as it downloads tokenizers on first use and performs tokenization on each request.
 
