@@ -17,6 +17,7 @@ limitations under the License.
 package llmdinferencesim
 
 import (
+	"context"
 	"strconv"
 	"sync"
 	"time"
@@ -28,6 +29,7 @@ import (
 
 type requestBuilder interface {
 	unmarshal(data []byte) error
+	finalize(ctx context.Context, template Template) error
 	validate(config *common.Configuration, toolsValidator *common.ToolsValidator) (string, int)
 	buildRequestContext(simCtx *simContext, ctx *fasthttp.RequestCtx, wg *sync.WaitGroup) requestContext
 	asString() string

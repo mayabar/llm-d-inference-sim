@@ -157,6 +157,8 @@ type simContext struct {
 	dataset dataset.Dataset
 	// latencyCalculator calculates the delays in simulator's responses
 	latencyCalculator LatencyCalculator
+	// template is a templatizer for the chat completion requests
+	template Template
 }
 
 func (s *simContext) initialize(ctx context.Context) error {
@@ -184,7 +186,7 @@ func (s *simContext) initialize(ctx context.Context) error {
 	}
 
 	// create and initialize tokenizer
-	if err = s.initTokenizer(); err != nil {
+	if err = s.initTokenizer(ctx); err != nil {
 		return err
 	}
 
@@ -217,12 +219,22 @@ func (s *simContext) modelExists() bool {
 	return statusCode == fasthttp.StatusOK
 }
 
-func (s *simContext) initTokenizer() error {
+func (s *simContext) initTokenizer(ctx context.Context) error {
 	if s.modelExists() {
 		s.tokenizer = tokenizer.CreateHFTokenizer()
+		template, err := CreateHFTemplate(ctx, s.config)
+		if err != nil {
+			return err
+		}
+		s.template = template
 	} else {
 		s.logger.Info("Model is not a real HF model, using simulated tokenizer", "model", s.config.Model)
 		s.tokenizer = tokenizer.CreateSimpleTokenizer()
+		template, err := CreateSimulationTemplate()
+		if err != nil {
+			return err
+		}
+		s.template = template
 	}
 
 	return s.tokenizer.Init(*s.config)

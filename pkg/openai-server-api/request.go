@@ -83,6 +83,10 @@ type Request interface {
 	TokenizedPrompt() []uint32
 	// SetTokenizedPrompt sets the prompt tokens
 	SetTokenizedPrompt(tokens []uint32)
+	// PromptPlainText returns the request prompt as a plain text
+	PromptPlainText() string
+	// SetPromptPlainText sets the prompt plain text
+	SetPromptPlainText(text string)
 }
 
 // baseCompletionRequest contains base completion request related information
@@ -107,6 +111,8 @@ type baseCompletionRequest struct {
 	CacheHitThreshold *float64 `json:"cache_hit_threshold,omitempty"`
 	// promptTokens is the tokenized prompt
 	promptTokens []uint32
+	// promptPlainText request input as a plain text
+	promptPlainText string
 }
 
 type KVTransferParams struct {
@@ -199,6 +205,16 @@ func (b *baseCompletionRequest) TokenizedPrompt() []uint32 {
 // SetTokenizedPrompt sets the prompt tokens
 func (b *baseCompletionRequest) SetTokenizedPrompt(tokens []uint32) {
 	b.promptTokens = tokens
+}
+
+// PromptPlainText returns the request prompt as a plain text
+func (b *baseCompletionRequest) PromptPlainText() string {
+	return b.promptPlainText
+}
+
+// SetPromptPlainText sets the prompt plain text
+func (b *baseCompletionRequest) SetPromptPlainText(text string) {
+	b.promptPlainText = text
 }
 
 // ChatCompletionRequest defines structure of /chat/completion request

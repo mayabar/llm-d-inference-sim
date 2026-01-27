@@ -19,20 +19,17 @@ package tokenizer
 import (
 	"errors"
 	"hash/fnv"
-	"os"
 	"regexp"
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
+	preprocessing "github.com/llm-d/llm-d-kv-cache-manager/pkg/preprocessing/chat_completions"
 	"github.com/llm-d/llm-d-kv-cache-manager/pkg/tokenization"
 )
 
-const hfTokenEnvVar = "HF_TOKEN"
-
 type Tokenizer interface {
 	Init(config common.Configuration) error
-	// Tokenize(text string) []uint64
-	// Encode tokenizes the input, modelName is optional, if not set, the model from the configuration will be used
 	Encode(input, modelName string) ([]uint32, error)
+	// RenderChatTemplate(*preprocessing.RenderJinjaTemplateRequest) (string, error)
 }
 
 type HFTokenizer struct {
@@ -69,6 +66,11 @@ func (st *SimpleTokenizer) Encode(input, modelName string) ([]uint32, error) {
 	return stringsToUint32sHash(strTokens), nil
 }
 
+func (st *SimpleTokenizer) RenderChatTemplate(string, *preprocessing.RenderJinjaTemplateRequest) (string, error) {
+	// TODO - concat messages with pre-defined separators
+	return "", nil
+}
+
 // HF Tokenizer
 func CreateHFTokenizer() *HFTokenizer {
 	return &HFTokenizer{}
@@ -88,9 +90,8 @@ func (hft *HFTokenizer) Init(config common.Configuration) error {
 		tokenizationConfig.HFTokenizerConfig.TokenizersCacheDir = config.TokenizersCacheDir
 	}
 
-	hfToken := os.Getenv(hfTokenEnvVar)
-	if hfToken != "" {
-		tokenizationConfig.HFTokenizerConfig.HuggingFaceToken = hfToken
+	if config.HFToken != "" {
+		tokenizationConfig.HFTokenizerConfig.HuggingFaceToken = config.HFToken
 	}
 
 	hft.tokenizer, err = tokenization.NewCachedHFTokenizer(tokenizationConfig.HFTokenizerConfig)
@@ -110,3 +111,12 @@ func (hft *HFTokenizer) Encode(input, modelName string) ([]uint32, error) {
 	tokens, _, err := hft.tokenizer.Encode(input, model)
 	return tokens, err
 }
+
+// func (hft *HFTokenizer) renderChatTemplate(renderReq *preprocessing.RenderJinjaTemplateRequest) (string, error) {
+// 	res, err := hft.chatTemplateProcessor.RenderChatTemplate(hft.ctx, renderReq)
+// 	if err != nil {
+// 		return "", errors.Join(err, fmt.Errorf("failed to render chat template"))
+// 	}
+
+// 	return res.RenderedChats[0], nil
+// }

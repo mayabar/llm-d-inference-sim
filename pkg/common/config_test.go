@@ -36,7 +36,14 @@ func createSimConfig(args []string) (*Configuration, error) {
 	}()
 	os.Args = args
 
-	return ParseCommandParamsAndLoadConfig()
+	config, err := ParseCommandParamsAndLoadConfig()
+	if config != nil {
+		// reset parameters which are loaded from environment
+		config.HFToken = ""
+		config.IP = ""
+	}
+
+	return config, err
 }
 
 func createDefaultConfig(model string) *Configuration {

@@ -17,6 +17,7 @@ limitations under the License.
 package llmdinferencesim
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"sync"
@@ -35,6 +36,13 @@ type textCompletionRequest struct {
 // reads and parses data from the body of the given request
 func (t *textCompletionRequest) unmarshal(data []byte) error {
 	return json.Unmarshal(data, t)
+}
+
+// finalize is a placeholder for processing of the request after it was unmarshaled
+// in case of text completion requests uses the prompt field
+func (t *textCompletionRequest) finalize(ctx context.Context, template Template) error {
+	t.SetPromptPlainText(t.GetPrompt())
+	return nil
 }
 
 func (t *textCompletionRequest) validate(config *common.Configuration, toolsValidator *common.ToolsValidator) (string, int) {

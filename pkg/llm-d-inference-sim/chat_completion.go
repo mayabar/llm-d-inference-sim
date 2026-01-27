@@ -17,6 +17,7 @@ limitations under the License.
 package llmdinferencesim
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"sync"
@@ -26,6 +27,7 @@ import (
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	openaiserverapi "github.com/llm-d/llm-d-inference-sim/pkg/openai-server-api"
+	preprocessing "github.com/llm-d/llm-d-kv-cache-manager/pkg/preprocessing/chat_completions"
 )
 
 // Implementation of request for /chat/completions requests
@@ -36,6 +38,31 @@ type chatCompletionRequest struct {
 // reads and parses data from the body of the given request
 func (c *chatCompletionRequest) unmarshal(data []byte) error {
 	return json.Unmarshal(data, c)
+}
+
+// finalize is a placeholder for processing of the request after it was unmarshaled
+// in case of chat completion request it creates a plain text representing the input
+// for real model is uses template defined in the model
+// for dummy model - uses simulated template
+func (c *chatCompletionRequest) finalize(ctx context.Context, template Template) error {
+	conversation := make([]preprocessing.ChatMessage, len(c.Messages))
+
+	for i, msg := range c.Messages {
+		conversation[i].Role = msg.Role
+		conversation[i].Content = msg.Content.PlainText()
+	}
+
+	renderRequest := &preprocessing.RenderJinjaTemplateRequest{
+		Conversations: conversation,
+	}
+
+	text, err := template.RenderChatTemplate(ctx, renderRequest)
+	if err != nil {
+		return err
+	}
+
+	c.SetPromptPlainText(text)
+	return nil
 }
 
 func (c *chatCompletionRequest) validate(config *common.Configuration, toolsValidator *common.ToolsValidator) (string, int) {

@@ -392,6 +392,12 @@ func (s *VllmSimulator) handleRequest(req request, ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	if err := req.finalize(ctx, s.context.template); err != nil {
+		s.context.logger.Error(err, "failed to finalize request")
+		ctx.Error("Failed to finalize request, "+err.Error(), fasthttp.StatusBadRequest)
+		return
+	}
+
 	requestID := s.getRequestID(ctx)
 	req.SetRequestID(requestID)
 

@@ -50,7 +50,8 @@ const (
 	RemoteDecodeFinishReason   = "remote_decode"
 	CacheThresholdFinishReason = "cache_threshold"
 
-	podIPEnv = "POD_IP"
+	podIPEnv   = "POD_IP"
+	hfTokenEnv = "HF_TOKEN"
 
 	DefaultLatencyCalculator        = ""
 	ConstantLatencyCalculator       = "constant"
@@ -251,6 +252,9 @@ type Configuration struct {
 	// The default calculation is based on the current load of the simulator and on the configured latency
 	// parameters, e.g., time-to-first-token and prefill-time-per-token.
 	LatencyCalculator string `yaml:"latency-calculator" json:"latency-calculator"`
+
+	// HFToken hugging face token defined in environment variable
+	HFToken string
 }
 
 type Metrics struct {
@@ -880,6 +884,8 @@ func ParseCommandParamsAndLoadConfig() (*Configuration, error) {
 			config.HashSeed = hashSeed
 		}
 	}
+
+	config.HFToken = os.Getenv(hfTokenEnv)
 
 	if err := config.validate(); err != nil {
 		return nil, err
