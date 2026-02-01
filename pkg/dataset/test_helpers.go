@@ -40,12 +40,7 @@ func IsValidText(text string) bool {
 			} else {
 				if strings.HasPrefix(textToCheck, fakeSentence) {
 					charsTested += len(fakeSentence)
-					// during generation sentences are connected by space, skip it
-					// additional space at the end of the string is invalid
-					if text[charsTested] == ' ' && charsTested < len(text)-1 {
-						charsTested += 1
-						found = true
-					}
+					found = true
 					break
 				}
 			}
