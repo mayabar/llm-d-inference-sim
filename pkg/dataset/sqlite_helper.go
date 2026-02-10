@@ -27,11 +27,11 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common/logging"
+	openaiserverapi "github.com/llm-d/llm-d-inference-sim/pkg/openai-server-api"
 )
 
 // use constants for expected column names and types
 const (
-	tableName         = "llmd"
 	idCol             = "id"
 	promptHashCol     = "prompt_hash"
 	genTokensCol      = "gen_tokens"
@@ -43,12 +43,16 @@ const (
 )
 
 type sqliteHelper struct {
-	logger logr.Logger
-	db     *sql.DB
+	logger    logr.Logger
+	db        *sql.DB
+	tableName string
 }
 
-func newSqliteHelper(logger logr.Logger) *sqliteHelper {
-	return &sqliteHelper{logger: logger}
+func newSqliteHelper(tableName string, logger logr.Logger) *sqliteHelper {
+	return &sqliteHelper{
+		tableName: tableName,
+		logger:    logger,
+	}
 }
 
 func (s *sqliteHelper) connectToDB(path string, useInMemory bool) error {
@@ -130,13 +134,7 @@ func (s *sqliteHelper) loadDatabaseInMemory(path string) error {
 	}
 
 	// Copy the table structure first
-	createTableStmt := fmt.Sprintf(`CREATE TABLE %s (
-		id INTEGER PRIMARY KEY,
-		prompt_hash BLOB,
-		gen_tokens JSON,
-		n_gen_tokens INTEGER
-	)`, tableName)
-	_, err = s.db.Exec(createTableStmt)
+	_, err = s.db.Exec(s.getCreateTableQuery())
 	if err != nil {
 		if closeErr := s.db.Close(); closeErr != nil {
 			s.logger.Error(closeErr, "failed to close in-memory database after create table failure")
@@ -146,7 +144,7 @@ func (s *sqliteHelper) loadDatabaseInMemory(path string) error {
 	}
 
 	// Copy the data
-	_, err = s.db.Exec("INSERT INTO " + tableName + " SELECT * FROM source." + tableName)
+	_, err = s.db.Exec("INSERT INTO " + s.tableName + " SELECT * FROM source." + s.tableName)
 	if err != nil {
 		if closeErr := s.db.Close(); closeErr != nil {
 			s.logger.Error(closeErr, "failed to close in-memory database after copy failure")
@@ -167,9 +165,9 @@ func (s *sqliteHelper) loadDatabaseInMemory(path string) error {
 }
 
 func (s *sqliteHelper) verifyDB() error {
-	rows, err := s.db.Query("PRAGMA table_info(" + tableName + ");")
+	rows, err := s.db.Query("PRAGMA table_info(" + s.tableName + ");")
 	if err != nil {
-		return fmt.Errorf("failed to query table info for `%s`: %w", tableName, err)
+		return fmt.Errorf("failed to query table info for `%s`: %w", s.tableName, err)
 	}
 	defer func() {
 		if cerr := rows.Close(); cerr != nil {
@@ -210,7 +208,7 @@ func (s *sqliteHelper) verifyDB() error {
 
 	for col := range expectedColumns {
 		if !columnsFound[col] {
-			return fmt.Errorf("missing expected column in %s table: %s", tableName, col)
+			return fmt.Errorf("missing expected column in %s table: %s", s.tableName, col)
 		}
 	}
 
@@ -219,7 +217,7 @@ func (s *sqliteHelper) verifyDB() error {
 
 func (s *sqliteHelper) getRecordsCount() (int, error) {
 	var count int
-	err := s.db.QueryRow("SELECT COUNT(" + promptHashCol + ") FROM " + tableName + ";").Scan(&count)
+	err := s.db.QueryRow("SELECT COUNT(" + promptHashCol + ") FROM " + s.tableName + ";").Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("failed to query database: %w", err)
 	}
@@ -228,7 +226,7 @@ func (s *sqliteHelper) getRecordsCount() (int, error) {
 
 // query runs a SQL query which retrieves response tokens as an array of strings
 // returns multuple responses
-func (s *sqliteHelper) query(query string) ([][]string, error) {
+func (s *sqliteHelper) query(query string) ([]openaiserverapi.Tokenized, error) {
 	rows, err := s.db.Query(query)
 	if err != nil {
 		s.logger.Error(err, "failed to query database. Ensure dataset file is still valid. Will generate random tokens instead.")
@@ -247,8 +245,8 @@ func (s *sqliteHelper) query(query string) ([][]string, error) {
 	return unmarshalAllRecords(rows)
 }
 
-func unmarshalAllRecords(rows *sql.Rows) ([][]string, error) {
-	var responses [][]string
+func unmarshalAllRecords(rows *sql.Rows) ([]openaiserverapi.Tokenized, error) {
+	var responses []openaiserverapi.Tokenized
 
 	for rows.Next() {
 		var responseJSON string
@@ -256,7 +254,7 @@ func unmarshalAllRecords(rows *sql.Rows) ([][]string, error) {
 			return nil, fmt.Errorf("failed to scan row: %w", err)
 		}
 
-		var tokens []string
+		var tokens openaiserverapi.Tokenized
 		if err := json.Unmarshal([]byte(responseJSON), &tokens); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal tokens JSON: %w", err)
 		}
@@ -266,7 +264,7 @@ func unmarshalAllRecords(rows *sql.Rows) ([][]string, error) {
 }
 
 func (s *sqliteHelper) buildQuery(where string, isRand bool, isLimitOne bool) string {
-	query := "SELECT " + genTokensCol + " FROM " + tableName
+	query := "SELECT " + genTokensCol + " FROM " + s.tableName
 
 	if where != "" {
 		query += " WHERE " + where
@@ -284,12 +282,12 @@ func (s *sqliteHelper) buildQuery(where string, isRand bool, isLimitOne bool) st
 	return query
 }
 
-func (s *sqliteHelper) getResponsesForPrompt(promptHashHex string) ([][]string, error) {
+func (s *sqliteHelper) getResponsesForPrompt(promptHashHex string) ([]openaiserverapi.Tokenized, error) {
 	query := s.buildQuery(promptHashCol+"=X'"+promptHashHex+"'", false, false)
 	return s.query(query)
 }
 
-func (s *sqliteHelper) getResponsesForLen(maxLen int, isExact bool) ([][]string, error) {
+func (s *sqliteHelper) getResponsesForLen(maxLen int, isExact bool) ([]openaiserverapi.Tokenized, error) {
 	sign := "<="
 	if isExact {
 		sign = "="
@@ -298,7 +296,21 @@ func (s *sqliteHelper) getResponsesForLen(maxLen int, isExact bool) ([][]string,
 	return s.query(query)
 }
 
-func (s *sqliteHelper) getRandomResponse() ([][]string, error) {
+func (s *sqliteHelper) getRandomResponse() ([]openaiserverapi.Tokenized, error) {
 	query := s.buildQuery("", true, true)
 	return s.query(query)
+}
+
+func (s *sqliteHelper) getCreateTableQuery() string {
+	return fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
+		id INTEGER PRIMARY KEY,
+		prompt_hash BLOB NOT NULL,
+		gen_tokens JSON NOT NULL,
+		n_gen_tokens INTEGER NOT NULL
+	)`, s.tableName)
+}
+
+func (s *sqliteHelper) getInsertQuery() string {
+	return fmt.Sprintf(`INSERT INTO  %s (prompt_hash, gen_tokens, n_gen_tokens) 
+        VALUES (?, ?, ?)`, s.tableName)
 }

@@ -23,12 +23,11 @@ import (
 	"os"
 	"time"
 
-	"k8s.io/klog/v2"
-
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	openaiserverapi "github.com/llm-d/llm-d-inference-sim/pkg/openai-server-api"
 	"github.com/llm-d/llm-d-inference-sim/pkg/tokenizer"
 	. "github.com/onsi/ginkgo/v2"
+	"k8s.io/klog/v2"
 
 	. "github.com/onsi/gomega"
 
@@ -36,8 +35,16 @@ import (
 )
 
 const (
-	testPrompt = "Hello world!"
+	tokenizerTmpDir = "./test_tokenizers"
 )
+
+type validDBElement struct {
+	input          string
+	tokenizedInput openaiserverapi.Tokenized
+	chatMessages   []string
+	hexa           string
+	respTokens     openaiserverapi.Tokenized
+}
 
 var _ = Describe("CustomDataset", Ordered, func() {
 	var (
@@ -46,6 +53,7 @@ var _ = Describe("CustomDataset", Ordered, func() {
 		file_folder           string
 		path                  string
 		validDBPath           string
+		tableName             string
 		pathToInvalidDB       string
 		pathNotExist          string
 		pathToInvalidTableDB  string
@@ -53,6 +61,7 @@ var _ = Describe("CustomDataset", Ordered, func() {
 		pathToInvalidTypeDB   string
 		random                *common.Random
 		tknzr                 tokenizer.Tokenizer
+		validDB               []validDBElement
 	)
 
 	BeforeAll(func() {
@@ -62,18 +71,68 @@ var _ = Describe("CustomDataset", Ordered, func() {
 		err := os.MkdirAll(file_folder, os.ModePerm)
 		Expect(err).NotTo(HaveOccurred())
 		validDBPath = file_folder + "/test.valid.sqlite3"
+		tableName = "llmd"
 		pathNotExist = file_folder + "/test.notexist.sqlite3"
 		pathToInvalidDB = file_folder + "/test.invalid.sqlite3"
 		pathToInvalidTableDB = file_folder + "/test.invalid.table.sqlite3"
 		pathToInvalidColumnDB = file_folder + "/test.invalid.column.sqlite3"
 		pathToInvalidTypeDB = file_folder + "/test.invalid.type.sqlite3"
-		tknzr, err = tokenizer.New("", false, "")
+		tknzr, err = tokenizer.New("Qwen/Qwen3-0.6B", true, tokenizerTmpDir)
 		Expect(err).ShouldNot(HaveOccurred())
+
+		validDB = make([]validDBElement, 3)
+
+		// #1 in db: intput1, completions, short response
+		validDB[0].input = "1, 2, 3, 4, 5, 6, 7, 8, 9, 10"
+		validDB[0].hexa = "73205d2e432e6b117e0b75cdddeac019ee863f4b524f75bf57c15c5a47a445e4"
+		validDB[0].respTokens = openaiserverapi.Tokenized{
+			Strings: []string{"Hello", " human", "!"},
+			Tokens:  []uint32{9707, 3738, 0},
+		}
+
+		// #3 in db: intput2, message1, completions, long response
+		validDB[1].input = "Hello world!"
+		validDB[1].hexa = "90db35b48bf168f20fa36537861e1d64fac6af372267aec9d10437a3f83f8bec"
+		validDB[1].respTokens = openaiserverapi.Tokenized{
+			Strings: []string{"this", " is", " assistant", " long", " response", ",", " it", " should", " contain", " at",
+				" least", " ", "1", "0", " tokens"},
+			Tokens: []uint32{574, 374, 17847, 1293, 2033, 11, 432, 1265, 6644, 518, 3245, 220, 16, 15, 11211},
+		}
+
+		// #6 in db: intput2, message2, chat completions, short response
+		validDB[2].input = "### user:\nHello world!\n### assistant:\nthis is assistant long response, it should contain at least 10 tokens\n### user:\nHello world again\n"
+		validDB[2].hexa = "067b89152dee047c66e53926f47d65366509729ad2c5a8e1d1e2dbb05f2eab41"
+		validDB[2].respTokens = openaiserverapi.Tokenized{
+			Strings: []string{"short", " response"},
+			Tokens:  []uint32{8676, 2033},
+		}
+		validDB[2].chatMessages = []string{"Hello world!",
+			"this is assistant long response, it should contain at least 10 tokens",
+			"Hello world again"}
+
+		for i := range validDB {
+			tokens, strTokens, err := tknzr.Encode(validDB[i].input, "")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(tokens).ToNot(BeEmpty())
+			Expect(tokens).ToNot(BeNil())
+			Expect(strTokens).ToNot(BeEmpty())
+			Expect(strTokens).ToNot(BeNil())
+			validDB[i].tokenizedInput = openaiserverapi.Tokenized{Tokens: tokens, Strings: strTokens}
+		}
 	})
 
 	BeforeEach(func() {
-		sqliteHelper = newSqliteHelper(klog.Background())
+		sqliteHelper = newSqliteHelper("llmd", klog.Background())
 		dsDownloader = NewDsDownloader(klog.Background())
+	})
+
+	AfterAll(func() {
+		// remove temp test db
+		err := os.Remove(path)
+		Expect(err).NotTo(HaveOccurred())
+		// remove test tokenizer directory
+		err = os.RemoveAll(tokenizerTmpDir)
+		Expect(err).NotTo(HaveOccurred())
 	})
 
 	It("should return error for invalid DB path", func() {
@@ -105,23 +164,23 @@ var _ = Describe("CustomDataset", Ordered, func() {
 
 	It("should successfully init dataset", func() {
 		dataset := &CustomDataset{}
-		err := dataset.Init(context.Background(), klog.Background(), random, validDBPath, false, 1024, tknzr)
+		err := dataset.Init(context.Background(), klog.Background(), random, validDBPath, tableName, false, 1024, tknzr)
 		Expect(err).NotTo(HaveOccurred())
 
-		row := dataset.sqliteHelper.db.QueryRow("SELECT n_gen_tokens FROM llmd WHERE prompt_hash=X'74bf14c09c038321cba39717dae1dc732823ae4abd8e155959367629a3c109a8';")
+		row := dataset.sqliteHelper.db.QueryRow(fmt.Sprintf("SELECT n_gen_tokens FROM llmd WHERE prompt_hash=X'%s';", validDB[0].hexa))
 		var n_gen_tokens int
 		err = row.Scan(&n_gen_tokens)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(n_gen_tokens).To(Equal(4))
+		Expect(n_gen_tokens).To(Equal(validDB[0].respTokens.Length()))
 
 		var jsonStr string
-		row = dataset.sqliteHelper.db.QueryRow("SELECT gen_tokens FROM llmd WHERE prompt_hash=X'74bf14c09c038321cba39717dae1dc732823ae4abd8e155959367629a3c109a8';")
+		row = dataset.sqliteHelper.db.QueryRow(fmt.Sprintf("SELECT gen_tokens FROM llmd WHERE prompt_hash=X'%s';", validDB[0].hexa))
 		err = row.Scan(&jsonStr)
 		Expect(err).NotTo(HaveOccurred())
-		var tokens []string
-		err = json.Unmarshal([]byte(jsonStr), &tokens)
+		var tokenized openaiserverapi.Tokenized
+		err = json.Unmarshal([]byte(jsonStr), &tokenized)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(tokens).To(Equal([]string{"Hello", " llm-d ", "world", "!"}))
+		Expect(tokenized).To(Equal(validDB[0].respTokens))
 
 		err = dataset.sqliteHelper.db.Close()
 		Expect(err).NotTo(HaveOccurred())
@@ -153,48 +212,44 @@ var _ = Describe("CustomDataset", Ordered, func() {
 	It("should return error for DB with invalid column type", func() {
 		err := sqliteHelper.connectToDB(pathToInvalidTypeDB, false)
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("incorrect type"))
+		Expect(err.Error()).To(ContainSubstring("has incorrect type"))
 	})
 
 	It("should return correct prompt hash in bytes", func() {
-		// b't\xbf\x14\xc0\x9c\x03\x83!\xcb\xa3\x97\x17\xda\xe1\xdcs(#\xaeJ\xbd\x8e\x15YY6v)\xa3\xc1\t\xa8'
-		expectedHashBytes := []byte{0x74, 0xbf, 0x14, 0xc0, 0x9c, 0x03, 0x83, 0x21, 0xcb, 0xa3, 0x97, 0x17, 0xda, 0xe1, 0xdc, 0x73, 0x28, 0x23, 0xae, 0x4a, 0xbd, 0x8e, 0x15, 0x59, 0x59, 0x36, 0x76, 0x29, 0xa3, 0xc1, 0x09, 0xa8}
-
-		req := &openaiserverapi.TextCompletionRequest{
-			Prompt: testPrompt,
-		}
-		dataset := &CustomDataset{}
-		hashBytes := dataset.getPromptHash(req)
-		Expect(hashBytes).To(Equal(expectedHashBytes))
-	})
-
-	It("should return correct prompt hash in hex", func() {
-		expectedHashHex := "74bf14c09c038321cba39717dae1dc732823ae4abd8e155959367629a3c109a8"
-
-		req := &openaiserverapi.TextCompletionRequest{
-			Prompt: testPrompt,
-		}
+		req := &openaiserverapi.TextCompletionRequest{}
+		req.SetTokenizedPrompt(&validDB[0].tokenizedInput)
 		dataset := &CustomDataset{}
 		hashBytes := dataset.getPromptHash(req)
 		hashHex := dataset.getPromptHashHex(hashBytes)
-		Expect(hashHex).To(Equal(expectedHashHex))
+		Expect(hashHex).To(Equal(validDB[0].hexa))
+	})
+
+	It("should return correct prompt hash in hex", func() {
+		tokens, strTokens, err := tknzr.Encode(validDB[0].input, "")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(tokens).To(Equal(validDB[0].tokenizedInput.Tokens))
+		Expect(strTokens).To(Equal(validDB[0].tokenizedInput.Strings))
+
+		prompt := openaiserverapi.Tokenized{Tokens: tokens, Strings: strTokens}
+		Expect(prompt).To(Equal(validDB[0].tokenizedInput))
+
+		req := &openaiserverapi.TextCompletionRequest{}
+		req.SetTokenizedPrompt(&prompt)
+		dataset := &CustomDataset{}
+		hashBytes := dataset.getPromptHash(req)
+		hashHex := dataset.getPromptHashHex(hashBytes)
+		Expect(hashHex).To(Equal(validDB[0].hexa))
 	})
 
 	Context("custom dataset", func() {
 		dataset := &CustomDataset{}
-		longPrompt := "1, 2, 3, 4, 5, 6"
 		maxTokens := int64(20)
 		smallMaxTokens := int64(2)
 		exactMaxToken := int64(4)
-		var promptTokens []string
 
 		BeforeAll(func() {
-			var err error
-			_, promptTokens, err = tknzr.Encode(testPrompt, "")
+			err := dataset.Init(context.Background(), klog.Background(), random, validDBPath, tableName, false, 1024, tknzr)
 			Expect(err).NotTo(HaveOccurred())
-			err = dataset.Init(context.Background(), klog.Background(), random, validDBPath, false, 1024, tknzr)
-			Expect(err).NotTo(HaveOccurred())
-
 		})
 
 		AfterAll(func() {
@@ -203,87 +258,84 @@ var _ = Describe("CustomDataset", Ordered, func() {
 		})
 
 		DescribeTable("should work correctly in random mode with ignore eos",
-			func(prompt string, maxTokens *int64, isChat bool, expectedFinishReason string) {
+			func(index int, maxTokens *int64, isChat bool, expectedFinishReason string) {
 				var req openaiserverapi.Request
 				if isChat {
 					chatReq := openaiserverapi.ChatCompletionRequest{MaxTokens: maxTokens}
-					chatReq.Messages = []openaiserverapi.Message{{Role: openaiserverapi.RoleUser, Content: openaiserverapi.Content{Raw: prompt}}}
 					chatReq.IgnoreEOS = true
 					req = &chatReq
 				} else {
-					textReq := openaiserverapi.TextCompletionRequest{Prompt: prompt, MaxTokens: maxTokens}
+					textReq := openaiserverapi.TextCompletionRequest{MaxTokens: maxTokens}
 					textReq.IgnoreEOS = true
 					req = &textReq
 				}
-
-				tokens, finishReason, err := dataset.GetTokens(req)
+				req.SetTokenizedPrompt(&validDB[index].tokenizedInput)
+				tokens, finishReason, err := dataset.GetResponseTokens(req)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(finishReason).To(Equal(expectedFinishReason))
 				if maxTokens != nil {
 					Expect(tokens.Strings).To(HaveLen(int(*maxTokens)))
 				}
 			},
-			func(prompt string, maxTokens *int64, isChat bool, expectedFinishReason string) string {
-				return fmt.Sprintf("prompt: '%s', maxTokens: %s, isChat: %t, expectedFinishReason: %s", prompt, maxTokensToStr(maxTokens), isChat, expectedFinishReason)
+			func(index int, maxTokens *int64, isChat bool, expectedFinishReason string) string {
+				return fmt.Sprintf("validDB index: '%d', maxTokens: %s, isChat: %t, expectedFinishReason: %s", index, maxTokensToStr(maxTokens), isChat, expectedFinishReason)
 			},
-			Entry(nil, longPrompt, &maxTokens, false, common.LengthFinishReason),
-			Entry(nil, longPrompt, &maxTokens, true, common.LengthFinishReason),
-			Entry(nil, longPrompt, &smallMaxTokens, false, common.LengthFinishReason),
-			Entry(nil, longPrompt, &smallMaxTokens, true, common.LengthFinishReason),
-			Entry(nil, testPrompt, &maxTokens, false, common.LengthFinishReason),
-			Entry(nil, testPrompt, &maxTokens, true, common.LengthFinishReason),
-			Entry(nil, testPrompt, &smallMaxTokens, false, common.LengthFinishReason),
-			Entry(nil, testPrompt, &smallMaxTokens, true, common.LengthFinishReason),
-			Entry(nil, testPrompt, &exactMaxToken, false, common.LengthFinishReason),
-			Entry(nil, testPrompt, &exactMaxToken, true, common.LengthFinishReason),
-			Entry(nil, longPrompt, &exactMaxToken, true, common.LengthFinishReason),
+			Entry(nil, 1, &maxTokens, false, common.LengthFinishReason),
+			Entry(nil, 1, &maxTokens, true, common.LengthFinishReason),
+			Entry(nil, 1, &smallMaxTokens, false, common.LengthFinishReason),
+			Entry(nil, 1, &smallMaxTokens, true, common.LengthFinishReason),
+			Entry(nil, 1, &exactMaxToken, true, common.LengthFinishReason),
+			Entry(nil, 0, &maxTokens, false, common.LengthFinishReason),
+			Entry(nil, 0, &maxTokens, true, common.LengthFinishReason),
+			Entry(nil, 0, &smallMaxTokens, false, common.LengthFinishReason),
+			Entry(nil, 0, &smallMaxTokens, true, common.LengthFinishReason),
+			Entry(nil, 0, &exactMaxToken, false, common.LengthFinishReason),
+			Entry(nil, 0, &exactMaxToken, true, common.LengthFinishReason),
 		)
 
 		It("should return tokens for existing prompt", func() {
-			req := &openaiserverapi.TextCompletionRequest{
-				Prompt: testPrompt,
-			}
-			req.SetTokenizedPrompt(&openaiserverapi.Tokenized{Strings: promptTokens})
+			req := &openaiserverapi.TextCompletionRequest{}
+			req.SetTokenizedPrompt(&validDB[1].tokenizedInput)
 
-			tokens, finishReason, err := dataset.GetTokens(req)
+			tokens, finishReason, err := dataset.GetResponseTokens(req)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(finishReason).To(Equal(common.StopFinishReason))
-			Expect(tokens.Strings).To(Equal([]string{"Hello", " llm-d ", "world", "!"}))
+			Expect(*tokens).To(Equal(validDB[1].respTokens))
 		})
 
 		It("should return at most 2 tokens for existing prompt", func() {
 			req := &openaiserverapi.TextCompletionRequest{
-				Prompt:    testPrompt,
 				MaxTokens: &smallMaxTokens,
 			}
-			tokens, _, err := dataset.GetTokens(req)
+			req.SetTokenizedPrompt(&validDB[1].tokenizedInput)
+			tokens, _, err := dataset.GetResponseTokens(req)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(tokens.Length()).To(BeNumerically("<=", smallMaxTokens))
 		})
 
 		It("should successfully init dataset with in-memory option", func() {
 			req := &openaiserverapi.TextCompletionRequest{
-				Prompt: testPrompt,
+				Prompt: validDB[1].input,
 			}
-			req.SetTokenizedPrompt(&openaiserverapi.Tokenized{Strings: promptTokens})
+			req.SetTokenizedPrompt(&validDB[1].tokenizedInput)
 
-			tokens, finishReason, err := dataset.GetTokens(req)
+			tokens, finishReason, err := dataset.GetResponseTokens(req)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(finishReason).To(Equal(common.StopFinishReason))
-			Expect(tokens.Strings).To(Equal([]string{"Hello", " llm-d ", "world", "!"}))
+			Expect(*tokens).To(Equal(validDB[1].respTokens))
 		})
 
 		It("should work correctly for chat request with multiple messages", func() {
 			req := openaiserverapi.ChatCompletionRequest{MaxTokens: &maxTokens}
 			req.Messages = []openaiserverapi.Message{
-				{Role: openaiserverapi.RoleUser, Content: openaiserverapi.Content{Raw: testPrompt}},
-				{Role: openaiserverapi.RoleAssistant, Content: openaiserverapi.Content{Raw: "this is assistant response"}},
-				{Role: openaiserverapi.RoleUser, Content: openaiserverapi.Content{Raw: testPrompt}},
+				{Role: openaiserverapi.RoleUser, Content: openaiserverapi.Content{Raw: validDB[2].chatMessages[0]}},
+				{Role: openaiserverapi.RoleAssistant, Content: openaiserverapi.Content{Raw: validDB[2].chatMessages[1]}},
+				{Role: openaiserverapi.RoleUser, Content: openaiserverapi.Content{Raw: validDB[2].chatMessages[2]}},
 			}
 
-			req.SetTokenizedPrompt(&openaiserverapi.Tokenized{Strings: promptTokens})
+			req.SetTokenizedPrompt(&validDB[2].tokenizedInput)
 
-			tokens, finishReason, err := dataset.GetTokens(&req)
+			tokens, finishReason, err := dataset.GetResponseTokens(&req)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(tokens.Length()).To(BeNumerically("<=", maxTokens))
 			Expect((tokens.Length() == int(maxTokens) && finishReason == common.LengthFinishReason) ||
@@ -296,18 +348,19 @@ var _ = Describe("custom dataset for multiple simulators", Ordered, func() {
 	It("should not fail on custom datasets initialization", func() {
 		file_folder := ".llm-d"
 		validDBPath := file_folder + "/test.valid.sqlite3"
+		tableName := "llmd"
 
 		tokenizer, err := tokenizer.New("", false, "")
 		Expect(err).ShouldNot(HaveOccurred())
 
 		random1 := common.NewRandom(time.Now().UnixNano(), 8081)
 		dataset1 := &CustomDataset{}
-		err = dataset1.Init(context.Background(), klog.Background(), random1, validDBPath, false, 1024, tokenizer)
+		err = dataset1.Init(context.Background(), klog.Background(), random1, validDBPath, tableName, false, 1024, tokenizer)
 		Expect(err).NotTo(HaveOccurred())
 
 		random2 := common.NewRandom(time.Now().UnixNano(), 8082)
 		dataset2 := &CustomDataset{}
-		err = dataset2.Init(context.Background(), klog.Background(), random2, validDBPath, false, 1024, tokenizer)
+		err = dataset2.Init(context.Background(), klog.Background(), random2, validDBPath, tableName, false, 1024, tokenizer)
 		Expect(err).NotTo(HaveOccurred())
 	})
 })

@@ -151,6 +151,20 @@ func (t *Tokenized) Length() int {
 	return len(t.Strings)
 }
 
+func (t *Tokenized) Trim(maxLen int) {
+	if len(t.Tokens) > maxLen {
+		t.Tokens = t.Tokens[:maxLen]
+	}
+	if len(t.Strings) > maxLen {
+		t.Strings = t.Strings[:maxLen]
+	}
+}
+
+func (t *Tokenized) Append(other Tokenized) {
+	t.Strings = append(t.Strings, other.Strings...)
+	t.Tokens = append(t.Tokens, other.Tokens...)
+}
+
 func (b *baseCompletionRequest) GetRequestID() string {
 	return b.RequestID
 }
