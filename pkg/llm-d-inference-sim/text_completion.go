@@ -19,7 +19,6 @@ package llmdinferencesim
 import (
 	"encoding/json"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
@@ -41,10 +40,9 @@ func (t *textCompletionRequest) validate(toolsValidator *toolsValidator) (string
 	return validateRequest(t)
 }
 
-func (t *textCompletionRequest) buildRequestContext(simCtx *simContext, respSender responseSender,
-	wg *sync.WaitGroup) requestContext {
+func (t *textCompletionRequest) buildRequestContext(simCtx *simContext, channel chan *responseInfo) requestContext {
 	reqCtx := &textCompletionReqCtx{
-		baseRequestContext: newBaseRequestContext(simCtx, respSender, wg),
+		baseRequestContext: newBaseRequestContext(simCtx, channel),
 		req:                t,
 	}
 	// wire textCompletionReqCtx into embedded requestContext interface
@@ -110,18 +108,17 @@ type textCompletionResponseCtx struct {
 	baseResponseContext
 }
 
-// createResponse creates the response for completion requests
-func (respCtx *textCompletionResponseCtx) createResponse() openaiserverapi.CompletionResponse {
+func (respCtx *textCompletionResponseCtx) createResponse(tokens *openaiserverapi.Tokenized) openaiserverapi.CompletionResponse {
 	baseResp := openaiserverapi.CreateBaseCompletionResponse(
 		time.Now().Unix(), respCtx.displayModelName, respCtx.usage, respCtx.id, respCtx.remoteDecode)
 	baseChoice := openaiserverapi.CreateBaseResponseChoice(0, respCtx.finishReasonPtr)
-	respText := strings.Join(respCtx.respTokens.Strings, "")
+	respText := strings.Join(tokens.Strings, "")
 
 	choice := openaiserverapi.CreateTextRespChoice(baseChoice, respText)
 
 	// Generate logprobs if requested for text completion
 	if respCtx.logprobs != nil && *respCtx.logprobs > 0 {
-		if logprobsData := common.GenerateTextLogprobs(respCtx.respTokens.Strings, *respCtx.logprobs); logprobsData != nil &&
+		if logprobsData := common.GenerateTextLogprobs(tokens.Strings, *respCtx.logprobs); logprobsData != nil &&
 			len(logprobsData.Tokens) > 0 {
 			choice.Logprobs = logprobsData
 		} else {
@@ -147,19 +144,20 @@ func (respCtx *textCompletionResponseCtx) createUsageChunk() openaiserverapi.Com
 
 // createTextCompletionChunk creates and returns a CompletionRespChunk, a single chunk of streamed completion API response,
 // for text completion.
-func (respCtx *textCompletionResponseCtx) createCompletionChunk(token string, tool *openaiserverapi.ToolCall,
+func (respCtx *textCompletionResponseCtx) createCompletionChunk(tokens []string, tool *openaiserverapi.ToolCall,
 	role string, finishReason *string) openaiserverapi.CompletionRespChunk {
 	baseChunk := openaiserverapi.CreateBaseCompletionResponse(
 		respCtx.creationTime, respCtx.displayModelName, nil, respCtx.id, false)
 	baseChunk.Object = textCompletionObject
 
-	choice := openaiserverapi.CreateTextRespChoice(openaiserverapi.CreateBaseResponseChoice(0, finishReason), token)
+	tokensStr := strings.Join(tokens, "")
+	choice := openaiserverapi.CreateTextRespChoice(openaiserverapi.CreateBaseResponseChoice(0, finishReason), tokensStr)
 
-	// Generate logprobs if requested and token is not empty
-	if respCtx.logprobs != nil && token != "" && *respCtx.logprobs > 0 {
+	// Generate logprobs if requested and tokens is not empty
+	if respCtx.logprobs != nil && len(tokens) > 0 && *respCtx.logprobs > 0 {
 		// Use token position based on current time
 		tokenPosition := int(respCtx.creationTime) % 1000 // Simple position simulation
-		logprobs := common.GenerateSingleTokenTextLogprobs(token, tokenPosition, *respCtx.logprobs)
+		logprobs := common.GenerateSingleTokenTextLogprobs(tokensStr, tokenPosition, *respCtx.logprobs)
 		if logprobs != nil {
 			choice.Logprobs = logprobs
 		}

@@ -19,7 +19,6 @@ package llmdinferencesim
 import (
 	"encoding/json"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/valyala/fasthttp"
@@ -53,10 +52,9 @@ func (c *chatCompletionRequest) validate(toolsValidator *toolsValidator) (string
 	return validateRequest(c)
 }
 
-func (c *chatCompletionRequest) buildRequestContext(simCtx *simContext, respSender responseSender,
-	wg *sync.WaitGroup) requestContext {
+func (c *chatCompletionRequest) buildRequestContext(simCtx *simContext, channel chan *responseInfo) requestContext {
 	reqCtx := &chatCompletionReqCtx{
-		baseRequestContext: newBaseRequestContext(simCtx, respSender, wg),
+		baseRequestContext: newBaseRequestContext(simCtx, channel),
 		req:                c,
 	}
 	// wire chatCompletionReqCtx into embedded requestContext interface
@@ -121,7 +119,7 @@ type chatCompletionResponseCtx struct {
 }
 
 // createResponse creates the response for chat completion requests
-func (respCtx *chatCompletionResponseCtx) createResponse() openaiserverapi.CompletionResponse {
+func (respCtx *chatCompletionResponseCtx) createResponse(tokens *openaiserverapi.Tokenized) openaiserverapi.CompletionResponse {
 	baseResp := openaiserverapi.CreateBaseCompletionResponse(
 		time.Now().Unix(), respCtx.displayModelName, respCtx.usage, respCtx.id, respCtx.remoteDecode)
 	baseChoice := openaiserverapi.CreateBaseResponseChoice(0, respCtx.finishReasonPtr)
@@ -131,7 +129,7 @@ func (respCtx *chatCompletionResponseCtx) createResponse() openaiserverapi.Compl
 	if respCtx.toolsCalls != nil {
 		message.ToolCalls = respCtx.toolsCalls
 	} else {
-		respText := strings.Join(respCtx.respTokens.Strings, "")
+		respText := strings.Join(tokens.Strings, "")
 		message.Content = openaiserverapi.Content{Raw: respText}
 	}
 
@@ -139,7 +137,7 @@ func (respCtx *chatCompletionResponseCtx) createResponse() openaiserverapi.Compl
 
 	// Generate logprobs if requested
 	if respCtx.logprobs != nil && respCtx.toolsCalls == nil {
-		if logprobsData := common.GenerateChatLogprobs(respCtx.respTokens.Strings, *respCtx.logprobs); logprobsData != nil &&
+		if logprobsData := common.GenerateChatLogprobs(tokens.Strings, *respCtx.logprobs); logprobsData != nil &&
 			len(logprobsData.Content) > 0 {
 			choice.Logprobs = logprobsData
 		} else {
@@ -164,7 +162,7 @@ func (respCtx *chatCompletionResponseCtx) createUsageChunk() openaiserverapi.Com
 
 // createChatCompletionChunk creates and returns a CompletionRespChunk, a single chunk of streamed completion
 // API response, for chat completion. It sets either role, or token, or tool call info in the message.
-func (respCtx *chatCompletionResponseCtx) createCompletionChunk(token string, tool *openaiserverapi.ToolCall,
+func (respCtx *chatCompletionResponseCtx) createCompletionChunk(tokens []string, tool *openaiserverapi.ToolCall,
 	role string, finishReason *string) openaiserverapi.CompletionRespChunk {
 	baseChunk := openaiserverapi.CreateBaseCompletionResponse(
 		respCtx.creationTime, respCtx.displayModelName, nil, respCtx.id, false)
@@ -179,14 +177,15 @@ func (respCtx *chatCompletionResponseCtx) createCompletionChunk(token string, to
 	}
 	if tool != nil {
 		chunk.Choices[0].Delta.ToolCalls = []openaiserverapi.ToolCall{*tool}
-	} else if len(token) > 0 {
-		chunk.Choices[0].Delta.Content.Raw = token
+	} else if len(tokens) > 0 {
+		tokensStr := strings.Join(tokens, "")
+		chunk.Choices[0].Delta.Content.Raw = tokensStr
 
 		// Generate logprobs if requested and token is not empty
 		if respCtx.logprobs != nil {
 			// Use token position based on current time
 			tokenPosition := int(respCtx.creationTime) % 1000 // Simple position simulation
-			logprobs := common.GenerateSingleTokenChatLogprobs(token, tokenPosition, *respCtx.logprobs)
+			logprobs := common.GenerateSingleTokenChatLogprobs(tokensStr, tokenPosition, *respCtx.logprobs)
 			if logprobs != nil {
 				chunk.Choices[0].Logprobs = &openaiserverapi.ChatLogprobs{
 					Content: []openaiserverapi.LogprobsContent{*logprobs},
@@ -200,7 +199,7 @@ func (respCtx *chatCompletionResponseCtx) createCompletionChunk(token string, to
 
 // in chat completion first chunk contains the role
 func (respCtx *chatCompletionResponseCtx) createFirstCompletionChunk() openaiserverapi.CompletionRespChunk {
-	return respCtx.createCompletionChunk("", nil, openaiserverapi.RoleAssistant, nil)
+	return respCtx.createCompletionChunk([]string{}, nil, openaiserverapi.RoleAssistant, nil)
 }
 
 func (respCtx *chatCompletionResponseCtx) toolCalls() []openaiserverapi.ToolCall {
