@@ -72,12 +72,8 @@ func (g *generationReqCtx) request() request {
 	return g.req
 }
 
-func (g *generationReqCtx) getEchoTokens() ([]uint32, []string, error) {
-	tokenisedResponse := g.req.TokenizedEchoResponse()
-	if tokenisedResponse != nil {
-		return tokenisedResponse.Tokens, tokenisedResponse.Strings, nil
-	}
-	return g.sim.tokenizer.Encode(g.req.Prompt, "")
+func (g *generationReqCtx) tokenizedPromptForEcho() (*openaiserverapi.Tokenized, error) {
+	return g.req.TokenizedPrompt(), nil
 }
 
 func (g *generationReqCtx) kvCacheOnRequestStart() (hitRate float64, oaiServerError *openaiserverapi.Error) {

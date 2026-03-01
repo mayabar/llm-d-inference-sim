@@ -48,7 +48,7 @@ type requestContext interface {
 	createToolCalls() ([]openaiserverapi.ToolCall, int, string, error)
 	handleRequest() (responseContext, *openaiserverapi.Error)
 	responseChannel() chan *responseInfo
-	getEchoTokens() ([]uint32, []string, error)
+	tokenizedPromptForEcho() (*openaiserverapi.Tokenized, error)
 }
 
 type baseRequestContext struct {
@@ -77,35 +77,32 @@ func (b *baseRequestContext) startProcessingTime() time.Time {
 func (b *baseRequestContext) tokenize() *openaiserverapi.Error {
 	req := b.request()
 
-	if tokens := req.TokenizedPrompt(); tokens != nil {
-		return nil
-	}
-
-	prompt := req.GetPrompt()
-	tokens, textTokens, err := b.sim.tokenizer.Encode(prompt, "")
-	if err != nil {
-		b.sim.logger.Error(err, "failed to tokenize")
-		serverErr := openaiserverapi.NewError("Failed to tokenize, "+err.Error(), fasthttp.StatusInternalServerError, nil)
-		return &serverErr
-	}
-
-	req.SetTokenizedPrompt(&openaiserverapi.Tokenized{
-		Tokens:  tokens,
-		Strings: textTokens,
-	})
-
-	if b.sim.config.Mode == common.ModeEcho {
-		tokens, textTokens, err = b.getEchoTokens()
+	if tokens := req.TokenizedPrompt(); tokens == nil {
+		prompt := req.GetPrompt()
+		tokens, textTokens, err := b.sim.tokenizer.Encode(prompt, "")
 		if err != nil {
-			b.sim.logger.Error(err, "failed to tokenize echo mode response")
-			serverErr := openaiserverapi.NewError("Failed to tokenize  echo mode response, "+err.Error(), fasthttp.StatusInternalServerError, nil)
+			b.sim.logger.Error(err, "failed to tokenize")
+			serverErr := openaiserverapi.NewError("Failed to tokenize, "+err.Error(), fasthttp.StatusInternalServerError, nil)
 			return &serverErr
 		}
 
-		req.SetTokenizedEchoResponse(&openaiserverapi.Tokenized{
+		req.SetTokenizedPrompt(&openaiserverapi.Tokenized{
 			Tokens:  tokens,
 			Strings: textTokens,
 		})
+	}
+
+	if b.sim.config.Mode == common.ModeEcho {
+		// in echo mode need to calculate which part of input will be sent back,
+		// e.g. in /chat/completions we send back only the last message content
+		echoTokenized, err := b.tokenizedPromptForEcho()
+		if err != nil {
+			b.sim.logger.Error(err, "failed to tokenize prompt part for echo mode")
+			serverErr := openaiserverapi.NewError("Failed to tokenize prompt part for echo mode, "+err.Error(), fasthttp.StatusInternalServerError, nil)
+			return &serverErr
+		}
+
+		req.SetTokenizedPromptForEcho(echoTokenized)
 	}
 
 	return nil

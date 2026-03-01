@@ -80,10 +80,10 @@ type Request interface {
 	TokenizedPrompt() *Tokenized
 	// SetTokenizedPrompt sets the tokenized prompt
 	SetTokenizedPrompt(tokenized *Tokenized)
-	// TokenizedEchoResponse returns the tokenized response in echo mode
-	TokenizedEchoResponse() *Tokenized
-	// SetTokenizedEchoResponse sets the tokenized response in echo mode
-	SetTokenizedEchoResponse(tokenized *Tokenized)
+	// TokenizedPromptForEcho returns the tokenized response in echo mode
+	TokenizedPromptForEcho() *Tokenized
+	// SetTokenizedPromptForEcho sets the tokenized response in echo mode
+	SetTokenizedPromptForEcho(tokenized *Tokenized)
 	// CacheThresholdFinishReason returns cacheThresholdFinishReason,  when true,
 	// forces a cache_threshold finish reason
 	CacheThresholdFinishReason() bool
@@ -116,8 +116,8 @@ type baseCompletionRequest struct {
 	cacheThresholdFinishReason bool
 	// tokenizedPrompt is the tokenized prompt
 	tokenizedPrompt *Tokenized
-	// tokenizedEchoResponse is the tokenized response in echo mode, exists only in echo mode
-	tokenizedEchoResponse *Tokenized
+	// tokenizedPromptForEcho is the tokenized part of the prompt to be used in echo mode, exists only in echo mode
+	tokenizedPromptForEcho *Tokenized
 }
 
 type KVTransferParams struct {
@@ -251,14 +251,14 @@ func (b *baseCompletionRequest) SetTokenizedPrompt(tokenized *Tokenized) {
 	b.tokenizedPrompt = tokenized
 }
 
-// TokenizedEchoResponse returns the tokenized response in echo mode
-func (b *baseCompletionRequest) TokenizedEchoResponse() *Tokenized {
-	return b.tokenizedEchoResponse
+// TokenizedPromptForEcho returns the tokenized response in echo mode
+func (b *baseCompletionRequest) TokenizedPromptForEcho() *Tokenized {
+	return b.tokenizedPromptForEcho
 }
 
-// SetTokenizedEchoResponse sets the tokenized response in echo mode
-func (b *baseCompletionRequest) SetTokenizedEchoResponse(tokenized *Tokenized) {
-	b.tokenizedEchoResponse = tokenized
+// SetTokenizedPromptForEcho sets the tokenized response in echo mode
+func (b *baseCompletionRequest) SetTokenizedPromptForEcho(tokenized *Tokenized) {
+	b.tokenizedPromptForEcho = tokenized
 }
 
 // ChatCompletionRequest defines structure of /chat/completion request
