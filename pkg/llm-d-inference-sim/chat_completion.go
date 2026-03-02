@@ -77,12 +77,16 @@ func (c *chatCompletionRequest) createResponseContext(reqCtx requestContext, dis
 	}
 }
 
-func (c *chatCompletionReqCtx) getEchoTokens() ([]uint32, []string, error) {
+func (c *chatCompletionReqCtx) tokenizedPromptForEcho() (*openaiserverapi.Tokenized, error) {
 	lastMsg := ""
 	if len(c.req.Messages) > 0 {
 		lastMsg = c.req.Messages[len(c.req.Messages)-1].Content.Raw
 	}
-	return c.sim.tokenizer.Encode(lastMsg, "")
+	tokens, strTokens, err := c.sim.tokenizer.Encode(lastMsg, "")
+	if err != nil {
+		return nil, err
+	}
+	return &openaiserverapi.Tokenized{Tokens: tokens, Strings: strTokens}, nil
 }
 
 var _ request = (*chatCompletionRequest)(nil)

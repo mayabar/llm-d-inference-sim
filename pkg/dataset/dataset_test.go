@@ -187,7 +187,7 @@ var _ = Describe("Echo Dataset", Ordered, func() {
 				Prompt: theText,
 			}
 			req.SetTokenizedPrompt(&openaiserverapi.Tokenized{Tokens: tokens, Strings: strTokens})
-			req.SetTokenizedEchoResponse(&openaiserverapi.Tokenized{Tokens: tokens, Strings: strTokens})
+			req.SetTokenizedPromptForEcho(&openaiserverapi.Tokenized{Tokens: tokens, Strings: strTokens})
 			tokens, finishReason, err := dataset.GetResponseTokens(req)
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(tokens.Strings).Should(Equal(strTokens))
@@ -200,7 +200,7 @@ var _ = Describe("Echo Dataset", Ordered, func() {
 				MaxTokens: &maxTokens,
 			}
 			req.SetTokenizedPrompt(&openaiserverapi.Tokenized{Tokens: tokens, Strings: strTokens})
-			req.SetTokenizedEchoResponse(&openaiserverapi.Tokenized{Tokens: tokens, Strings: strTokens})
+			req.SetTokenizedPromptForEcho(&openaiserverapi.Tokenized{Tokens: tokens, Strings: strTokens})
 
 			tokens, finishReason, err := dataset.GetResponseTokens(req)
 			Expect(err).ShouldNot(HaveOccurred())
@@ -214,7 +214,7 @@ var _ = Describe("Echo Dataset", Ordered, func() {
 				MaxTokens: &maxTokens,
 			}
 			req.SetTokenizedPrompt(&openaiserverapi.Tokenized{Tokens: tokens, Strings: strTokens})
-			req.SetTokenizedEchoResponse(&openaiserverapi.Tokenized{Tokens: tokens, Strings: strTokens})
+			req.SetTokenizedPromptForEcho(&openaiserverapi.Tokenized{Tokens: tokens, Strings: strTokens})
 
 			tokens, finishReason, err := dataset.GetResponseTokens(req)
 			Expect(err).ShouldNot(HaveOccurred())
@@ -235,7 +235,7 @@ var _ = Describe("Echo Dataset", Ordered, func() {
 			Expect(err).ShouldNot(HaveOccurred())
 
 			req.SetTokenizedPrompt(&openaiserverapi.Tokenized{Tokens: promptTokens, Strings: promptStrTokens})
-			req.SetTokenizedEchoResponse(&openaiserverapi.Tokenized{Tokens: respTokens, Strings: resptStrTokens})
+			req.SetTokenizedPromptForEcho(&openaiserverapi.Tokenized{Tokens: respTokens, Strings: resptStrTokens})
 
 			tokens, _, err := dataset.GetResponseTokens(req)
 			Expect(err).ShouldNot(HaveOccurred())
@@ -259,7 +259,7 @@ var _ = Describe("Echo Dataset", Ordered, func() {
 				req = &textReq
 			}
 			req.SetTokenizedPrompt(&openaiserverapi.Tokenized{Tokens: promptTokens, Strings: promptStrTokens})
-			req.SetTokenizedEchoResponse(&openaiserverapi.Tokenized{Tokens: promptTokens, Strings: promptStrTokens})
+			req.SetTokenizedPromptForEcho(&openaiserverapi.Tokenized{Tokens: promptTokens, Strings: promptStrTokens})
 
 			tokens, finishReason, err := dataset.GetResponseTokens(req)
 			Expect(err).NotTo(HaveOccurred())
