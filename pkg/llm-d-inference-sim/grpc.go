@@ -144,7 +144,6 @@ func (s *VllmSimulator) pbRequestToRequest(in *pb.GenerateRequest) *generationRe
 		prompt := &openaiserverapi.Tokenized{}
 		prompt.Tokens = in.GetTokenized().InputIds
 		req.SetTokenizedPrompt(prompt)
-		req.SetTokenizedPromptForEcho(prompt)
 	} else {
 		req.Prompt = in.GetText()
 	}
