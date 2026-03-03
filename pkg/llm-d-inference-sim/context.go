@@ -124,6 +124,12 @@ type metricsData struct {
 	requestParamsMaxTokens *prometheus.HistogramVec
 	// requestSuccessTotal is prometheus counter for total number of successful requests
 	requestSuccessTotal *prometheus.CounterVec
+	// prefixCacheHits is prometheus counter for total cached tokens (prefix cache hits)
+	prefixCacheHits *prometheus.CounterVec
+	// prefixCacheQueries is prometheus counter for total queried tokens (prefix cache queries)
+	prefixCacheQueries *prometheus.CounterVec
+	// prefixCacheStatsChan is a channel to update prefix cache hit/query counters
+	prefixCacheStatsChan chan kvcache.PrefixCacheStats
 }
 
 // LoRAs usage info for requests execution
@@ -190,7 +196,7 @@ func (s *simContext) initialize(ctx context.Context) error {
 
 	if s.config.EnableKVCache {
 		s.kvcacheHelper, err = kvcache.NewKVCacheHelper(s.config, s.logger,
-			s.metrics.kvCacheUsageChan, s.tokenizer)
+			s.metrics.kvCacheUsageChan, s.metrics.prefixCacheStatsChan, s.tokenizer)
 		if err != nil {
 			return err
 		}

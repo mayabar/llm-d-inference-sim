@@ -601,6 +601,57 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 			wg.Wait()
 		})
 
+		It("Should increment prefix cache counters for requests with shared prefixes", func() {
+			ctx := context.TODO()
+			args := []string{"cmd", "--model", qwenModelName, "--mode", common.ModeRandom,
+				"--enable-kvcache", "true", "--kv-cache-size", "64", "--block-size", "8",
+				"--time-to-first-token", "100"}
+
+			client, err := startServerWithArgsAndEnv(ctx, common.ModeRandom, args, map[string]string{"POD_IP": "localhost"})
+			Expect(err).NotTo(HaveOccurred())
+
+			openaiclient := openai.NewClient(
+				option.WithBaseURL(baseURL),
+				option.WithHTTPClient(client))
+
+			// Send requests sequentially so the cache is populated between requests
+			prompts := []string{
+				"What is the weather like in Haifa today?",
+				"What is the weather like in Haifa today? Is it cold?",
+			}
+			for _, prompt := range prompts {
+				_, err = openaiclient.Completions.New(ctx, openai.CompletionNewParams{
+					Prompt: openai.CompletionNewParamsPromptUnion{
+						OfString: openai.String(prompt),
+					},
+					Model: openai.CompletionNewParamsModel(qwenModelName),
+				})
+				Expect(err).NotTo(HaveOccurred())
+			}
+
+			time.Sleep(500 * time.Millisecond)
+			metricsResp, err := client.Get(metricsUrl)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
+
+			data, err := io.ReadAll(metricsResp.Body)
+			Expect(err).NotTo(HaveOccurred())
+			metricsLines := strings.Split(string(data), "\n")
+
+			// prefix_cache_queries should reflect total prompt tokens across both requests
+			queries := findIntMetric(metricsLines, getCountMetricPrefix(qwenModelName, prefixCacheQueriesMetricName))
+			Expect(queries).NotTo(BeNil())
+			Expect(*queries).To(BeNumerically(">", 0))
+
+			// The second request shares a prefix with the first, so hits should be non-zero
+			hits := findIntMetric(metricsLines, getCountMetricPrefix(qwenModelName, prefixCacheHitsMetricName))
+			Expect(hits).NotTo(BeNil())
+			Expect(*hits).To(BeNumerically(">", 0))
+
+			// Hits cannot exceed queries
+			Expect(*hits).To(BeNumerically("<=", *queries))
+		})
+
 		It("Should send correct kv cache config metrics", func() {
 			ctx := context.TODO()
 			args := []string{"cmd", "--model", qwenModelName, "--mode", common.ModeRandom,
@@ -641,6 +692,8 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 					`"request-params-max-tokens":[10,20,30],` +
 					`"ttft-buckets-values":[1,2,3],` +
 					`"tpot-buckets-values":[0,0,1,2,3],` +
+					`"prefix-cache-hits":750,` +
+					`"prefix-cache-queries":2000,` +
 					`"loras":[` +
 					`{` +
 					`"running":"lora4,lora2",` +
@@ -713,6 +766,9 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 			Expect(metrics).To(ContainSubstring(`vllm:request_success_total{finish_reason="remote_decode",model_name="testmodel"} 0`))
 			Expect(metrics).To(ContainSubstring(`vllm:request_success_total{finish_reason="stop",model_name="testmodel"} 20`))
 			Expect(metrics).To(ContainSubstring(`vllm:request_success_total{finish_reason="tool_calls",model_name="testmodel"} 0`))
+
+			Expect(metrics).To(ContainSubstring(getCountMetricLine(testModel, prefixCacheHitsMetricName, 750)))
+			Expect(metrics).To(ContainSubstring(getCountMetricLine(testModel, prefixCacheQueriesMetricName, 2000)))
 		})
 		It("Should use TotalPromptTokens and TotalGenerationTokens if provided", func() {
 			ctx := context.TODO()
@@ -745,6 +801,67 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 			// Verify that the explicit totals are used
 			Expect(metrics).To(MatchRegexp(`vllm:prompt_tokens_total{model_name="testmodel"} 12345`))
 			Expect(metrics).To(MatchRegexp(`vllm:generation_tokens_total{model_name="testmodel"} 67890`))
+		})
+	})
+
+	Context("fake prefix cache metrics", func() {
+		It("Should respond with fake prefix cache metrics to /metrics", func() {
+			ctx := context.TODO()
+			args := []string{"cmd", "--model", testModel, "--mode", common.ModeRandom,
+				"--fake-metrics",
+				`{"prefix-cache-hits":500,"prefix-cache-queries":1000}`,
+			}
+
+			client, err := startServerWithArgs(ctx, args)
+			Expect(err).NotTo(HaveOccurred())
+
+			resp, err := client.Get(metricsUrl)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+			data, err := io.ReadAll(resp.Body)
+			Expect(err).NotTo(HaveOccurred())
+			metrics := string(data)
+			Expect(metrics).To(ContainSubstring(getCountMetricLine(testModel, prefixCacheQueriesMetricName, 1000)))
+			Expect(metrics).To(ContainSubstring(getCountMetricLine(testModel, prefixCacheHitsMetricName, 500)))
+		})
+
+		It("Should not update prefix cache counters from real requests when fake metrics are set", func() {
+			ctx := context.TODO()
+			args := []string{"cmd", "--model", qwenModelName, "--mode", common.ModeRandom,
+				"--enable-kvcache", "true", "--kv-cache-size", "16", "--block-size", "8",
+				"--fake-metrics",
+				`{"prefix-cache-hits":100,"prefix-cache-queries":200}`,
+			}
+
+			client, err := startServerWithArgsAndEnv(ctx, common.ModeRandom, args, map[string]string{"POD_IP": "localhost"})
+			Expect(err).NotTo(HaveOccurred())
+
+			openaiclient := openai.NewClient(
+				option.WithBaseURL(baseURL),
+				option.WithHTTPClient(client))
+
+			// Send a request — counters should not change from the fake values
+			_, err = openaiclient.Completions.New(ctx, openai.CompletionNewParams{
+				Prompt: openai.CompletionNewParamsPromptUnion{
+					OfString: openai.String("What is the weather like in Haifa today?"),
+				},
+				Model: openai.CompletionNewParamsModel(qwenModelName),
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			time.Sleep(500 * time.Millisecond)
+
+			resp, err := client.Get(metricsUrl)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+			data, err := io.ReadAll(resp.Body)
+			Expect(err).NotTo(HaveOccurred())
+			metrics := string(data)
+			// Fake values should be unchanged — reportPrefixCacheStats returns early when FakeMetrics is set
+			Expect(metrics).To(ContainSubstring(getCountMetricLine(qwenModelName, prefixCacheQueriesMetricName, 200)))
+			Expect(metrics).To(ContainSubstring(getCountMetricLine(qwenModelName, prefixCacheHitsMetricName, 100)))
 		})
 	})
 

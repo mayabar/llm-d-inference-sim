@@ -29,6 +29,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
+	kvcache "github.com/llm-d/llm-d-inference-sim/pkg/kv-cache"
 	vllmapi "github.com/llm-d/llm-d-inference-sim/pkg/vllm-api"
 )
 
@@ -53,6 +54,8 @@ const (
 	reqWaitingMetricName             = "vllm:num_requests_waiting"
 	kvCacheUsageMetricName           = "vllm:kv_cache_usage_perc"
 	cacheConfigName                  = "vllm:cache_config_info"
+	prefixCacheHitsMetricName        = "vllm:prefix_cache_hits"
+	prefixCacheQueriesMetricName     = "vllm:prefix_cache_queries"
 )
 
 // createAndRegisterPrometheus creates and registers prometheus metrics used by vLLM simulator
@@ -271,6 +274,35 @@ func (s *simContext) createAndRegisterPrometheus(ctx context.Context) error {
 	s.metrics.kvCacheUsageChan = make(chan float64, maxNumberOfRequests)
 	go s.kvCacheUsageUpdater(ctx)
 
+	s.metrics.prefixCacheHits = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Subsystem: "",
+			Name:      prefixCacheHitsMetricName,
+			Help:      "Prefix cache hits, in terms of number of cached tokens.",
+		},
+		[]string{vllmapi.PromLabelModelName},
+	)
+	if err := s.metrics.registry.Register(s.metrics.prefixCacheHits); err != nil {
+		s.logger.Error(err, "prometheus prefix_cache_hits counter register failed")
+		return err
+	}
+
+	s.metrics.prefixCacheQueries = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Subsystem: "",
+			Name:      prefixCacheQueriesMetricName,
+			Help:      "Prefix cache queries, in terms of number of queried tokens.",
+		},
+		[]string{vllmapi.PromLabelModelName},
+	)
+	if err := s.metrics.registry.Register(s.metrics.prefixCacheQueries); err != nil {
+		s.logger.Error(err, "prometheus prefix_cache_queries counter register failed")
+		return err
+	}
+
+	s.metrics.prefixCacheStatsChan = make(chan kvcache.PrefixCacheStats, maxNumberOfRequests)
+	go s.prefixCacheStatsUpdater(ctx)
+
 	s.metrics.requestPromptTokens = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Subsystem: "",
@@ -457,6 +489,12 @@ func (s *simContext) setInitialPrometheusMetrics(cacheConfig *prometheus.GaugeVe
 		if s.config.FakeMetrics.ReqDecodeTimeBucketValues != nil {
 			s.initFakeHistogram(s.metrics.reqDecodeTime, common.RequestLatencyBucketsBoundaries, s.config.FakeMetrics.ReqDecodeTimeBucketValues)
 		}
+		if s.config.FakeMetrics.PrefixCacheQueries != nil {
+			s.metrics.prefixCacheQueries.WithLabelValues(modelName).Add(float64(*s.config.FakeMetrics.PrefixCacheQueries))
+		}
+		if s.config.FakeMetrics.PrefixCacheHits != nil {
+			s.metrics.prefixCacheHits.WithLabelValues(modelName).Add(float64(*s.config.FakeMetrics.PrefixCacheHits))
+		}
 	}
 
 	s.metrics.runningRequests.WithLabelValues(modelName).Set(nRunningReqs)
@@ -618,6 +656,32 @@ func (s *simContext) kvCacheUsageUpdater(ctx context.Context) {
 		case value := <-s.metrics.kvCacheUsageChan:
 			s.reportKVCacheUsage(value)
 		}
+	}
+}
+
+// prefixCacheStatsUpdater increments prefix cache hit/query counters by listening on the relevant channel
+func (s *simContext) prefixCacheStatsUpdater(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case stats := <-s.metrics.prefixCacheStatsChan:
+			s.reportPrefixCacheStats(stats)
+		}
+	}
+}
+
+// reportPrefixCacheStats increments the prefix cache counters
+func (s *simContext) reportPrefixCacheStats(stats kvcache.PrefixCacheStats) {
+	if s.config.FakeMetrics != nil {
+		return
+	}
+	modelName := s.getDisplayedModelName(s.config.Model)
+	if s.metrics.prefixCacheQueries != nil {
+		s.metrics.prefixCacheQueries.WithLabelValues(modelName).Add(float64(stats.QueriedTokens))
+	}
+	if s.metrics.prefixCacheHits != nil {
+		s.metrics.prefixCacheHits.WithLabelValues(modelName).Add(float64(stats.CachedTokens))
 	}
 }
 

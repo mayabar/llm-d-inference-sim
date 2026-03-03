@@ -556,6 +556,36 @@ var _ = Describe("Simulator configuration", func() {
 			expectedError: "fake metrics request-max-generation-tokens cannot contain negative values",
 		},
 		{
+			name: "invalid fake metrics: negative prefix-cache-hits",
+			args: []string{"cmd", "--fake-metrics", "{\"prefix-cache-hits\":-5,\"prefix-cache-queries\":10}",
+				"--config", "../../manifests/config.yaml"},
+			expectedError: "fake metrics prefix-cache-hits cannot be negative",
+		},
+		{
+			name: "invalid fake metrics: negative prefix-cache-queries",
+			args: []string{"cmd", "--fake-metrics", "{\"prefix-cache-hits\":0,\"prefix-cache-queries\":-1}",
+				"--config", "../../manifests/config.yaml"},
+			expectedError: "fake metrics prefix-cache-queries cannot be negative",
+		},
+		{
+			name: "invalid fake metrics: prefix-cache-hits without prefix-cache-queries",
+			args: []string{"cmd", "--fake-metrics", "{\"prefix-cache-hits\":100}",
+				"--config", "../../manifests/config.yaml"},
+			expectedError: "fake metrics prefix-cache-hits and prefix-cache-queries must be specified together",
+		},
+		{
+			name: "invalid fake metrics: prefix-cache-queries without prefix-cache-hits",
+			args: []string{"cmd", "--fake-metrics", "{\"prefix-cache-queries\":100}",
+				"--config", "../../manifests/config.yaml"},
+			expectedError: "fake metrics prefix-cache-hits and prefix-cache-queries must be specified together",
+		},
+		{
+			name: "invalid fake metrics: prefix-cache-hits exceeds prefix-cache-queries",
+			args: []string{"cmd", "--fake-metrics", "{\"prefix-cache-hits\":100,\"prefix-cache-queries\":50}",
+				"--config", "../../manifests/config.yaml"},
+			expectedError: "fake metrics prefix-cache-hits cannot exceed prefix-cache-queries",
+		},
+		{
 			name: "invalid echo mode with dataset",
 			args: []string{"cmd", "--model", "test", "--dataset-path", "my/path",
 				"--mode", "echo"},

@@ -316,6 +316,11 @@ type Metrics struct {
 	ReqPrefillTimeBucketValues []int `yaml:"prefill-time-buckets-values" json:"prefill-time-buckets-values"`
 	// ReqDecodeTimeBucketValues is an array of values for request decode time buckets.
 	ReqDecodeTimeBucketValues []int `yaml:"decode-time-buckets-values" json:"decode-time-buckets-values"`
+
+	// PrefixCacheHits is the initial value for the prefix cache hits counter (in tokens)
+	PrefixCacheHits *int64 `yaml:"prefix-cache-hits" json:"prefix-cache-hits,omitempty"`
+	// PrefixCacheQueries is the initial value for the prefix cache queries counter (in tokens)
+	PrefixCacheQueries *int64 `yaml:"prefix-cache-queries" json:"prefix-cache-queries,omitempty"`
 }
 
 type LorasMetrics struct {
@@ -688,6 +693,19 @@ func (c *Configuration) validate() error {
 			if v < 0 {
 				return errors.New("fake metrics decode-time-buckets-values cannot contain negative values")
 			}
+		}
+		if c.FakeMetrics.PrefixCacheHits != nil && *c.FakeMetrics.PrefixCacheHits < 0 {
+			return errors.New("fake metrics prefix-cache-hits cannot be negative")
+		}
+		if c.FakeMetrics.PrefixCacheQueries != nil && *c.FakeMetrics.PrefixCacheQueries < 0 {
+			return errors.New("fake metrics prefix-cache-queries cannot be negative")
+		}
+		if (c.FakeMetrics.PrefixCacheHits == nil) != (c.FakeMetrics.PrefixCacheQueries == nil) {
+			return errors.New("fake metrics prefix-cache-hits and prefix-cache-queries must be specified together")
+		}
+		if c.FakeMetrics.PrefixCacheHits != nil && c.FakeMetrics.PrefixCacheQueries != nil &&
+			*c.FakeMetrics.PrefixCacheHits > *c.FakeMetrics.PrefixCacheQueries {
+			return errors.New("fake metrics prefix-cache-hits cannot exceed prefix-cache-queries")
 		}
 	}
 

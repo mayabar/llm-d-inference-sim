@@ -28,16 +28,26 @@ import (
 	"github.com/llm-d/llm-d-kv-cache-manager/pkg/kvcache/kvblock"
 )
 
+// PrefixCacheStats holds token-level prefix cache statistics for a single request,
+// matching vLLM's PrefixCacheStats semantics where both fields count tokens.
+type PrefixCacheStats struct {
+	// QueriedTokens is the total number of prompt tokens checked against the cache
+	QueriedTokens int
+	// CachedTokens is the number of prompt tokens that were already cached
+	CachedTokens int
+}
+
 type KVCacheHelper struct {
-	tokenizer       tokenizer.Tokenizer
-	tokensProcessor kvblock.TokenProcessor // turns tokens to kv block keys
-	logger          logr.Logger
-	blockCache      *blockCache
-	blockSize       int
+	tokenizer            tokenizer.Tokenizer
+	tokensProcessor      kvblock.TokenProcessor // turns tokens to kv block keys
+	logger               logr.Logger
+	blockCache           *blockCache
+	blockSize            int
+	prefixCacheStatsChan chan PrefixCacheStats
 }
 
 func NewKVCacheHelper(config *common.Configuration, logger logr.Logger, usageChan chan float64,
-	tokenizer tokenizer.Tokenizer) (*KVCacheHelper, error) {
+	prefixCacheStatsChan chan PrefixCacheStats, tokenizer tokenizer.Tokenizer) (*KVCacheHelper, error) {
 	tokenProcConfig := kvblock.DefaultTokenProcessorConfig()
 	tokenProcConfig.BlockSize = config.TokenBlockSize
 	if config.HashSeed != "" {
@@ -50,11 +60,12 @@ func NewKVCacheHelper(config *common.Configuration, logger logr.Logger, usageCha
 		return nil, fmt.Errorf("failed to create block cache: %w", err)
 	}
 	return &KVCacheHelper{
-		tokenizer:       tokenizer,
-		tokensProcessor: tokensProcessor,
-		blockCache:      blockCache,
-		logger:          logger,
-		blockSize:       config.TokenBlockSize,
+		tokenizer:            tokenizer,
+		tokensProcessor:      tokensProcessor,
+		blockCache:           blockCache,
+		logger:               logger,
+		blockSize:            config.TokenBlockSize,
+		prefixCacheStatsChan: prefixCacheStatsChan,
 	}, nil
 }
 
@@ -94,7 +105,8 @@ func (h *KVCacheHelper) OnRequestStart(vllmReq openaiserverapi.Request) (float64
 		return 0, err
 	}
 
-	vllmReq.SetNumberOfCachedPromptTokens(nBlocksAlreadyInCache * h.blockSize)
+	cachedTokens := nBlocksAlreadyInCache * h.blockSize
+	vllmReq.SetNumberOfCachedPromptTokens(cachedTokens)
 
 	totalBlocks := len(blockHashes)
 	cachedBlocks := h.blockCache.countCachedBlockPrefix(blockHashes)
@@ -102,6 +114,13 @@ func (h *KVCacheHelper) OnRequestStart(vllmReq openaiserverapi.Request) (float64
 	var hitRate float64
 	if totalBlocks > 0 {
 		hitRate = float64(cachedBlocks) / float64(totalBlocks)
+	}
+
+	if h.prefixCacheStatsChan != nil {
+		common.WriteToChannel(h.prefixCacheStatsChan, PrefixCacheStats{
+			QueriedTokens: len(tokens),
+			CachedTokens:  cachedTokens,
+		}, h.logger, "prefixCacheStatsChan")
 	}
 
 	return hitRate, nil
