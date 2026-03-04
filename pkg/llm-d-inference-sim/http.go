@@ -53,6 +53,7 @@ func (s *VllmSimulator) startServer(ctx context.Context, listener net.Listener) 
 	// support completion APIs
 	r.POST("/v1/chat/completions", s.HandleChatCompletions)
 	r.POST("/v1/completions", s.HandleTextCompletions)
+	r.POST("/v1/embeddings", s.HandleEmbeddings)
 	// supports /models API
 	r.GET("/v1/models", s.HandleModels)
 	// support load/unload of lora adapter
@@ -131,6 +132,104 @@ func (s *VllmSimulator) HandleChatCompletions(ctx *fasthttp.RequestCtx) {
 // HandleTextCompletions http handler for /v1/completions
 func (s *VllmSimulator) HandleTextCompletions(ctx *fasthttp.RequestCtx) {
 	s.handleHTTP(&textCompletionRequest{}, ctx)
+}
+
+// HandleEmbeddings http handler for /v1/embeddings (OpenAI-compatible).
+// Supports input: string, []string, []number (token ids), [][]number; encoding_format: "float" or "base64".
+func (s *VllmSimulator) HandleEmbeddings(ctx *fasthttp.RequestCtx) {
+	s.context.logger.V(logging.TRACE).Info("Embeddings request received")
+	var req openaiserverapi.EmbeddingRequest
+	if err := json.Unmarshal(ctx.Request.Body(), &req); err != nil {
+		s.context.logger.Error(err, "failed to unmarshal embeddings request body")
+		errToSend := openaiserverapi.NewError("Failed to read and parse request body, "+err.Error(), fasthttp.StatusBadRequest, nil)
+		s.sendError(ctx, &errToSend, false)
+		return
+	}
+	if req.Input.Len() == 0 {
+		errToSend := openaiserverapi.NewError("input is required and must be a non-empty string or array", fasthttp.StatusBadRequest, nil)
+		s.sendError(ctx, &errToSend, false)
+		return
+	}
+	model := req.Model
+	if model == "" {
+		model = s.context.config.Model
+	}
+	dim := s.context.config.DefaultEmbeddingDimensions
+	if req.Dimensions != nil {
+		if *req.Dimensions < 1 {
+			errToSend := openaiserverapi.NewError("dimensions must be at least 1", fasthttp.StatusBadRequest, nil)
+			s.sendError(ctx, &errToSend, false)
+			return
+		}
+		dim = *req.Dimensions
+	}
+	useBase64 := req.EncodingFormat == "base64"
+
+	var data []openaiserverapi.EmbeddingDataItem
+	var totalTokens int
+
+	if req.Input.IsTokenInput() {
+		for i, tokIDs := range req.Input.TokenInputs() {
+			tokens := make([]uint32, len(tokIDs))
+			for j, id := range tokIDs {
+				if id < 0 {
+					id = 0
+				}
+				tokens[j] = uint32(id)
+			}
+			totalTokens += len(tokens)
+			embedding := buildStubEmbedding(tokens, dim)
+			item := openaiserverapi.EmbeddingDataItem{Object: "embedding", Index: i}
+			if useBase64 {
+				item.Embedding = openaiserverapi.EncodeEmbeddingBase64(embedding)
+			} else {
+				item.Embedding = embedding
+			}
+			data = append(data, item)
+		}
+	} else {
+		for i, text := range req.Input.TextInputs() {
+			if text == "" {
+				errToSend := openaiserverapi.NewError("input cannot be an empty string", fasthttp.StatusBadRequest, nil)
+				s.sendError(ctx, &errToSend, false)
+				return
+			}
+			tokens, _, err := s.context.tokenizer.Encode(text, model)
+			if err != nil {
+				s.context.logger.Error(err, "failed to tokenize embedding input")
+				ctx.Error("Failed to tokenize input, "+err.Error(), fasthttp.StatusInternalServerError)
+				return
+			}
+			totalTokens += len(tokens)
+			embedding := buildStubEmbedding(tokens, dim)
+			item := openaiserverapi.EmbeddingDataItem{Object: "embedding", Index: i}
+			if useBase64 {
+				item.Embedding = openaiserverapi.EncodeEmbeddingBase64(embedding)
+			} else {
+				item.Embedding = embedding
+			}
+			data = append(data, item)
+		}
+	}
+
+	resp := openaiserverapi.EmbeddingResponse{
+		Object: "list",
+		Data:   data,
+		Model:  model,
+		Usage: openaiserverapi.EmbeddingResponseUsage{
+			PromptTokens: totalTokens,
+			TotalTokens:  totalTokens,
+		},
+	}
+	out, err := json.Marshal(resp)
+	if err != nil {
+		s.context.logger.Error(err, "failed to marshal embeddings response")
+		ctx.Error("Response body creation failed, "+err.Error(), fasthttp.StatusInternalServerError)
+		return
+	}
+	ctx.Response.Header.SetContentType("application/json")
+	ctx.Response.Header.SetStatusCode(fasthttp.StatusOK)
+	ctx.Response.SetBody(out)
 }
 
 func (s *VllmSimulator) handleHTTP(req request, ctx *fasthttp.RequestCtx) {
