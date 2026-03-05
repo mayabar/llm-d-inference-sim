@@ -55,6 +55,7 @@ const (
 )
 
 var userMsgTokens int64
+var userMsgChatTokens int64
 
 // Starts server in the given mode, no additional arguments or environment variables
 func startServer(ctx context.Context, mode string) (*http.Client, error) {
@@ -95,7 +96,6 @@ func startServerHelper(ctx context.Context, mode string, args []string, envs map
 	} else {
 		os.Args = []string{"cmd", "--model", testModel, "--mode", mode}
 	}
-	os.Args = append(os.Args, "--tokenizers-cache-dir", tokenizerTmpDir)
 
 	if envs != nil {
 		for k, v := range envs {
@@ -131,11 +131,17 @@ func startServerHelper(ctx context.Context, mode string, args []string, envs map
 	s.context.tokenizer = tokenizer
 
 	// calculate number of tokens for user message,
-	_, tokens, err := s.context.tokenizer.Encode(testUserMessage, "")
+	tokens, _, err := s.context.tokenizer.RenderText(testUserMessage)
 	if err != nil {
 		return nil, nil, err
 	}
 	userMsgTokens = int64(len(tokens))
+	// calculate number of tokens for user message as chat/completions
+	tokens, _, err = s.context.tokenizer.RenderChatCompletion([]openaiserverapi.Message{{Role: openaiserverapi.RoleUser, Content: openaiserverapi.Content{Raw: testUserMessage}}})
+	if err != nil {
+		return nil, nil, err
+	}
+	userMsgChatTokens = int64(len(tokens))
 
 	if err := s.initializeSim(ctx); err != nil {
 		return nil, nil, err
@@ -572,4 +578,17 @@ func checkSimSleeping(client *http.Client, expectedToSleep bool) {
 
 func ptr[T any](v T) *T {
 	return &v
+}
+
+func getChatPromptTokensCount(model, message string) int64 {
+	var tknzr tokenizer.Tokenizer
+	var err error
+
+	tknzr, err = tokenizer.New(model, false)
+	gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	tokens, _, err := tknzr.RenderChatCompletion([]openaiserverapi.Message{{Role: openaiserverapi.RoleUser, Content: openaiserverapi.Content{Raw: message}}})
+	gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
+
+	return int64(len(tokens))
 }

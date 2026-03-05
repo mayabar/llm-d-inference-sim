@@ -50,6 +50,8 @@ type requestContext interface {
 	responseChannel() chan *responseInfo
 	tokenizedPromptForEcho() (*openaiserverapi.Tokenized, error)
 	responseBuilder() responseBuilder
+	encode() ([]uint32, []string, error)
+	getEchoTokens() ([]uint32, []string, error)
 }
 
 type baseRequestContext struct {
@@ -85,8 +87,8 @@ func (b *baseRequestContext) tokenize() *openaiserverapi.Error {
 	req := b.request()
 
 	if tokens := req.TokenizedPrompt(); tokens == nil {
-		prompt := req.GetPrompt()
-		tokens, textTokens, err := b.sim.tokenizer.Encode(prompt, "")
+		// the prompt is still not tokenized - tokenize now
+		tokens, textTokens, err := b.encode()
 		if err != nil {
 			b.sim.logger.Error(err, "failed to tokenize")
 			serverErr := openaiserverapi.NewError("Failed to tokenize, "+err.Error(), fasthttp.StatusInternalServerError, nil)
@@ -101,7 +103,7 @@ func (b *baseRequestContext) tokenize() *openaiserverapi.Error {
 
 	if b.sim.config.Mode == common.ModeEcho {
 		// in echo mode need to calculate which part of input will be sent back,
-		// e.g. in /chat/completions we send back only the last message content
+		// e.g. in /chat/completions we send back only the last message's content
 		echoTokenized, err := b.tokenizedPromptForEcho()
 		if err != nil {
 			b.sim.logger.Error(err, "failed to tokenize prompt part for echo mode")

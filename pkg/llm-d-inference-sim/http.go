@@ -497,7 +497,14 @@ func (s *VllmSimulator) HandleTokenize(ctx *fasthttp.RequestCtx) {
 		return
 	}
 	// Model is optional, if not set, the model from the configuration will be used
-	tokens, _, err := s.context.tokenizer.Encode(req.GetPrompt(), req.Model)
+	var tokens []uint32
+
+	if req.Prompt != "" {
+		tokens, _, err = s.context.tokenizer.RenderText(req.Prompt)
+	} else {
+		// has messages
+		tokens, _, err = s.context.tokenizer.RenderChatCompletion(req.Messages)
+	}
 	if err != nil {
 		s.context.logger.Error(err, "failed to tokenize")
 		ctx.Error("Failed to tokenize, "+err.Error(), fasthttp.StatusInternalServerError)
