@@ -194,7 +194,7 @@ func (s *VllmSimulator) HandleEmbeddings(ctx *fasthttp.RequestCtx) {
 				s.sendError(ctx, &errToSend, false)
 				return
 			}
-			tokens, _, err := s.context.tokenizer.Encode(text, model)
+			tokens, _, err := s.context.tokenizer.RenderText(text)
 			if err != nil {
 				s.context.logger.Error(err, "failed to tokenize embedding input")
 				ctx.Error("Failed to tokenize input, "+err.Error(), fasthttp.StatusInternalServerError)

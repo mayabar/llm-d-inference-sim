@@ -80,7 +80,7 @@ func (c *chatCompletionReqCtx) tokenizedPromptForEcho() (*openaiserverapi.Tokeni
 	if len(c.req.Messages) > 0 {
 		lastMsg = c.req.Messages[len(c.req.Messages)-1].Content.Raw
 	}
-	tokens, strTokens, err := c.sim.tokenizer.Encode(lastMsg, "")
+	tokens, strTokens, err := c.sim.tokenizer.RenderText(lastMsg)
 	if err != nil {
 		return nil, err
 	}

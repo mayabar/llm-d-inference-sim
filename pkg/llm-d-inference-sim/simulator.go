@@ -125,7 +125,7 @@ func Create(ctx context.Context, config *common.Configuration, logger logr.Logge
 		logger.Error(err, "failed to initialize dataset")
 		return nil, err
 	}
-	tokenizer, err := tokenizer.New(config, logger)
+	tokenizer, err := tokenizer.New(ctx, config, logger)
 	if err != nil {
 		logger.Error(err, "failed to initialize tokenizer")
 		return nil, err

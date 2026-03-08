@@ -123,7 +123,7 @@ func startServerHelper(ctx context.Context, mode string, args []string, envs map
 	}
 	s.context.config = config
 
-	tokenizer, err := tokenizer.New(config, logger)
+	tokenizer, err := tokenizer.New(ctx, config, logger)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -584,7 +584,7 @@ func getChatPromptTokensCount(model, message string) int64 {
 	var tknzr tokenizer.Tokenizer
 	var err error
 
-	tknzr, err = tokenizer.New(model, false)
+	tknzr, err = tokenizer.New(context.Background(), &common.Configuration{Model: model}, klog.Background())
 	gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 
 	tokens, _, err := tknzr.RenderChatCompletion([]openaiserverapi.Message{{Role: openaiserverapi.RoleUser, Content: openaiserverapi.Content{Raw: message}}})
