@@ -48,18 +48,15 @@ func main() {
 		return
 	}
 
-	simulators, err := vllmsim.Create(ctx, config, logger)
+	simulators, err := vllmsim.Start(ctx, config, logger)
 	if err != nil {
 		logger.Error(err, "failed to create vLLM simulator")
 	}
 
 	for _, sim := range simulators {
-		comm := communication.New(logger, sim)
-		comm.Start()
+		if err := communication.Start(ctx, logger, sim); err != nil {
+			logger.Error(err, "failed to start communication layer")
+			return
+		}
 	}
-
-	if err := vllmsim.Start(ctx, simulators); err != nil {
-		logger.Error(err, "vLLM simulator failed")
-	}
-
 }
