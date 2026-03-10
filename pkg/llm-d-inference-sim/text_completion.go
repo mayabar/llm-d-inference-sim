@@ -74,7 +74,7 @@ func (t *textCompletionReqCtx) request() Request {
 }
 
 func (t *textCompletionReqCtx) encode() ([]uint32, []string, error) {
-	return t.sim.tokenizer.RenderText(t.req.Prompt)
+	return t.sim.Tokenizer.RenderText(t.req.Prompt)
 }
 
 func (t *textCompletionReqCtx) kvCacheOnRequestStart() (hitRate float64, oaiServerError *openaiserverapi.Error) {
@@ -107,7 +107,7 @@ func (t *textCompletionReqCtx) tokenizedPromptForEcho() (*openaiserverapi.Tokeni
 }
 
 func (t *textCompletionReqCtx) getEchoTokens() ([]uint32, []string, error) {
-	return t.sim.tokenizer.RenderText(t.req.Prompt)
+	return t.sim.Tokenizer.RenderText(t.req.Prompt)
 }
 
 var _ requestContext = (*textCompletionReqCtx)(nil)
