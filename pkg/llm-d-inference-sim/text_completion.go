@@ -74,6 +74,10 @@ func (t *textCompletionReqCtx) request() Request {
 	return t.req
 }
 
+func (t *textCompletionReqCtx) encode() ([]uint32, []string, error) {
+	return t.sim.Tokenizer.RenderText(t.req.Prompt)
+}
+
 func (t *textCompletionReqCtx) kvCacheOnRequestStart() (hitRate float64, oaiServerError *openaiserverapi.Error) {
 	if t.sim.Config.EnableKVCache {
 		var err error
