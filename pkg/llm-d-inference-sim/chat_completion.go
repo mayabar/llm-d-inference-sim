@@ -103,14 +103,6 @@ func (c *chatCompletionReqCtx) encode() ([]uint32, []string, error) {
 	return c.sim.Tokenizer.RenderChatCompletion(c.req.Messages)
 }
 
-func (c *chatCompletionReqCtx) kvCacheOnRequestStart() (hitRate float64, oaiServerError *openaiserverapi.Error) {
-	// kv cache is currently supported for /completion API only
-	return 0, nil
-}
-
-func (c *chatCompletionReqCtx) kvCacheOnRequestEnd() {
-}
-
 func (c *chatCompletionReqCtx) createToolCalls() ([]openaiserverapi.ToolCall, int, string, error) {
 	req := c.request()
 	if !isToolChoiceNone(req.GetToolChoice()) &&
