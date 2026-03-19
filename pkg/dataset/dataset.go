@@ -66,6 +66,54 @@ func (ed *EchoDataset) Close() error {
 	return nil
 }
 
+type MMEncoderOnlyDataset struct {
+	tokens openaiserverapi.Tokenized
+}
+
+func NewMMEncoderOnlyDataset(logger logr.Logger, tokenizer tokenizer.Tokenizer) (*MMEncoderOnlyDataset, error) {
+	tokens, textTokens, err := tokenizer.RenderText("!")
+	if err != nil {
+		logger.Error(err, "failed to tokenize")
+		return nil, err
+	}
+	mmEncoderResponse := openaiserverapi.Tokenized{
+		Tokens:  tokens,
+		Strings: textTokens,
+	}
+	return &MMEncoderOnlyDataset{
+		tokens: mmEncoderResponse,
+	}, nil
+}
+
+// GetResponseTokens returns response tokens when simulator is in mm-encoder-only mode
+// The returned content is '!'. If max_tokens is greater than 1, we return a sequence of '!' of this length.
+func (mm *MMEncoderOnlyDataset) GetResponseTokens(req openaiserverapi.Request) (*openaiserverapi.Tokenized, string, error) {
+	maxTokens := req.GetMaxCompletionTokens()
+	numOfTokens := 1
+	if maxTokens != nil {
+		numOfTokens = int(*maxTokens)
+	}
+
+	token := mm.tokens.Tokens[0]
+	str := mm.tokens.Strings[0]
+
+	result := openaiserverapi.Tokenized{
+		Tokens:  make([]uint32, numOfTokens),
+		Strings: make([]string, numOfTokens),
+	}
+
+	for i := range numOfTokens {
+		result.Tokens[i] = token
+		result.Strings[i] = str
+	}
+
+	return &result, common.LengthFinishReason, nil
+}
+
+func (mm *MMEncoderOnlyDataset) Close() error {
+	return nil
+}
+
 type DefaultDataset struct {
 	logger             logr.Logger
 	maxModelLen        int
@@ -174,7 +222,7 @@ func (d DefaultDataset) generatePresetRandomTokens(numOfTokens int) openaiserver
 		remaining := numOfTokens - len(result.Tokens)
 
 		if len(tokens) > remaining {
-			// there is too many tokens, append only the relevant part
+			// there are too many tokens, append only the relevant part
 			tokens = tokens[:remaining]
 			strTokens = strTokens[:remaining]
 		}

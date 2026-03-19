@@ -97,7 +97,9 @@ func (s *SimContext) initialize(ctx context.Context) error {
 		return err
 	}
 
-	if s.Config.EnableKVCache {
+	// KVCache doesn't support images at the moment, so in mm-encoder only mode
+	// we don't start it.
+	if s.Config.EnableKVCache && !s.Config.MMEncoderOnly {
 		s.kvcacheHelper, err = kvcache.NewKVCacheHelper(s.Config, s.logger,
 			s.metrics.kvCacheUsageChan, s.metrics.prefixCacheStatsChan, s.Tokenizer)
 		if err != nil {
@@ -116,6 +118,15 @@ func (s *SimContext) initialize(ctx context.Context) error {
 }
 
 func (s *SimContext) initDataset(ctx context.Context) error {
+	if s.Config.MMEncoderOnly {
+		var err error
+		s.dataset, err = dataset.NewMMEncoderOnlyDataset(s.logger, s.Tokenizer)
+		if err != nil {
+			return fmt.Errorf("failed to initialize dataset for mm-encoder-only mode: %w", err)
+		}
+		return nil
+	}
+
 	if s.Config.Mode == common.ModeEcho {
 		s.dataset = &dataset.EchoDataset{}
 		return nil
