@@ -23,17 +23,15 @@ import (
 	"time"
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
-	"github.com/llm-d/llm-d-kv-cache/pkg/kvcache/kvblock"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
 const (
-	req1ID           = "req1"
-	req2ID           = "req2"
-	req3ID           = "req3"
-	wildcardEndpoint = "tcp://*:*"
-	localhost        = "localhost"
+	req1ID    = "req1"
+	req2ID    = "req2"
+	req3ID    = "req3"
+	localhost = "127.0.0.1"
 )
 
 type ActionType int
@@ -45,7 +43,7 @@ const (
 
 type testRequest struct {
 	id          string
-	blockHashes []kvblock.BlockHash
+	blockHashes []uint64
 	tokens      [][]uint32
 }
 
@@ -62,7 +60,7 @@ type testAction struct {
 	expectedActiveRequests int
 	expectedTotalBlocks    int
 	expectedUnusedBlocks   int
-	expectedBlocksInfo     map[kvblock.BlockHash]expectedBlockInfo
+	expectedBlocksInfo     map[uint64]expectedBlockInfo
 }
 
 func newStartAction(request testRequest) testAction {
@@ -87,7 +85,7 @@ func newInvalidTestAction(action ActionType, request testRequest, errMsg string)
 	}
 }
 func newTestActionWithExpectedValues(action ActionType, request testRequest, expectedActiveRequests int,
-	expectedTotalBlocks int, expectedUnusedBlocks int, expectedBlocksInfo map[kvblock.BlockHash]expectedBlockInfo) testAction {
+	expectedTotalBlocks int, expectedUnusedBlocks int, expectedBlocksInfo map[uint64]expectedBlockInfo) testAction {
 	return testAction{
 		action:                 action,
 		request:                request,
@@ -124,10 +122,10 @@ var _ = Describe("KV cache", Ordered, func() {
 	Context("general tests", func() {
 		// check single request processing, ensure cache is valid after request processing started
 		// and after the processing was finished
-		req1 := testRequest{req1ID, []kvblock.BlockHash{1, 2}, [][]uint32{{1}, {2}}}
-		req2 := testRequest{req2ID, []kvblock.BlockHash{3, 4}, [][]uint32{{3}, {4}}}
-		req2_1 := testRequest{req2ID, []kvblock.BlockHash{1, 3}, [][]uint32{{1}, {3}}}
-		req3 := testRequest{req3ID, []kvblock.BlockHash{5, 6}, [][]uint32{{5}, {6}}}
+		req1 := testRequest{req1ID, []uint64{1, 2}, [][]uint32{{1}, {2}}}
+		req2 := testRequest{req2ID, []uint64{3, 4}, [][]uint32{{3}, {4}}}
+		req2_1 := testRequest{req2ID, []uint64{1, 3}, [][]uint32{{1}, {3}}}
+		req3 := testRequest{req3ID, []uint64{5, 6}, [][]uint32{{5}, {6}}}
 
 		testCases := []testCase{
 			{
@@ -158,9 +156,9 @@ var _ = Describe("KV cache", Ordered, func() {
 				actions: []testAction{
 					newStartAction(req1),
 					// Check block '1' reference count (should be 2)
-					newTestActionWithExpectedValues(actionStartRequest, req2_1, 2, 3, 0, map[kvblock.BlockHash]expectedBlockInfo{1: {true, 2}}),
+					newTestActionWithExpectedValues(actionStartRequest, req2_1, 2, 3, 0, map[uint64]expectedBlockInfo{1: {true, 2}}),
 					// Check block '1' reference count (should be 1)
-					newTestActionWithExpectedValues(actionFinishRequest, req1, 1, 3, 1, map[kvblock.BlockHash]expectedBlockInfo{1: {true, 1}}),
+					newTestActionWithExpectedValues(actionFinishRequest, req1, 1, 3, 1, map[uint64]expectedBlockInfo{1: {true, 1}}),
 				},
 				expectedRemovedBlocks: 0,
 				expectedStoredBlocks:  3,
@@ -171,8 +169,8 @@ var _ = Describe("KV cache", Ordered, func() {
 				actions: []testAction{
 					newStartAction(req1),
 					newStartAction(req2),
-					newTestActionWithExpectedValues(actionFinishRequest, req2, -1, -1, -1, map[kvblock.BlockHash]expectedBlockInfo{3: {true, 0}}),
-					newTestActionWithExpectedValues(actionStartRequest, req3, -1, -1, -1, map[kvblock.BlockHash]expectedBlockInfo{
+					newTestActionWithExpectedValues(actionFinishRequest, req2, -1, -1, -1, map[uint64]expectedBlockInfo{3: {true, 0}}),
+					newTestActionWithExpectedValues(actionStartRequest, req3, -1, -1, -1, map[uint64]expectedBlockInfo{
 						5: {true, 1},
 						3: {false, 0},
 					}),
@@ -197,27 +195,26 @@ var _ = Describe("KV cache", Ordered, func() {
 			It(test.name, func() {
 				time.Sleep(300 * time.Millisecond)
 
+				ctx, cancel := context.WithCancel(context.Background())
+
 				config := &common.Configuration{
-					IP:                    localhost,
-					Port:                  1234,
-					Model:                 "model",
-					KVCacheSize:           test.cacheSize,
-					ZMQMaxConnectAttempts: 3,
-					EventBatchSize:        1,
+					IP:             localhost,
+					Port:           1234,
+					Model:          "model",
+					KVCacheSize:    test.cacheSize,
+					EventBatchSize: 1,
 				}
 
 				topic := CreateKVEventsTopic(localhost, config.Model)
-				sub, endpoint := common.CreateSub(topic)
+				sub, endpoint := common.CreateSub(ctx, topic)
 				config.ZMQEndpoint = endpoint
 				//nolint
 				defer sub.Close()
 
-				ctx, cancel := context.WithCancel(context.Background())
-
 				wg := sync.WaitGroup{}
 				wg.Add(1)
 
-				blockCache, err := newBlockCache(config, GinkgoLogr, nil)
+				blockCache, err := newBlockCache(ctx, config, GinkgoLogr, nil)
 				Expect(err).NotTo(HaveOccurred())
 
 				go func() {
@@ -290,9 +287,9 @@ var _ = Describe("KV cache", Ordered, func() {
 				expectedTotal := test.expectedRemovedBlocks + test.expectedStoredBlocks
 
 				for i, seq := 0, uint64(1); i < expectedTotal; i, seq = storedCount+removedCount, seq+1 {
-					parts, err := sub.RecvMessageBytes(0)
+					msg, err := sub.Recv()
 					Expect(err).NotTo(HaveOccurred())
-					stored, removed, _ := ParseKVEvent(parts, topic, seq)
+					stored, removed, _ := ParseKVEvent(msg.Frames, topic, seq)
 					storedCount += len(stored)
 					removedCount += len(removed)
 				}
@@ -305,26 +302,25 @@ var _ = Describe("KV cache", Ordered, func() {
 	Context("events", func() {
 
 		It("should send events correctly", func() {
+			ctx, cancel := context.WithCancel(context.Background())
+
 			config := &common.Configuration{
-				IP:                    localhost,
-				Port:                  1234,
-				Model:                 "model",
-				KVCacheSize:           4,
-				ZMQMaxConnectAttempts: 3,
+				IP:          localhost,
+				Port:        1234,
+				Model:       "model",
+				KVCacheSize: 4,
 			}
 
 			topic := CreateKVEventsTopic(localhost, config.Model)
-			sub, endpoint := common.CreateSub(topic)
+			sub, endpoint := common.CreateSub(ctx, topic)
 			config.ZMQEndpoint = endpoint
 			//nolint
 			defer sub.Close()
 
-			ctx, cancel := context.WithCancel(context.Background())
-
 			wg := sync.WaitGroup{}
 			wg.Add(1)
 
-			blockCache, err := newBlockCache(config, GinkgoLogr, nil)
+			blockCache, err := newBlockCache(ctx, config, GinkgoLogr, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			go func() {
@@ -337,17 +333,17 @@ var _ = Describe("KV cache", Ordered, func() {
 				wg.Wait() // wait for goroutine to exit
 			}()
 
-			expectedRemovedBlocks := []any{uint64(2), uint64(4)}
-			expectedStoredBlocks := []any{uint64(1), uint64(2), uint64(3), uint64(4), uint64(5), uint64(6)}
+			expectedRemovedBlocks := []uint64{2, 4}
+			expectedStoredBlocks := []uint64{1, 2, 3, 4, 5, 6}
 
 			go func() {
 				// Make sure that the subscriber listens before the events are published
 				time.Sleep(time.Second)
 
-				req1 := testRequest{"req1", []kvblock.BlockHash{1, 2}, [][]uint32{{1}, {2}}}
-				req2 := testRequest{"req2", []kvblock.BlockHash{3, 4}, [][]uint32{{1}, {2}}}
-				req3 := testRequest{"req3", []kvblock.BlockHash{1, 3}, [][]uint32{{1}, {2}}}
-				req4 := testRequest{"req4", []kvblock.BlockHash{5, 6}, [][]uint32{{1}, {2}}}
+				req1 := testRequest{"req1", []uint64{1, 2}, [][]uint32{{1}, {2}}}
+				req2 := testRequest{"req2", []uint64{3, 4}, [][]uint32{{1}, {2}}}
+				req3 := testRequest{"req3", []uint64{1, 3}, [][]uint32{{1}, {2}}}
+				req4 := testRequest{"req4", []uint64{5, 6}, [][]uint32{{1}, {2}}}
 
 				// blocks 1 and 2 stored
 				alreadyInCache, err := blockCache.startRequest(req1.id, req1.blockHashes, req1.tokens)
@@ -378,13 +374,13 @@ var _ = Describe("KV cache", Ordered, func() {
 				Expect(alreadyInCache).To(Equal(0))
 			}()
 
-			removedBlocks := make([]any, 0)
-			storedBlocks := make([]any, 0)
+			removedBlocks := make([]uint64, 0)
+			storedBlocks := make([]uint64, 0)
 			count := uint64(1)
 			for {
-				parts, err := sub.RecvMessageBytes(0)
+				msg, err := sub.Recv()
 				Expect(err).NotTo(HaveOccurred())
-				stored, removed, _ := ParseKVEvent(parts, topic, count)
+				stored, removed, _ := ParseKVEvent(msg.Frames, topic, count)
 				storedBlocks = append(storedBlocks, stored...)
 				removedBlocks = append(removedBlocks, removed...)
 				count++
@@ -422,14 +418,16 @@ var _ = Describe("KV cache", Ordered, func() {
 
 		for _, testCase := range testCases {
 			It(testCase.name, func() {
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+
 				config := common.Configuration{
-					IP:                    localhost,
-					Port:                  1234,
-					Model:                 "model",
-					KVCacheSize:           testCase.cacheSize,
-					ZMQMaxConnectAttempts: 3,
+					IP:          localhost,
+					Port:        1234,
+					Model:       "model",
+					KVCacheSize: testCase.cacheSize,
 				}
-				blockCache, err := newBlockCache(&config, GinkgoLogr, nil)
+				blockCache, err := newBlockCache(ctx, &config, GinkgoLogr, nil)
 				Expect(err).NotTo(HaveOccurred())
 				var wg sync.WaitGroup
 
@@ -475,17 +473,17 @@ var _ = Describe("KV cache", Ordered, func() {
 
 // returns kv event content - array of blocks hash values and array of tokens for each block
 // both arrays are of the same length, tokens array is the same for all blocks
-func createRandomArray(minArrLen, maxArrLen int, maxValue uint64, random *common.Random) ([]kvblock.BlockHash, [][]uint32) {
+func createRandomArray(minArrLen, maxArrLen int, maxValue uint64, random *common.Random) ([]uint64, [][]uint32) {
 	// Random length between a and b (inclusive)
 	length := random.RandomInt(minArrLen, maxArrLen)
 
 	// Create array with random values
-	hashes := make([]kvblock.BlockHash, 0)
+	hashes := make([]uint64, 0)
 	tokens := make([][]uint32, 0)
-	seen := make(map[kvblock.BlockHash]struct{})
+	seen := make(map[uint64]struct{})
 
 	for len(hashes) < length {
-		val := kvblock.BlockHash(random.RandomInt(0, int(maxValue)))
+		val := uint64(random.RandomInt(0, int(maxValue)))
 		if _, exists := seen[val]; !exists {
 			seen[val] = struct{}{}
 			hashes = append(hashes, val)
