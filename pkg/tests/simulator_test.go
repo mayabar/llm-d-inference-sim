@@ -319,7 +319,7 @@ var _ = Describe("Simulator", func() {
 							{
 								OfImageURL: &openai.ChatCompletionContentPartImageParam{
 									ImageURL: openai.ChatCompletionContentPartImageImageURLParam{
-										URL: "https://example.com/image.png",
+										URL: "https://github.com/llm-d/llm-d-inference-sim/blob/main/test/images/llmd.png?raw=true",
 									},
 								},
 							},
@@ -352,9 +352,9 @@ var _ = Describe("Simulator", func() {
 				model, maxTokens)
 		},
 		Entry(nil, common.TestModelName, common.ModeEcho, 1),
-		Entry(nil, common.QwenModelName, common.ModeRandom, 1),
+		Entry(nil, common.MMModelName, common.ModeRandom, 1),
 		Entry(nil, common.TestModelName, common.ModeRandom, 10),
-		Entry(nil, common.QwenModelName, common.ModeEcho, 10),
+		Entry(nil, common.MMModelName, common.ModeEcho, 10),
 	)
 
 	Context("namespace and pod headers", func() {
@@ -1341,7 +1341,7 @@ var _ = Describe("Simulator", func() {
 			msg, err := sub.Recv()
 			Expect(err).NotTo(HaveOccurred())
 			stored, removed, _ := kvcache.ParseKVEvent(msg.Frames, topic, 1)
-			Expect(stored).To(HaveLen(5))
+			Expect(stored).To(HaveLen(4))
 			Expect(removed).To(BeEmpty())
 		})
 
