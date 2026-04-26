@@ -23,6 +23,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common/logging"
+	"github.com/llm-d/llm-d-kv-cache/pkg/kvcache/kvblock"
 	"github.com/llm-d/llm-d-kv-cache/pkg/kvevents"
 	"github.com/vmihailenco/msgpack/v5"
 )
@@ -74,9 +75,11 @@ type msgpackAllBlocksClearedEvent struct {
 }
 
 type EventData struct {
-	action EventAction
-	tokens []uint32
-	hashes []uint64
+	action   EventAction
+	tokens   []uint32
+	hashes   []uint64
+	loraName *string
+	loraID   *int
 }
 
 type KVEventSender struct {
@@ -84,18 +87,20 @@ type KVEventSender struct {
 	topic        string
 	eventChan    common.Channel[EventData]
 	maxBatchSize int
+	blockSize    int
 	delay        time.Duration
 	batch        []kvevents.GenericEvent
 	logger       logr.Logger
 }
 
 func NewKVEventSender(publisher *common.Publisher, topic string, ch common.Channel[EventData], maxBatchSize int,
-	delay time.Duration, logger logr.Logger) *KVEventSender {
+	blockSize int, delay time.Duration, logger logr.Logger) *KVEventSender {
 	return &KVEventSender{
 		publisher:    publisher,
 		topic:        topic,
 		eventChan:    ch,
 		maxBatchSize: maxBatchSize,
+		blockSize:    blockSize,
 		delay:        delay,
 		batch:        make([]kvevents.GenericEvent, 0, maxBatchSize),
 		logger:       logger,
@@ -129,21 +134,24 @@ func (s *KVEventSender) Run(ctx context.Context) error {
 			}
 
 			// Encode eventData's hash value to msgpack.RawMessage
-			var err error
 			var event kvevents.GenericEvent
 
 			switch eventData.action {
 			case eventActionStore:
-				event = &kvevents.BlockStoredEvent{BlockHashes: eventData.hashes, Tokens: eventData.tokens, DeviceTier: GPU}
+				event = &kvevents.BlockStoredEvent{
+					BlockHashes: eventData.hashes,
+					Tokens:      eventData.tokens,
+					DeviceTier:  GPU,
+					ParentHash:  uint64(kvblock.EmptyBlockHash),
+					LoraID:      eventData.loraID,
+					LoraName:    eventData.loraName,
+				}
 			case eventActionRemove:
 				event = &kvevents.BlockRemovedEvent{BlockHashes: eventData.hashes, DeviceTier: GPU}
 			case eventActionAllBlocksCleared:
 				event = &kvevents.AllBlocksClearedEvent{DeviceTier: GPU}
 			default:
 				return fmt.Errorf("invalid event action %d", eventData.action)
-			}
-			if err != nil {
-				return fmt.Errorf("failed to marshal value: %w", err)
 			}
 
 			s.batch = append(s.batch, event)
@@ -187,10 +195,14 @@ func (s *KVEventSender) publishHelper(ctx context.Context) error {
 		switch e := event.(type) {
 		case *kvevents.BlockStoredEvent:
 			raw = &msgpackBlockStoredEvent{
-				Tag:         string(kvevents.EventTypeBlockStored),
-				BlockHashes: convertUint64ToAnySlice(e.BlockHashes),
-				TokenIds:    e.Tokens,
-				Medium:      &GPU,
+				Tag:             string(kvevents.EventTypeBlockStored),
+				BlockHashes:     convertUint64ToAnySlice(e.BlockHashes),
+				TokenIds:        e.Tokens,
+				Medium:          &e.DeviceTier,
+				LoraID:          e.LoraID,
+				LoraName:        e.LoraName,
+				ParentBlockHash: e.ParentHash,
+				BlockSize:       s.blockSize,
 			}
 		case *kvevents.BlockRemovedEvent:
 			raw = &msgpackBlockRemovedEvent{

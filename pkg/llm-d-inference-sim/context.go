@@ -37,6 +37,8 @@ type lorasUsageInfo struct {
 	mux sync.RWMutex
 	// lora adapter name -> reference count (number of currently running requests)
 	loadedLoras map[string]int
+	// loraIDs indices of loaded loras, element i holds the name of the lora at index i+1, empty means a free slot
+	loraIDs []string
 	// channel for "there is a LoRA that can be removed" event
 	loraRemovable common.Channel[int]
 	// maximum number of LoRAs that can be used simultaneously
@@ -82,6 +84,7 @@ func (s *SimContext) initialize(ctx context.Context) error {
 		s.loraAdaptors.Store(lora.Name, lora.Path)
 	}
 	s.loras.maxLoras = s.Config.MaxLoras
+	s.loras.loraIDs = make([]string, s.Config.MaxLoras)
 	s.loras.loraRemovable = common.Channel[int]{
 		Channel: make(chan int, s.Config.MaxNumSeqs),
 		Name:    "loraRemovable",

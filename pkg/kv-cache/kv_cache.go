@@ -18,6 +18,7 @@ package kvcache
 // contains all logic relevant to KV-cache support
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/go-logr/logr"
@@ -48,6 +49,10 @@ type KVCacheHelper struct {
 
 func NewKVCacheHelper(ctx context.Context, config *common.Configuration, logger logr.Logger, usageChan common.Channel[common.MetricInfo],
 	prefixCacheStatsChan common.Channel[PrefixCacheStats], tokenizer tokenizer.Tokenizer) (*KVCacheHelper, error) {
+	if config.IP == "" {
+		return nil, errors.New("IP should be defined in the environment (POD_IP) for KV cache to work")
+	}
+
 	tokenProcConfig := kvblock.DefaultTokenProcessorConfig()
 	tokenProcConfig.BlockSize = config.TokenBlockSize
 	if config.HashSeed != "" {
@@ -62,6 +67,7 @@ func NewKVCacheHelper(ctx context.Context, config *common.Configuration, logger 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create block cache: %w", err)
 	}
+
 	return &KVCacheHelper{
 		tokenizer:            tokenizer,
 		tokensProcessor:      tokensProcessor,
@@ -85,15 +91,14 @@ func (h *KVCacheHelper) Activate() {
 	h.blockCache.activate()
 }
 
-func (h *KVCacheHelper) OnRequestStart(vllmReq openaiserverapi.Request) (PrefixCacheStats, error) {
+func (h *KVCacheHelper) OnRequestStart(req openaiserverapi.Request) (PrefixCacheStats, error) {
 	h.logger.V(logging.TRACE).Info("KV cache - process request")
 
-	tokens := vllmReq.TokenizedPrompt().Tokens
-	modelName := vllmReq.GetModel()
+	tokens := req.TokenizedPrompt().Tokens
 
 	// compute per-block extra features from multimodal metadata (if present).
 	var extraFeatures []*kvblock.BlockExtraFeatures
-	mmFeatres := vllmReq.MMFeatures()
+	mmFeatres := req.MMFeatures()
 
 	if mmFeatres != nil {
 		extraFeatures = kvblock.ComputeBlockExtraFeatures(
@@ -102,7 +107,7 @@ func (h *KVCacheHelper) OnRequestStart(vllmReq openaiserverapi.Request) (PrefixC
 	}
 
 	// get block keys
-	blockKeys, err := h.tokensProcessor.TokensToKVBlockKeys(kvblock.EmptyBlockHash, tokens, modelName, extraFeatures)
+	blockKeys, err := h.tokensProcessor.TokensToKVBlockKeys(kvblock.EmptyBlockHash, tokens, req.GetDisplayedModel(), extraFeatures)
 	if err != nil {
 		return PrefixCacheStats{}, fmt.Errorf("failed to convert tokens to block keys: %w", err)
 	}
@@ -115,14 +120,13 @@ func (h *KVCacheHelper) OnRequestStart(vllmReq openaiserverapi.Request) (PrefixC
 		blockTokens[i] = tokens[i*h.blockSize : i*h.blockSize+h.blockSize]
 	}
 
-	requestID := vllmReq.GetRequestID()
-	nBlocksAlreadyInCache, err := h.blockCache.startRequest(requestID, blockHashes, blockTokens)
+	nBlocksAlreadyInCache, err := h.blockCache.startRequest(req, blockHashes, blockTokens)
 	if err != nil {
 		return PrefixCacheStats{}, err
 	}
 
 	cachedTokens := nBlocksAlreadyInCache * h.blockSize
-	vllmReq.SetNumberOfCachedPromptTokens(cachedTokens)
+	req.SetNumberOfCachedPromptTokens(cachedTokens)
 
 	stats := PrefixCacheStats{
 		QueriedTokens: len(tokens),
@@ -135,4 +139,14 @@ func (h *KVCacheHelper) OnRequestStart(vllmReq openaiserverapi.Request) (PrefixC
 
 func (h *KVCacheHelper) OnRequestEnd(requestID string) error {
 	return h.blockCache.finishRequest(requestID)
+}
+
+// SetModelLoaded marks a model as loaded, affecting block eviction priority
+func (h *KVCacheHelper) SetModelLoaded(model string) {
+	h.blockCache.setModelLoaded(model)
+}
+
+// SetModelUnloaded marks a model as unloaded, its blocks become low-priority eviction candidates
+func (h *KVCacheHelper) SetModelUnloaded(model string) {
+	h.blockCache.setModelUnloaded(model)
 }

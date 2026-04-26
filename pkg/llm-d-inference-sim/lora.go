@@ -19,6 +19,7 @@ package llmdinferencesim
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common/logging"
@@ -117,6 +118,10 @@ func (s *SimContext) loadLora(model string) bool {
 		// maxLoras, try to find a LoRA that is not in use, and unload it
 		for lora, count := range s.loras.loadedLoras {
 			if count == 0 {
+				s.freeLoraID(lora)
+				if s.kvcacheHelper != nil {
+					s.kvcacheHelper.SetModelUnloaded(lora)
+				}
 				delete(s.loras.loadedLoras, lora)
 				ok = true
 				break
@@ -125,6 +130,10 @@ func (s *SimContext) loadLora(model string) bool {
 	}
 	if ok {
 		s.loras.loadedLoras[model]++
+		s.assignLoraID(model)
+		if s.kvcacheHelper != nil {
+			s.kvcacheHelper.SetModelLoaded(model)
+		}
 	}
 	return ok
 }
@@ -157,4 +166,46 @@ func (s *SimContext) decrementLora(model string) {
 		// last usage of this LoRA
 		common.WriteToChannel(s.loras.loraRemovable, 1, s.logger)
 	}
+}
+
+// assignLoraID assigns the next free index to a lora if it doesn't already have one.
+// Caller must hold s.loras.mux (called from loadLora which holds the write lock).
+func (s *SimContext) assignLoraID(lora string) {
+	for i, name := range s.loras.loraIDs {
+		if name == lora {
+			// the LoRA already has an assigned ID, no need to assign again
+			return
+		}
+		if name == "" {
+			// assign this free slot to the LoRA
+			s.loras.loraIDs[i] = lora
+			return
+		}
+	}
+	// should't happen since loadLora checks maxLoras, but log just in case
+	s.logger.Error(fmt.Errorf("no free index for LoRA %s", lora), "failed to assign index to LoRA")
+}
+
+// freeLoraID releases the index held by the given lora.
+// Caller must hold s.loras.mux (called from loadLora which holds the write lock).
+func (s *SimContext) freeLoraID(lora string) {
+	for i, name := range s.loras.loraIDs {
+		if name == lora {
+			s.loras.loraIDs[i] = ""
+			return
+		}
+	}
+}
+
+// GetLoraID returns the 1-based index for a loaded lora, or 0 if not loaded.
+func (s *SimContext) GetLoraID(lora string) int {
+	s.loras.mux.RLock()
+	defer s.loras.mux.RUnlock()
+
+	for i, name := range s.loras.loraIDs {
+		if name == lora {
+			return i + 1
+		}
+	}
+	return 0
 }
