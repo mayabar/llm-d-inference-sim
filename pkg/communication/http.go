@@ -63,6 +63,7 @@ func (c *Communication) startHTTPServer(listener net.Listener) (*fasthttp.Server
 	// support completion APIs
 	r.POST("/v1/chat/completions", c.HandleChatCompletions)
 	r.POST("/v1/completions", c.HandleTextCompletions)
+	r.POST("/v1/responses", c.HandleResponses)
 	if !c.simulator.Context.Config.MMEncoderOnly {
 		r.POST("/v1/embeddings", c.HandleEmbeddings)
 	}
@@ -119,12 +120,17 @@ func (c *Communication) getRequestID(ctx *fasthttp.RequestCtx) string {
 
 // HandleChatCompletions http handler for /v1/chat/completions
 func (c *Communication) HandleChatCompletions(ctx *fasthttp.RequestCtx) {
-	c.handleHTTP(&vllmsim.ChatCompletionRequest{}, &chatComplHTTPRespBuilder{}, ctx)
+	c.handleHTTP(&vllmsim.ChatCompletionsRequest{}, &chatComplHTTPRespBuilder{}, ctx)
 }
 
 // HandleTextCompletions http handler for /v1/completions
 func (c *Communication) HandleTextCompletions(ctx *fasthttp.RequestCtx) {
-	c.handleHTTP(&vllmsim.TextCompletionRequest{}, &textComplHTTPRespBuilder{}, ctx)
+	c.handleHTTP(&vllmsim.TextCompletionsRequest{}, &textComplHTTPRespBuilder{}, ctx)
+}
+
+// HandleResponses http handler for /v1/responses
+func (c *Communication) HandleResponses(ctx *fasthttp.RequestCtx) {
+	c.handleHTTP(&vllmsim.ResponsesRequest{}, &responsesHTTPRespBuilder{}, ctx)
 }
 
 // addResponseHeaders adds optional pod/port/namespace/request-id headers to the response for testing/debugging.
@@ -147,15 +153,15 @@ func (c *Communication) handleHTTP(req vllmsim.Request, respBuilder responseBuil
 		return
 	}
 
-	requestID := c.getRequestID(ctx)
-	req.SetRequestID(requestID)
-
 	if err := req.Unmarshal(ctx.Request.Body()); err != nil {
 		c.logger.Error(err, "failed to read and parse request body")
 		errToSend := openaiserverapi.NewError("Failed to read and parse request body, "+err.Error(), fasthttp.StatusBadRequest, nil)
 		c.sendError(ctx, &errToSend, false)
 		return
 	}
+
+	requestID := c.getRequestID(ctx)
+	req.SetRequestID(requestID)
 
 	// Check for X-Return-Error header - deterministic error trigger
 	if errCodeStr := string(ctx.Request.Header.Peek(XReturnErrorHeader)); errCodeStr != "" {
@@ -357,7 +363,7 @@ func (c *Communication) sendStreamedTools(respCtx vllmsim.ResponseContext, respB
 		toolChunkInsert.Function.Name = tc.Function.Name
 	}
 
-	var chunk openaiserverapi.CompletionRespChunk
+	var chunk openaiserverapi.CompletionsRespChunk
 	var finishReasonToSend *string
 	if index == tc.Function.TokenizedArguments().Length()-1 && (*respCtx.FinishReason() == common.LengthFinishReason ||
 		*respCtx.FinishReason() == common.ToolsFinishReason ||
@@ -369,7 +375,7 @@ func (c *Communication) sendStreamedTools(respCtx vllmsim.ResponseContext, respB
 }
 
 // sendChunk send a single token chunk in a streamed completion API response,
-// receives either a completionRespChunk or a string with the data to send.
+// receives either a completionsRespChunk or a string with the data to send.
 func (c *Communication) sendChunk(w *bufio.Writer, chunk response, dataString string) error {
 	if dataString == "" {
 		data, err := json.Marshal(chunk)

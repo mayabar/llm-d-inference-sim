@@ -44,6 +44,7 @@ import (
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 	"github.com/openai/openai-go/v3/packages/param"
+	"github.com/openai/openai-go/v3/responses"
 	"github.com/valyala/fasthttp/fasthttputil"
 	"k8s.io/klog/v2"
 
@@ -198,19 +199,19 @@ func startServerForLatencyTest(modelName string, ttft int, prefillTimePerToken i
 func singleRequestLatencyTest(ttft int, prefillTimePerToken int, interTokenLatency int, kvcacheTransferLatency int,
 	kvCacheTransferTimePerToken int, isStreaming bool, numOfTokens int, doRemotePrefill bool) {
 	client := startServerForLatencyTest(common.TestModelName, ttft, prefillTimePerToken, interTokenLatency, kvcacheTransferLatency, kvCacheTransferTimePerToken)
-	sendCompletionRequestForLatencyTest(client, common.TestModelName, testUserMessage, isStreaming, doRemotePrefill)
+	sendCompletionsRequestForLatencyTest(client, common.TestModelName, testUserMessage, isStreaming, doRemotePrefill)
 	checkLatencyMetrics(client, common.TestModelName, numOfTokens, numOfTokens, ttft, prefillTimePerToken, interTokenLatency, kvcacheTransferLatency,
 		kvCacheTransferTimePerToken, doRemotePrefill)
 
 }
 
-// sendCompletionRequestForLatencyTest sends completion request according the given parameters
+// sendCompletionsRequestForLatencyTest sends completion request according the given parameters
 // uses http.Post and not openai-api function because vllm specific fields should be sent
-func sendCompletionRequestForLatencyTest(client *http.Client, modelName string, prompt string, isStreaming bool,
+func sendCompletionsRequestForLatencyTest(client *http.Client, modelName string, prompt string, isStreaming bool,
 	doRemotePrefill bool) (time.Duration, time.Duration) {
 	// send completions request using http post because disagregated PD fields should be included
 	// Test with raw HTTP to verify the error response format
-	req := &openaiserverapi.TextCompletionRequest{Prompt: prompt}
+	req := &openaiserverapi.TextCompletionsRequest{Prompt: prompt}
 	req.KVParams = &openaiserverapi.KVTransferParams{DoRemotePrefill: doRemotePrefill}
 	req.Model = modelName
 	req.Stream = isStreaming
@@ -322,6 +323,26 @@ func getOpenAIClentAndCompletionParams(client option.HTTPClient, model string, m
 	}
 	if streaming {
 		params.StreamOptions = openai.ChatCompletionStreamOptionsParam{IncludeUsage: param.NewOpt(true)}
+	}
+	return openaiclient, params
+}
+
+// getOpenAIClientAndResponsesParams creates an openai client and params for /v1/responses call with a string input.
+// Pass a non-empty instructions string to set a system prompt.
+func getOpenAIClientAndResponsesParams(client option.HTTPClient, model string, message string, instructions ...string) (openai.Client, responses.ResponseNewParams) {
+	openaiclient := openai.NewClient(
+		option.WithBaseURL(baseURL),
+		option.WithHTTPClient(client),
+		option.WithMaxRetries(0))
+
+	params := responses.ResponseNewParams{
+		Model: model,
+		Input: responses.ResponseNewParamsInputUnion{
+			OfString: param.NewOpt(message),
+		},
+	}
+	if len(instructions) > 0 && instructions[0] != "" {
+		params.Instructions = param.NewOpt(instructions[0])
 	}
 	return openaiclient, params
 }
@@ -604,8 +625,8 @@ func checkSimSleeping(client *http.Client, expectedToSleep bool) {
 	gomega.Expect(string(body)).To(gomega.Equal(expect))
 }
 
-// sendTextCompletionRequest sends one text completions request
-func sendTextCompletionRequest(ctx context.Context, client *http.Client) {
+// sendTextCompletionsRequest sends one text completions request
+func sendTextCompletionsRequest(ctx context.Context, client *http.Client) {
 	message := "aa bb cc dd ee ff gg hh ii jj aa bb cc dd ee ff gg hh ii jj"
 	openaiclient, params := getOpenAIClientAndTextParams(client, common.QwenModelName, message, false)
 	resp, err := openaiclient.Completions.New(ctx, params)
