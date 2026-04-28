@@ -119,3 +119,25 @@ func CountKVEventBlocks(parts [][]byte, expectedTopic string, expectedSeq uint64
 
 	return storedCount, removedCount, allCleared
 }
+
+// verifySingleBlockEviction ensures that exactly one block from the provided list
+// has been removed from the cache
+func verifySingleBlockEviction(bCache *blockCache, model string, blocks []uint64) {
+	evictedCnt := 0
+	for _, blockHash := range blocks {
+		_, blockExists := bCache.getBlockInfo(blockKey{hash: blockHash, modelName: model})
+		if !blockExists {
+			evictedCnt++
+		}
+	}
+	gomega.Expect(evictedCnt).To(gomega.Equal(1))
+}
+
+// verifyAllBlocksRetained checks that every block in the provided list is
+// still present in the cache, confirming that no eviction has occurred for these specific keys
+func verifyAllBlocksRetained(bCache *blockCache, model string, blocks []uint64) {
+	for _, blockHash := range blocks {
+		_, blockExists := bCache.getBlockInfo(blockKey{hash: blockHash, modelName: model})
+		gomega.Expect(blockExists).To(gomega.BeTrue())
+	}
+}
