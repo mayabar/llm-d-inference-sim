@@ -44,6 +44,8 @@ type Communication struct {
 	sleepMutex sync.RWMutex
 
 	pb.UnimplementedVllmEngineServer
+
+	deprecatedLogged bool
 }
 
 func New(logger logr.Logger, simulator *vllmsim.VllmSimulator) *Communication {

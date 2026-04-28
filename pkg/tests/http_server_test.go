@@ -47,12 +47,12 @@ var _ = Describe("Server", func() {
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 	})
 
-	It("Should respond to /ready", func() {
+	It("Should respond to /health/ready", func() {
 		ctx := context.TODO()
 		client, err := startServer(ctx, common.ModeRandom)
 		Expect(err).NotTo(HaveOccurred())
 
-		resp, err := client.Get("http://localhost/ready")
+		resp, err := client.Get("http://localhost/health/ready")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 	})
