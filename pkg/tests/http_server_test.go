@@ -57,6 +57,34 @@ var _ = Describe("Server", func() {
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 	})
 
+	It("Should return 503 on /health/ready during startup-duration", func() {
+		ctx := context.TODO()
+		args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeRandom,
+			"--startup-duration", "10s"}
+		client, err := startServerWithArgs(ctx, args)
+		Expect(err).NotTo(HaveOccurred())
+
+		resp, err := client.Get("http://localhost/health/ready")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp.StatusCode).To(Equal(http.StatusServiceUnavailable))
+	})
+
+	It("Should return 200 on /health/ready after startup-duration elapses", func() {
+		ctx := context.TODO()
+		args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeRandom,
+			"--startup-duration", "100ms"}
+		client, err := startServerWithArgs(ctx, args)
+		Expect(err).NotTo(HaveOccurred())
+
+		Eventually(func() int {
+			resp, err := client.Get("http://localhost/health/ready")
+			if err != nil {
+				return 0
+			}
+			return resp.StatusCode
+		}, 5*time.Second, 50*time.Millisecond).Should(Equal(http.StatusOK))
+	})
+
 	Context("tokenize", Ordered, func() {
 		It("Should return correct response to /tokenize chat", func() {
 			ctx := context.TODO()

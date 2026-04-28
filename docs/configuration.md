@@ -15,6 +15,7 @@ The simulator can be configured using either command-line arguments or a YAML fi
 - `mode`: the simulator mode, optional, by default `random`
     - `echo`: returns the same text that was sent in the request
     - `random`: returns a sentence chosen at random from a set of pre-defined sentences or a given dataset
+- `startup-duration`: duration the simulator returns HTTP 503 on `/health/ready` to simulate GPU model loading time (e.g. `30s`, `2m`). After this duration elapses from startup, `/health/ready` returns 200. Optional, default is 0 (immediately ready).
 - `enable-sleep-mode`, `no-enable-sleep-mode`: Enable or disable sleep mode feature. When enabled, the simulator can be put to sleep via the `/sleep` endpoint and woken up via the `/wake_up` endpoint
 - `enable-request-id-headers`: Enable including X-Request-Id header in responses. When enabled, the simulator will include the request ID in response headers
 - `mm-encoder-only`, `no-mm-encoder-only`: Skip  (or don't skip) the language component of the model.

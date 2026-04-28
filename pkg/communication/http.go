@@ -612,7 +612,10 @@ func (c *Communication) HandleHealth(ctx *fasthttp.RequestCtx) {
 func (c *Communication) HandleHealthReady(ctx *fasthttp.RequestCtx) {
 	c.logger.V(logging.TRACE).Info("Health ready request received")
 	ctx.Response.Header.SetContentType("application/json")
-	// c.simulator.IsReady()
+	if d := c.simulator.Context.Config.StartupDuration; d > 0 && time.Since(c.startTime) < d {
+		ctx.Response.Header.SetStatusCode(fasthttp.StatusServiceUnavailable)
+		return
+	}
 	ctx.Response.Header.SetStatusCode(fasthttp.StatusOK)
 }
 
