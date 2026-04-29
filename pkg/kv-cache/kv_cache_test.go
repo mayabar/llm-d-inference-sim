@@ -623,40 +623,36 @@ var _ = Describe("KV cache", Ordered, func() {
 				KVCacheSize: 4,
 			}
 
-			blockCache, err := newBlockCache(ctx, config, GinkgoLogr, nil)
+			bCache, err := newBlockCache(ctx, config, GinkgoLogr, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			// lora1 is loaded, lora2 is not
-			blockCache.setModelLoaded(lora1)
+			bCache.setModelLoaded(lora1)
 
 			reqL1 := testRequest{id: "reqL1", model: lora1, blockHashes: []uint64{10, 20}, tokens: [][]uint32{{10}, {20}}}
 			reqL2 := testRequest{id: "reqL2", model: lora2, blockHashes: []uint64{30, 40}, tokens: [][]uint32{{30}, {40}}}
 
-			_, err = blockCache.startRequest(&reqL1, reqL1.blockHashes, reqL1.tokens)
+			_, err = bCache.startRequest(&reqL1, reqL1.blockHashes, reqL1.tokens)
 			Expect(err).NotTo(HaveOccurred())
-			_, err = blockCache.startRequest(&reqL2, reqL2.blockHashes, reqL2.tokens)
+			_, err = bCache.startRequest(&reqL2, reqL2.blockHashes, reqL2.tokens)
 			Expect(err).NotTo(HaveOccurred())
 
 			// finish both - all 4 blocks become unused, cache is full
-			err = blockCache.finishRequest(reqL1.id)
+			err = bCache.finishRequest(reqL1.id)
 			Expect(err).NotTo(HaveOccurred())
-			err = blockCache.finishRequest(reqL2.id)
+			err = bCache.finishRequest(reqL2.id)
 			Expect(err).NotTo(HaveOccurred())
 
 			// add a new block - should evict from lora2 (unloaded) first
 			reqNew := testRequest{id: "reqNew", model: lora1, blockHashes: []uint64{50}, tokens: [][]uint32{{50}}}
-			_, err = blockCache.startRequest(&reqNew, reqNew.blockHashes, reqNew.tokens)
+			_, err = bCache.startRequest(&reqNew, reqNew.blockHashes, reqNew.tokens)
 			Expect(err).NotTo(HaveOccurred())
 
-			// lora2 block 30 (oldest unloaded) should be evicted
-			_, exists := blockCache.getBlockInfo(blockKey{hash: 30, modelName: lora2})
-			Expect(exists).To(BeFalse())
+			// lora2 block 30 or 40 should be evicted
+			verifySingleBlockEviction(bCache, lora2, reqL2.blockHashes)
 
 			// lora1 blocks should still exist
-			_, exists = blockCache.getBlockInfo(blockKey{hash: 10, modelName: lora1})
-			Expect(exists).To(BeTrue())
-			_, exists = blockCache.getBlockInfo(blockKey{hash: 20, modelName: lora1})
-			Expect(exists).To(BeTrue())
+			verifyAllBlocksRetained(bCache, lora1, reqL1.blockHashes)
 		})
 
 		It("should fall back to oldest loaded-model block when no unloaded blocks exist", func() {
@@ -738,15 +734,10 @@ var _ = Describe("KV cache", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// one of lora2 blocks (unloaded) should be evicted first
-			_, exists30 := blockCache.getBlockInfo(blockKey{hash: 30, modelName: lora2})
-			_, exists40 := blockCache.getBlockInfo(blockKey{hash: 40, modelName: lora2})
-			Expect(exists30 && exists40).To(BeFalse())
+			verifySingleBlockEviction(blockCache, lora2, reqL2.blockHashes)
 
 			// lora1 blocks should remain
-			_, exists := blockCache.getBlockInfo(blockKey{hash: 10, modelName: lora1})
-			Expect(exists).To(BeTrue())
-			_, exists = blockCache.getBlockInfo(blockKey{hash: 20, modelName: lora1})
-			Expect(exists).To(BeTrue())
+			verifyAllBlocksRetained(blockCache, lora1, reqL1.blockHashes)
 		})
 	})
 
