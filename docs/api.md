@@ -22,7 +22,7 @@ In addition, a set of the vLLM HTTP endpoints are suppored:
 | /is_sleeping            | Checks if the simulator is currently in sleep mode |
 | /metrics                | Exposes Prometheus metrics (see [Metrics Guide](metrics.md)) |
 | /health                 | Standard health check endpoint |
-| /ready                  | Standard readiness endpoint |
+| /health/ready           | Ensure the GPU is "actually working" before allowing the system to send it live traffic |
 
 The simulator also provides a `POST /fake_metrics` endpoint that supports partial updates to [fake metric](configuration.md#fake-metrics) values at runtime. This endpoint is specific to the simulator and is available only when a `--fake-metrics` configuration is provided at startup. The request body must be a JSON object containing the metrics to update; any metrics not specified are left unchanged.
 

@@ -260,6 +260,10 @@ type Configuration struct {
 	// Tokenizer UDS socker path
 	UDSSocketPath string `yaml:"uds-socket-path" json:"uds-socket-path"`
 
+	// StartupDuration defines how long /health/ready returns 503 to simulate GPU model loading.
+	// After this duration from startup, /health/ready returns 200. Default is 0 (immediately ready).
+	StartupDuration time.Duration `yaml:"startup-duration" json:"startup-duration"`
+
 	// EnableSleepMode enables sleep mode
 	EnableSleepMode bool `yaml:"enable-sleep-mode" json:"enable-sleep-mode"`
 

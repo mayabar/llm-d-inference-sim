@@ -77,6 +77,7 @@ func (c *Communication) startHTTPServer(listener net.Listener) (*fasthttp.Server
 	r.POST("/fake_metrics", c.HandleFakeMetrics)
 	// supports standard Kubernetes health and readiness checks
 	r.GET("/health", c.HandleHealth)
+	r.GET("/health/ready", c.HandleHealthReady)
 	r.GET("/ready", c.HandleReady)
 	r.POST("/tokenize", c.HandleTokenize)
 	r.POST("/sleep", c.HandleSleep)
@@ -611,15 +612,28 @@ func (c *Communication) HandleHealth(ctx *fasthttp.RequestCtx) {
 	c.logger.V(logging.TRACE).Info("Health request received")
 	ctx.Response.Header.SetContentType("application/json")
 	ctx.Response.Header.SetStatusCode(fasthttp.StatusOK)
-	ctx.Response.SetBody([]byte("{}"))
+}
+
+// HandleHealth http handler for /health/ready
+func (c *Communication) HandleHealthReady(ctx *fasthttp.RequestCtx) {
+	c.logger.V(logging.TRACE).Info("Health ready request received")
+	ctx.Response.Header.SetContentType("application/json")
+	if d := c.simulator.Context.Config.StartupDuration; d > 0 && time.Since(c.startTime) < d {
+		ctx.Response.Header.SetStatusCode(fasthttp.StatusServiceUnavailable)
+		return
+	}
+	ctx.Response.Header.SetStatusCode(fasthttp.StatusOK)
 }
 
 // HandleReady http handler for /ready
 func (c *Communication) HandleReady(ctx *fasthttp.RequestCtx) {
 	c.logger.V(logging.TRACE).Info("Readiness request received")
+	if !c.deprecatedLogged {
+		c.deprecatedLogged = true
+		c.logger.V(logging.INFO).Info("/ready endpoint is deprecated and will be removed in a future release; please use /health/ready instead")
+	}
 	ctx.Response.Header.SetContentType("application/json")
 	ctx.Response.Header.SetStatusCode(fasthttp.StatusOK)
-	ctx.Response.SetBody([]byte("{}"))
 }
 
 // HandleIsSleeping handles /is_sleeping request according

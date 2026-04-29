@@ -44,14 +44,19 @@ type Communication struct {
 	sleepMutex sync.RWMutex
 
 	pb.UnimplementedVllmEngineServer
+
+	deprecatedLogged bool
+
+	// startTime records when the server started, used for startup-duration readiness check
+	startTime time.Time
 }
 
 func New(logger logr.Logger, simulator *vllmsim.VllmSimulator) *Communication {
-	return &Communication{logger: logger, simulator: simulator}
+	return &Communication{logger: logger, simulator: simulator, startTime: time.Now()}
 }
 
 func Start(ctx context.Context, logger logr.Logger, simulator *vllmsim.VllmSimulator) error {
-	c := Communication{logger: logger, simulator: simulator}
+	c := Communication{logger: logger, simulator: simulator, startTime: time.Now()}
 	c.logger.V(logging.INFO).Info("Starting communication layer")
 	return c.start(ctx)
 }

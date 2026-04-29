@@ -158,6 +158,9 @@ func ParseCommandParamsAndLoadConfig() (*Configuration, error) {
 
 	f.StringVar(&config.UDSSocketPath, "uds-socket-path", config.UDSSocketPath, "UDS socket path for communication with HF tokenizer, default is '/tmp/tokenizer/tokenizer-uds.socket'")
 
+	f.DurationVar(&config.StartupDuration, "startup-duration", config.StartupDuration,
+		"Duration to return 503 on /health/ready to simulate GPU loading (e.g. 30s). Default is 0 (immediately ready)")
+
 	addToggle(f, &config.EnableSleepMode, "enable-sleep-mode", "Enable sleep mode", "Disable sleep mode")
 	f.BoolVar(&config.EnableRequestIDHeaders, "enable-request-id-headers", config.EnableRequestIDHeaders, "Enable including X-Request-Id header in responses")
 
