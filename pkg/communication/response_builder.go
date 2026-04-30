@@ -373,6 +373,18 @@ func (respBuilder *responsesHTTPRespBuilder) createResponse(respCtxPerChoice []v
 	respCtx := respCtxPerChoice[0]
 	text := strings.Join(tokens[0].Strings, "")
 	usage := respCtx.UsageData()
+
+	outputContent := openaiserverapi.OutputContent{
+		Type: openaiserverapi.ResponsesOutputText,
+		Text: text,
+	}
+
+	if respCtx.Logprobs() != nil {
+		if logprobs := common.GenerateResponsesLogprobs(tokens.Strings, *respCtx.Logprobs()); len(logprobs) > 0 {
+			outputContent.Logprobs = logprobs
+		}
+	}
+
 	return openaiserverapi.CreateResponsesResponse(
 		respCtx.DisplayModel(),
 		respCtx.RequestID(),
@@ -380,12 +392,10 @@ func (respBuilder *responsesHTTPRespBuilder) createResponse(respCtxPerChoice []v
 		respCtx.Instructions(),
 		[]openaiserverapi.OutputItem{
 			openaiserverapi.MessageOutput{
-				Type:   openaiserverapi.ResponsesOutputMessage,
-				Role:   openaiserverapi.RoleAssistant,
-				Status: openaiserverapi.ResponsesStatusCompleted,
-				Content: []openaiserverapi.OutputContent{
-					{Type: openaiserverapi.ResponsesOutputText, Text: text},
-				},
+				Type:    openaiserverapi.ResponsesOutputMessage,
+				Role:    openaiserverapi.RoleAssistant,
+				Status:  openaiserverapi.ResponsesStatusCompleted,
+				Content: []openaiserverapi.OutputContent{outputContent},
 			},
 		},
 		&openaiserverapi.ResponsesUsage{
