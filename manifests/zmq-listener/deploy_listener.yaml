@@ -4,6 +4,7 @@ metadata:
   name: zmq-listener-service
 spec:
   clusterIP: None  # Headless for direct pod IP access if needed
+  sessionAffinity: None
   selector:
     app: zmq-listener
   ports:
