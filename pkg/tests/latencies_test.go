@@ -54,16 +54,16 @@ var _ = Describe("Check latency calculator", Ordered, func() {
 				calculator, ttft, interToken, cacheTransfer, prefillOverhead, prefillPerToken, streaming, doRemotePrefill)
 		},
 		// Default, should use prefill-overhead and prefill-time-per-token, because ttft is 0
-		Entry(nil, "", "0", "0", "0", "1000", "50", false, false, ">=", int64(1250), int64(1250)),
+		Entry(nil, "", "0ms", "0ms", "0ms", "1s", "50ms", false, false, ">=", int64(1250), int64(1250)),
 		// Constant, should use 0 ttft
-		Entry(nil, "constant", "0", "0", "0", "500", "50", false, false, "<", int64(100), int64(100)),
+		Entry(nil, "constant", "0ms", "0ms", "0ms", "500ms", "50ms", false, false, "<", int64(100), int64(100)),
 		// Constant, remote prefill, should use cache transfer latency (50)
-		Entry(nil, "constant", "1000", "0", "50", "500", "50", false, true, "<", int64(100), int64(100)),
+		Entry(nil, "constant", "1s", "0ms", "50ms", "500ms", "50ms", false, true, "<", int64(100), int64(100)),
 		// Constant, remote prefill, streaming and inter token latency 50, should use cache transfer latency (50)
-		Entry(nil, "constant", "0", "50", "50", "0", "0", true, true, ">=", int64(50), int64(250)),
+		Entry(nil, "constant", "0ms", "50ms", "50ms", "0ms", "0ms", true, true, ">=", int64(50), int64(250)),
 		// Per token, should use prefill-overhead and prefill-time-per-token
-		Entry(nil, "per-token", "50", "50", "20", "1000", "50", true, false, ">=", int64(1250), int64(1450)),
+		Entry(nil, "per-token", "50ms", "50ms", "20ms", "1s", "50ms", true, false, ">=", int64(1250), int64(1450)),
 		// Per token, remote prefill, should use kv-cache-transfer-time-per-token, which is 0 here
-		Entry(nil, "per-token", "50", "50", "20", "1000", "50", true, true, "<", int64(100), int64(300)),
+		Entry(nil, "per-token", "50ms", "50ms", "20ms", "1s", "50ms", true, true, "<", int64(100), int64(300)),
 	)
 })
