@@ -42,7 +42,7 @@ var _ = Describe("Simulator requests scheduling", Ordered, func() {
 		DescribeTable("Should process in correct order simultaneous requests to two loras", func(maxNumSeq string) {
 			ctx := context.TODO()
 			args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeEcho,
-				"--time-to-first-token", "500", "--max-num-seqs", maxNumSeq,
+				"--time-to-first-token", "500ms", "--max-num-seqs", maxNumSeq,
 				"--lora-modules", "{\"name\":\"lora1\",\"path\":\"/path/to/lora1\"}",
 				"{\"name\":\"lora2\",\"path\":\"/path/to/lora2\"}"}
 
@@ -89,7 +89,7 @@ var _ = Describe("Simulator requests scheduling", Ordered, func() {
 			func(maxNumSeq string, maxLoras string, checkOrder func([]int)) {
 				ctx := context.TODO()
 				args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeEcho,
-					"--time-to-first-token", "1000",
+					"--time-to-first-token", "1s",
 					"--max-num-seqs", maxNumSeq, "--max-loras", maxLoras,
 					"--lora-modules", "{\"name\":\"lora1\",\"path\":\"/path/to/lora1\"}",
 					"{\"name\":\"lora2\",\"path\":\"/path/to/lora2\"}"}
@@ -130,7 +130,7 @@ var _ = Describe("Simulator requests scheduling", Ordered, func() {
 		It("Should keep the order of requests with one worker", func() {
 			ctx := context.TODO()
 			args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeEcho,
-				"--time-to-first-token", "500",
+				"--time-to-first-token", "500ms",
 				"--max-num-seqs", "1", "--max-loras", "1",
 				"--lora-modules",
 				"{\"name\":\"lora1\",\"path\":\"/path/to/lora1\"}",
@@ -170,7 +170,7 @@ var _ = Describe("Simulator requests scheduling", Ordered, func() {
 		It("Should keep the order of requests with two workers", func() {
 			ctx := context.TODO()
 			args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeEcho,
-				"--time-to-first-token", "500",
+				"--time-to-first-token", "500ms",
 				"--max-num-seqs", "2", "--max-loras", "1",
 				"--lora-modules",
 				"{\"name\":\"lora1\",\"path\":\"/path/to/lora1\"}",
@@ -210,7 +210,7 @@ var _ = Describe("Simulator requests scheduling", Ordered, func() {
 			func(maxNumSeq string, maxLoras string, checkOrder func([]int)) {
 				ctx := context.TODO()
 				args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeEcho,
-					"--time-to-first-token", "1000",
+					"--time-to-first-token", "1s",
 					"--max-num-seqs", maxNumSeq, "--max-loras", maxLoras,
 					"--lora-modules",
 					"{\"name\":\"lora1\",\"path\":\"/path/to/lora1\"}",
@@ -261,7 +261,7 @@ var _ = Describe("Simulator requests scheduling", Ordered, func() {
 		It("Should work correctly with many simultaneous requests", func() {
 			ctx := context.TODO()
 			args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeRandom,
-				"--time-to-first-token", "3000", "--max-num-seqs", "12", "--max-loras", "2",
+				"--time-to-first-token", "3s", "--max-num-seqs", "12", "--max-loras", "2",
 				"--lora-modules",
 				"{\"name\":\"lora0\",\"path\":\"/path/to/lora0\"}",
 				"{\"name\":\"lora1\",\"path\":\"/path/to/lora1\"}",
@@ -334,7 +334,7 @@ var _ = Describe("Simulator requests scheduling", Ordered, func() {
 			waitingMetric := getCountMetricPrefix(common.TestModelName, vllmsim.ReqWaitingMetricName)
 			ctx := context.TODO()
 			args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeRandom,
-				"--time-to-first-token", "2000", "--time-to-first-token-std-dev", "600",
+				"--time-to-first-token", "2s", "--time-to-first-token-std-dev", "600ms",
 				"--max-num-seqs", "1000", "--max-loras", "2", "--max-waiting-queue-length", "1500",
 				"--lora-modules",
 				"{\"name\":\"lora0\",\"path\":\"/path/to/lora0\"}",
@@ -450,7 +450,7 @@ var _ = Describe("Simulator requests scheduling", Ordered, func() {
 		It("Should work correctly with queue capacity reached", func() {
 			ctx := context.TODO()
 			args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeRandom,
-				"--time-to-first-token", "1000",
+				"--time-to-first-token", "1s",
 				"--max-num-seqs", "1", "--max-waiting-queue-length", "1",
 			}
 

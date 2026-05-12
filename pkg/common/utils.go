@@ -19,7 +19,6 @@ package common
 import (
 	"fmt"
 	"math/rand"
-	"strconv"
 	"sync"
 	"time"
 
@@ -27,7 +26,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common/logging"
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v3"
 )
 
 const InvalidMaxTokensErrMsg = "Max completion tokens and max tokens should be positive"
@@ -196,65 +194,6 @@ func MaxIntSlice(numbers []int) (int, error) {
 		}
 	}
 	return max, nil
-}
-
-// Duration wraps time.Duration. It is used to parse the custom duration format
-// from YAML.
-type Duration time.Duration
-
-func (d *Duration) Milliseconds() int64 {
-	return time.Duration(*d).Milliseconds()
-}
-
-// UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
-	var s string
-	if err := value.Decode(&s); err != nil {
-		return err
-	}
-	duration, err := parseDuration(s)
-	if err != nil {
-		return errors.Errorf("invalid duration format at line %d", value.Line)
-	}
-
-	*d = duration
-	return nil
-}
-
-func parseDuration(s string) (Duration, error) {
-	if dur, err := time.ParseDuration(s); err == nil {
-		return Duration(dur), nil
-	}
-	if i, err := strconv.ParseInt(s, 10, 64); err == nil {
-		return Duration(time.Duration(i) * time.Millisecond), nil
-	}
-
-	return 0, errors.New("invalid duration format")
-}
-
-// Set implements pflag/flag.Value.
-func (d *Duration) Set(s string) error {
-	duration, err := parseDuration(s)
-	if err != nil {
-		return errors.Errorf("invalid duration format: %s", s)
-	}
-
-	*d = duration
-	return nil
-}
-
-// Type implements pflag.Value.
-func (*Duration) Type() string {
-	return "duration"
-}
-
-// String implements pflag.Value.
-func (d *Duration) String() string {
-	return time.Duration(*d).String()
-}
-
-func (d *Duration) ToDuration() time.Duration {
-	return time.Duration(*d)
 }
 
 // FinishReason returns finish reason based on request's max tokens parameter

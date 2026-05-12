@@ -48,8 +48,8 @@ spec:
             - "--port=8000"
             - "--model=Qwen/Qwen2.5-0.5B-Instruct"
             - "--data-parallel-size=1"
-            - "--prefill-time-per-token=200"
-            - "--prefill-time-std-dev=3"
+            - "--prefill-time-per-token=200ms"
+            - "--prefill-time-std-dev=3ms"
             - "--render-url=http://localhost:8082"
           ports:
             - containerPort: 8000

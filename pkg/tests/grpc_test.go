@@ -81,9 +81,9 @@ var _ = Describe("gRPC", func() {
 		func(maxTokens uint32, finishReason string, ttft string, itl string, expectedTime time.Duration) string {
 			return fmt.Sprintf("max tokens: %d, ttft: %s, intertoken latency: %s", maxTokens, ttft, itl)
 		},
-		Entry(nil, uint32(128), common.StopFinishReason, "0", "0", time.Duration(0)),
-		Entry(nil, uint32(3), common.LengthFinishReason, "0", "0", time.Duration(0)),
-		Entry(nil, uint32(128), common.StopFinishReason, "500", "200", time.Second),
+		Entry(nil, uint32(128), common.StopFinishReason, "0ms", "0ms", time.Duration(0)),
+		Entry(nil, uint32(3), common.LengthFinishReason, "0ms", "0ms", time.Duration(0)),
+		Entry(nil, uint32(128), common.StopFinishReason, "500ms", "200ms", time.Second),
 	)
 
 	DescribeTable("generate, echo, streaming",
@@ -136,9 +136,9 @@ var _ = Describe("gRPC", func() {
 		func(maxTokens uint32, finishReason string, ttft string, itl string, expectedTTFT time.Duration, expectedTotal time.Duration) string {
 			return fmt.Sprintf("max tokens: %d, ttft: %s, intertoken latency: %s", maxTokens, ttft, itl)
 		},
-		Entry(nil, uint32(128), common.StopFinishReason, "0", "0", time.Duration(0), time.Duration(0)),
-		Entry(nil, uint32(3), common.LengthFinishReason, "0", "0", time.Duration(0), time.Duration(0)),
-		Entry(nil, uint32(128), common.StopFinishReason, "500", "300", 500*time.Millisecond, 1400*time.Millisecond),
+		Entry(nil, uint32(128), common.StopFinishReason, "0ms", "0ms", time.Duration(0), time.Duration(0)),
+		Entry(nil, uint32(3), common.LengthFinishReason, "0ms", "0ms", time.Duration(0), time.Duration(0)),
+		Entry(nil, uint32(128), common.StopFinishReason, "500ms", "300ms", 500*time.Millisecond, 1400*time.Millisecond),
 	)
 
 	DescribeTable("generate, text input",

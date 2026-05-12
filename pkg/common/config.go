@@ -117,43 +117,41 @@ type Configuration struct {
 	VllmDevMode bool
 
 	// --- Duration Configuration ---
-	// NOTE: For all duration fields listed below, providing a raw integer (milliseconds) is DEPRECATED
-	// and support will be removed in the next version.
-	// Please use duration strings instead (e.g., "100ms", "1.5s").
+	// NOTE: For all duration fields please use duration strings, e.g., "100ms", "1.5s"
 
 	// TimeToFirstToken time before the first token will be returned
-	TimeToFirstToken Duration `yaml:"time-to-first-token" json:"time-to-first-token"`
+	TimeToFirstToken time.Duration `yaml:"time-to-first-token" json:"time-to-first-token"`
 	// TimeToFirstTokenStdDev standard deviation for time before the first token will be returned
 	// optional, default is 0, can't be more than 30% of TimeToFirstToken, will not
 	// cause the actual time to first token to differ by more than 70% from TimeToFirstToken
-	TimeToFirstTokenStdDev Duration `yaml:"time-to-first-token-std-dev" json:"time-to-first-token-std-dev"`
+	TimeToFirstTokenStdDev time.Duration `yaml:"time-to-first-token-std-dev" json:"time-to-first-token-std-dev"`
 
 	// InterTokenLatency time between generated tokens
-	InterTokenLatency Duration `yaml:"inter-token-latency" json:"inter-token-latency"`
+	InterTokenLatency time.Duration `yaml:"inter-token-latency" json:"inter-token-latency"`
 	// InterTokenLatencyStdDev standard deviation for time between generated tokens
 	// optional, default is 0, can't be more than 30% of InterTokenLatency, will not cause the actual
 	// inter token latency to differ by more than 70% from InterTokenLatency
-	InterTokenLatencyStdDev Duration `yaml:"inter-token-latency-std-dev" json:"inter-token-latency-std-dev"`
+	InterTokenLatencyStdDev time.Duration `yaml:"inter-token-latency-std-dev" json:"inter-token-latency-std-dev"`
 	// KVCacheTransferLatency time to "transfer" kv-cache from another vLLM instance in case P/D is activated,
-	KVCacheTransferLatency Duration `yaml:"kv-cache-transfer-latency" json:"kv-cache-transfer-latency"`
+	KVCacheTransferLatency time.Duration `yaml:"kv-cache-transfer-latency" json:"kv-cache-transfer-latency"`
 	// KVCacheTransferLatencyStdDev standard deviation for time to "transfer" kv-cache from another
 	// vLLM instance in case P/D is activated, can't be more than 30% of KVCacheTransferLatency, will not
 	// cause the actual latency to differ by more than 70% from KVCacheTransferLatency
-	KVCacheTransferLatencyStdDev Duration `yaml:"kv-cache-transfer-latency-std-dev" json:"kv-cache-transfer-latency-std-dev"`
+	KVCacheTransferLatencyStdDev time.Duration `yaml:"kv-cache-transfer-latency-std-dev" json:"kv-cache-transfer-latency-std-dev"`
 
 	// $Total Prefill Time = PrefillOverhead + n * PrefillTimePerToken$
 	// the assumption is that n is less than k, where k is the number of prallelism units of GPU
 	// PrefillOverhead time taken to prefill the context
-	PrefillOverhead     Duration `yaml:"prefill-overhead" json:"prefill-overhead"`
-	PrefillTimePerToken Duration `yaml:"prefill-time-per-token" json:"prefill-time-per-token"`
+	PrefillOverhead     time.Duration `yaml:"prefill-overhead" json:"prefill-overhead"`
+	PrefillTimePerToken time.Duration `yaml:"prefill-time-per-token" json:"prefill-time-per-token"`
 	// PrefillOverheadStdDev similar to TimeToFirstTokenStdDev
-	PrefillTimeStdDev Duration `yaml:"prefill-time-std-dev" json:"prefill-time-std-dev"`
+	PrefillTimeStdDev time.Duration `yaml:"prefill-time-std-dev" json:"prefill-time-std-dev"`
 	// $Total KV Cache Transfer Time = n * KVCacheTransferTimePerToken$
 	// the assumption is that the cache blocks are all missed at the remote pod
 	// KVCacheTransfer overhead time taken to transfer kv-cache from another vLLM instance in case P/D is activated
-	KVCacheTransferTimePerToken Duration `yaml:"kv-cache-transfer-time-per-token" json:"kv-cache-transfer-time-per-token"`
+	KVCacheTransferTimePerToken time.Duration `yaml:"kv-cache-transfer-time-per-token" json:"kv-cache-transfer-time-per-token"`
 	// KVCacheTransferOverheadStdDev similar to TimeToFirstTokenStdDev
-	KVCacheTransferTimeStdDev Duration `yaml:"kv-cache-transfer-time-std-dev" json:"kv-cache-transfer-time-std-dev"`
+	KVCacheTransferTimeStdDev time.Duration `yaml:"kv-cache-transfer-time-std-dev" json:"kv-cache-transfer-time-std-dev"`
 
 	// TimeFactorUnderLoad is a multiplicative factor that affects the overall time taken for requests when parallel
 	// requests are being processed.

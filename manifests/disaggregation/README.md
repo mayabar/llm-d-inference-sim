@@ -74,10 +74,10 @@ curl -v http://localhost:8000/v1/chat/completions \
 This example already configures non-zero latency parameters to reflect real-world P/D disaggregation behavior:
 
 ```yaml
-- "--prefill-time-per-token=200"   # ~200ms per input token for prefill computation
-- "--prefill-time-std-dev=3"       # ±3ms jitter to simulate system noise
+- "--prefill-time-per-token=200ms"   # ~200ms per input token for prefill computation
+- "--prefill-time-std-dev=3ms"       # ±3ms jitter to simulate system noise
 ```
 
 Parameter meanings:
-- `prefill-time-per-token`: Average time (e.g., 100ms. in milliseconds if unit is missing) to process each prompt token during the prefill phase. Higher values emphasize the cost of large prompts.
-- `prefill-time-std-dev`: Standard deviation (in ms) of prefill latency, introducing realistic variation across requests.
+- `prefill-time-per-token`: Average time (e.g., `100ms`) to process each prompt token during the prefill phase. Accepts Go duration strings (e.g., `100ms`, `1s`). Higher values emphasize the cost of large prompts.
+- `prefill-time-std-dev`: Standard deviation for prefill latency (e.g., `3ms`), introducing realistic variation across requests. Accepts Go duration strings.

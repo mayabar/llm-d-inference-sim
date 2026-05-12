@@ -184,11 +184,11 @@ func startServerForLatencyTest(modelName string, ttft int, prefillTimePerToken i
 	ctx := context.TODO()
 
 	args := []string{"cmd", "--model", modelName, "--mode", common.ModeEcho,
-		"--kv-cache-transfer-latency", strconv.Itoa(kvcacheTransferLatency),
-		"--kv-cache-transfer-time-per-token", strconv.Itoa(kvCacheTransferTimePerToken),
-		"--time-to-first-token", strconv.Itoa(ttft),
-		"--prefill-time-per-token", strconv.Itoa(prefillTimePerToken),
-		"--inter-token-latency", strconv.Itoa(interTokenLatency),
+		"--kv-cache-transfer-latency", fmt.Sprintf("%dms", kvcacheTransferLatency),
+		"--kv-cache-transfer-time-per-token", fmt.Sprintf("%dms", kvCacheTransferTimePerToken),
+		"--time-to-first-token", fmt.Sprintf("%dms", ttft),
+		"--prefill-time-per-token", fmt.Sprintf("%dms", prefillTimePerToken),
+		"--inter-token-latency", fmt.Sprintf("%dms", interTokenLatency),
 	}
 
 	client, err := startServerWithArgs(ctx, args)

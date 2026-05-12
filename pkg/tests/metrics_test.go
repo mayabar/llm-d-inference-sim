@@ -84,7 +84,7 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 		// two running requests and one waiting request in the metrics
 		ctx := context.TODO()
 		args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeRandom,
-			"--time-to-first-token", "3000", "--max-num-seqs", "2"}
+			"--time-to-first-token", "3s", "--max-num-seqs", "2"}
 
 		client, err := startServerWithArgs(ctx, args)
 		Expect(err).NotTo(HaveOccurred())
@@ -164,7 +164,7 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 		expectedPromptTokensCnt := getChatPromptTokensCountForTestModel(prompt)
 
 		args := []string{"cmd", "--model", model, "--mode", common.ModeRandom,
-			"--time-to-first-token", "100", "--max-num-seqs", "4"}
+			"--time-to-first-token", "100ms", "--max-num-seqs", "4"}
 
 		client, err := startServerWithArgs(ctx, args)
 		Expect(err).NotTo(HaveOccurred())
@@ -225,7 +225,7 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 		func(stream bool) {
 			ctx := context.TODO()
 			args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeRandom,
-				"--time-to-first-token", "3000", "-v", "5",
+				"--time-to-first-token", "3s", "-v", "5",
 				"--lora-modules", "{\"name\":\"lora1\",\"path\":\"/path/to/lora1\"}",
 				"{\"name\":\"lora2\",\"path\":\"/path/to/lora2\"}"}
 
@@ -285,7 +285,7 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 	It("Should send correct lora metrics for parallel requests with delay", func() {
 		ctx := context.TODO()
 		args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeRandom,
-			"--time-to-first-token", "3000",
+			"--time-to-first-token", "3s",
 			"--lora-modules", "{\"name\":\"lora1\",\"path\":\"/path/to/lora1\"}",
 			"{\"name\":\"lora2\",\"path\":\"/path/to/lora2\"}"}
 
@@ -360,7 +360,7 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 	It("Should send correct lora metrics for parallel requests without delay", func() {
 		ctx := context.TODO()
 		args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeRandom,
-			"--time-to-first-token", "3000",
+			"--time-to-first-token", "3s",
 			"--lora-modules", "{\"name\":\"lora1\",\"path\":\"/path/to/lora1\"}",
 			"{\"name\":\"lora2\",\"path\":\"/path/to/lora2\"}"}
 
@@ -443,7 +443,7 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 		ctx := context.TODO()
 		// use mode echo to be sure that response is more than one token - this makes sure that tpot is reported to prometheus
 		args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeEcho,
-			"--time-to-first-token", "200", "--inter-token-latency", "100"}
+			"--time-to-first-token", "200ms", "--inter-token-latency", "100ms"}
 
 		client, err := startServerWithArgs(ctx, args)
 		Expect(err).NotTo(HaveOccurred())
@@ -524,7 +524,7 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 			ctx := context.TODO()
 			args := []string{"cmd", "--model", common.QwenModelName, "--mode", common.ModeRandom,
 				"--enable-kvcache", "true", "--kv-cache-size", "16", "--block-size", "8",
-				"--time-to-first-token", "5000"}
+				"--time-to-first-token", "5s"}
 
 			client, err := startServerWithArgsAndEnv(ctx, common.ModeRandom, args, map[string]string{"POD_IP": "localhost"})
 			Expect(err).NotTo(HaveOccurred())
@@ -601,7 +601,7 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 			ctx := context.TODO()
 			args := []string{"cmd", "--model", common.QwenModelName, "--mode", common.ModeRandom,
 				"--enable-kvcache", "true", "--kv-cache-size", "16", "--block-size", "8",
-				"--time-to-first-token", "5000", "--max-num-seqs", "2"}
+				"--time-to-first-token", "5s", "--max-num-seqs", "2"}
 
 			client, err := startServerWithArgsAndEnv(ctx, common.ModeRandom, args, map[string]string{"POD_IP": "localhost"})
 			Expect(err).NotTo(HaveOccurred())
@@ -668,7 +668,7 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 			ctx := context.TODO()
 			args := []string{"cmd", "--model", common.QwenModelName, "--mode", common.ModeRandom,
 				"--enable-kvcache", "true", "--kv-cache-size", "64", "--block-size", "8",
-				"--time-to-first-token", "100"}
+				"--time-to-first-token", "100ms"}
 
 			client, err := startServerWithArgsAndEnv(ctx, common.ModeRandom, args, map[string]string{"POD_IP": "localhost"})
 			Expect(err).NotTo(HaveOccurred())
@@ -719,7 +719,7 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 			ctx := context.TODO()
 			args := []string{"cmd", "--model", common.QwenModelName, "--mode", common.ModeRandom,
 				"--enable-kvcache", "true", "--kv-cache-size", "16", "--block-size", "8",
-				"--time-to-first-token", "2000"}
+				"--time-to-first-token", "2s"}
 
 			client, err := startServerWithArgsAndEnv(ctx, common.ModeRandom, args, map[string]string{"POD_IP": "localhost"})
 			Expect(err).NotTo(HaveOccurred())
@@ -785,7 +785,7 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 			ctx := context.TODO()
 			args := []string{"cmd", "--model", common.QwenModelName, "--mode", common.ModeRandom,
 				"--enable-kvcache", "true", "--kv-cache-size", "64", "--block-size", "8",
-				"--time-to-first-token", "100"}
+				"--time-to-first-token", "100ms"}
 
 			client, err := startServerWithArgsAndEnv(ctx, common.ModeRandom, args, map[string]string{"POD_IP": "localhost"})
 			Expect(err).NotTo(HaveOccurred())
@@ -876,7 +876,7 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 		It("should calculate waiting and inference time correctly", func() {
 			ctx := context.TODO()
 			args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeEcho,
-				"--time-to-first-token", "1200", "--max-num-seqs", "1",
+				"--time-to-first-token", "1200ms", "--max-num-seqs", "1",
 			}
 
 			client, err := startServerWithArgs(ctx, args)

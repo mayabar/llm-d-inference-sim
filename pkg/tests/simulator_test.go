@@ -1396,7 +1396,7 @@ var _ = Describe("Simulator", func() {
 			ctx := context.TODO()
 			// 1 worker, queue capacity 2, 500ms TTFT so requests stay in-flight long enough to inspect
 			args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeEcho,
-				"--time-to-first-token", "500", "--max-num-seqs", "1", "--max-waiting-queue-length", "2"}
+				"--time-to-first-token", "500ms", "--max-num-seqs", "1", "--max-waiting-queue-length", "2"}
 			server, _, client, err := startServerHandle(ctx, common.ModeEcho, args, nil)
 			Expect(err).NotTo(HaveOccurred())
 

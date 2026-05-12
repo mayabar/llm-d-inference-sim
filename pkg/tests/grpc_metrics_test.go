@@ -22,7 +22,6 @@ import (
 	"io"
 	"math"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -41,7 +40,7 @@ var _ = Describe("gRPC Metrics", Ordered, func() {
 		// two running requests and one waiting request in the metrics
 		ctx := context.TODO()
 		args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeRandom,
-			"--time-to-first-token", "3000", "--max-num-seqs", "2"}
+			"--time-to-first-token", "3s", "--max-num-seqs", "2"}
 
 		_, comm, httpClient, err := startServerHandle(ctx, common.ModeRandom, args, nil)
 		Expect(err).NotTo(HaveOccurred())
@@ -144,7 +143,7 @@ var _ = Describe("gRPC Metrics", Ordered, func() {
 	It("should send correct ttft, tpot and inter_token_latency metrics via gRPC", func() {
 		ctx := context.TODO()
 		args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeEcho,
-			"--time-to-first-token", "100", "--inter-token-latency", "75"}
+			"--time-to-first-token", "100ms", "--inter-token-latency", "75ms"}
 
 		_, comm, httpClient, err := startServerHandle(ctx, common.ModeEcho, args, nil)
 		Expect(err).NotTo(HaveOccurred())
@@ -237,13 +236,13 @@ var _ = Describe("gRPC Metrics", Ordered, func() {
 				kvcacheTransferLatency int, kvCacheTransferTimePerToken int, doRemotePrefill bool) {
 				ctx := context.TODO()
 				args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeEcho,
-					"--time-to-first-token", strconv.Itoa(ttft),
-					"--prefill-time-per-token", strconv.Itoa(prefillTimePerToken),
-					"--inter-token-latency", strconv.Itoa(interTokenLatency)}
+					"--time-to-first-token", fmt.Sprintf("%dms", ttft),
+					"--prefill-time-per-token", fmt.Sprintf("%dms", prefillTimePerToken),
+					"--inter-token-latency", fmt.Sprintf("%dms", interTokenLatency)}
 
 				if doRemotePrefill {
-					args = append(args, "--kv-cache-transfer-latency", strconv.Itoa(kvcacheTransferLatency))
-					args = append(args, "--kv-cache-transfer-time-per-token", strconv.Itoa(kvCacheTransferTimePerToken))
+					args = append(args, "--kv-cache-transfer-latency", fmt.Sprintf("%dms", interTokenLatency))
+					args = append(args, "--kv-cache-transfer-time-per-token", fmt.Sprintf("%dms", kvCacheTransferTimePerToken))
 				}
 
 				_, comm, httpClient, err := startServerHandle(ctx, common.ModeEcho, args, nil)
@@ -287,7 +286,7 @@ var _ = Describe("gRPC Metrics", Ordered, func() {
 	It("should send correct kv cache usage metrics via gRPC", func() {
 		ctx := context.TODO()
 		args := []string{"cmd", "--model", common.QwenModelName, "--mode", common.ModeEcho,
-			"--time-to-first-token", "2000", "--inter-token-latency", "2000",
+			"--time-to-first-token", "2s", "--inter-token-latency", "2s",
 			"--max-num-seqs", "3", "--enable-kvcache", "true", "--kv-cache-size", "16", "--block-size", "8"}
 
 		_, comm, httpClient, err := startServerHandle(ctx, common.ModeEcho, args, map[string]string{"POD_IP": "localhost"})
@@ -349,7 +348,7 @@ var _ = Describe("gRPC Metrics", Ordered, func() {
 	It("should calculate waiting and inference time correctly via gRPC", func() {
 		ctx := context.TODO()
 		args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeEcho,
-			"--time-to-first-token", "1200", "--max-num-seqs", "1"}
+			"--time-to-first-token", "1200ms", "--max-num-seqs", "1"}
 
 		_, comm, httpClient, err := startServerHandle(ctx, common.ModeEcho, args, nil)
 		Expect(err).NotTo(HaveOccurred())
