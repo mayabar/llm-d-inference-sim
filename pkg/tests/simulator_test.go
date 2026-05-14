@@ -1619,6 +1619,77 @@ var _ = Describe("Simulator", func() {
 		)
 	})
 
+	Context("generate API", func() {
+		DescribeTable("Should return correct response to /inference/v1/generate",
+			func(model string) {
+				ctx := context.TODO()
+				args := []string{"cmd", "--model", model, "--mode", common.ModeRandom}
+				client, err := startServerWithArgs(ctx, args)
+				Expect(err).NotTo(HaveOccurred())
+
+				reqBody := fmt.Sprintf(`{
+					"model": "%s",
+					"token_ids": [1, 2, 3, 4],
+					"sampling_params": {"max_tokens": 5}
+				}`, model)
+				resp, err := client.Post("http://localhost/inference/v1/generate", "application/json", strings.NewReader(reqBody))
+				Expect(err).NotTo(HaveOccurred())
+				defer func() {
+					err := resp.Body.Close()
+					Expect(err).NotTo(HaveOccurred())
+				}()
+
+				Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+				body, err := io.ReadAll(resp.Body)
+				Expect(err).NotTo(HaveOccurred())
+
+				var generateResp openaiserverapi.GenerateResponse
+				Expect(json.Unmarshal(body, &generateResp)).To(Succeed())
+				Expect(generateResp.GenRequestID).NotTo(BeEmpty())
+				Expect(generateResp.Choices).To(HaveLen(1))
+				Expect(generateResp.Choices[0].FinishReason).NotTo(BeNil())
+				Expect(generateResp.Choices[0].TokenIDs).NotTo(BeEmpty())
+				Expect(int64(len(generateResp.Choices[0].TokenIDs))).To(BeNumerically("<=", 5))
+			},
+			func(model string) string {
+				return "model: " + model
+			},
+			Entry(nil, common.TestModelName),
+			Entry(nil, common.QwenModelName),
+		)
+
+		DescribeTable("Should return 400 when required fields are missing",
+			func(reqBody string, expectedErrMsg string) {
+				ctx := context.TODO()
+				args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeRandom}
+				client, err := startServerWithArgs(ctx, args)
+				Expect(err).NotTo(HaveOccurred())
+
+				resp, err := client.Post("http://localhost/inference/v1/generate", "application/json", strings.NewReader(reqBody))
+				Expect(err).NotTo(HaveOccurred())
+				defer func() {
+					err := resp.Body.Close()
+					Expect(err).NotTo(HaveOccurred())
+				}()
+
+				Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+
+				body, err := io.ReadAll(resp.Body)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(string(body)).To(ContainSubstring(expectedErrMsg))
+			},
+			Entry("missing token_ids",
+				fmt.Sprintf(`{"model": "%s", "sampling_params": {"max_tokens": 5}}`, common.TestModelName),
+				"Missing input token_ids",
+			),
+			Entry("missing sampling_params",
+				fmt.Sprintf(`{"model": "%s", "token_ids": [1, 2, 3]}`, common.TestModelName),
+				"Missing sampling_params field",
+			),
+		)
+	})
+
 	Context("kv-events for requests", func() {
 		ctx := context.TODO()
 		model := common.QwenModelName
