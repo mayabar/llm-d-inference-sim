@@ -526,11 +526,19 @@ type ResponsesItemEvent struct {
 // GenerateResponse defines structure of generate response
 type GenerateResponse struct {
 	baseResponse
-	Choices      []GenerateRespChoice `json:"choices"`
-	GenRequestID string               `json:"request_id"`
+	Choices          []GenerateRespChoice        `json:"choices"`
+	GenRequestID     string                      `json:"request_id"`
+	ECTransferParams map[string]ECTransferParams `json:"ec_transfer_params"`
 }
 
 type GenerateRespChoice struct {
 	baseResponseChoice
 	TokenIDs []uint32 `json:"token_ids"`
+}
+
+type ECTransferParams struct {
+	PeerHost      string `json:"peer_host"`
+	PeerPort      int    `json:"peer_port"`
+	SizeBytes     int    `json:"size_bytes"`
+	NixlAgentData []byte `json:"nixl_agent_metadata_b64"`
 }

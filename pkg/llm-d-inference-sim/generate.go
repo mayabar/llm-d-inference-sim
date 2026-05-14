@@ -66,11 +66,18 @@ func (g *GenerateRequest) AsString() string {
 
 func (g *GenerateRequest) createResponseContext(reqCtx requestContext, displayModel string,
 	responseTokens *openaiserverapi.Tokenized, finishReason *string, usageData *openaiserverapi.Usage,
-	sendUsageData bool, logprobs *int, toolCalls []openaiserverapi.ToolCall) ResponseContext {
+	sendUsageData bool, logprobs *int, toolCalls []openaiserverapi.ToolCall, mmEncoderOnlyMode bool) ResponseContext {
 	base := newBaseResponseContext(reqCtx, displayModel, responseTokens, finishReason, usageData, sendUsageData,
 		logprobs, g.GetRequestID(), g.IsDoRemotePrefill(), g.IsDoRemoteDecode(), g.GetNumberOfCachedPromptTokens())
+
+	var ecParams map[string]openaiserverapi.ECTransferParams
+	if mmEncoderOnlyMode && g.Features != nil {
+		ecParams = buildECTransferParams(g.Features)
+	}
+
 	return &generateResponseCtx{
 		baseResponseContext: base,
+		ecTransferParams:    ecParams,
 	}
 }
 
@@ -103,10 +110,32 @@ var _ requestContext = (*generateReqCtx)(nil)
 // Implementation of responseContext for generation requests
 type generateResponseCtx struct {
 	baseResponseContext
+	ecTransferParams map[string]openaiserverapi.ECTransferParams
 }
 
 func (respCtx *generateResponseCtx) ToolCalls() []openaiserverapi.ToolCall {
 	return nil
 }
 
+func (respCtx *generateResponseCtx) ECTransferParams() map[string]openaiserverapi.ECTransferParams {
+	return respCtx.ecTransferParams
+}
+
 var _ ResponseContext = (*generateResponseCtx)(nil)
+
+// buildECTransferParams creates simulated ECTransferParams for each MM hash in the request features.
+func buildECTransferParams(features *openaiserverapi.EncodeMMFeatures) map[string]openaiserverapi.ECTransferParams {
+	params := make(map[string]openaiserverapi.ECTransferParams)
+
+	for _, hashes := range features.MMHashes {
+		for _, hash := range hashes {
+			params[hash] = openaiserverapi.ECTransferParams{
+				PeerHost:      "DUMMY",
+				PeerPort:      1234,
+				SizeBytes:     2359296,
+				NixlAgentData: []byte("NIXL_METADATA_PLACEHOLDER"),
+			}
+		}
+	}
+	return params
+}
