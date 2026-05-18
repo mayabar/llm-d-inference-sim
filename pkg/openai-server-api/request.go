@@ -711,32 +711,37 @@ func (req *ResponsesRequest) ExtractMaxTokens() *int64 {
 // GenerateRequest defines structure of generate request
 type GenerateRequest struct {
 	baseRequest
-	TokenIDs       []uint32        `json:"token_ids"`
-	SamplingParams *SamplingParams `json:"sampling_params"`
+	TokenIDs       []uint32          `json:"token_ids"`
+	SamplingParams *SamplingParams   `json:"sampling_params"`
+	Features       *EncodeMMFeatures `json:"features"`
 }
 
 type SamplingParams struct {
 	MaxTokens *int64 `json:"max_tokens"`
 }
 
+type EncodeMMFeatures struct {
+	MMHashes map[string][]string `json:"mm_hashes"`
+}
+
 var _ Request = (*GenerateRequest)(nil)
 
-func (c *GenerateRequest) GetTools() []Tool {
+func (g *GenerateRequest) GetTools() []Tool {
 	return nil
 }
 
-func (c *GenerateRequest) GetToolChoice() ToolChoice {
+func (g *GenerateRequest) GetToolChoice() ToolChoice {
 	return ToolChoice{}
 }
 
-func (c *GenerateRequest) GetMaxCompletionTokens() *int64 {
-	return c.SamplingParams.MaxTokens
+func (g *GenerateRequest) GetMaxCompletionTokens() *int64 {
+	return g.SamplingParams.MaxTokens
 }
 
-func (req *GenerateRequest) ExtractMaxTokens() *int64 {
-	return req.SamplingParams.MaxTokens
+func (g *GenerateRequest) ExtractMaxTokens() *int64 {
+	return g.SamplingParams.MaxTokens
 }
 
-func (t *GenerateRequest) GetLogprobs() *int {
+func (g *GenerateRequest) GetLogprobs() *int {
 	return nil
 }

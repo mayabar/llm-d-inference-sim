@@ -31,8 +31,9 @@ type requestBuilder interface {
 	validate(toolsValidator *toolsValidator) (string, int)
 	buildRequestContext(simCtx *SimContext, channel common.Channel[*ResponseInfo]) requestContext
 	AsString() string
-	createResponseContext(reqCtx requestContext, displayModel string, responseTokens *openaiserverapi.Tokenized, finishReason *string,
-		usageData *openaiserverapi.Usage, sendUsageData bool, logprobs *int, toolCalls []openaiserverapi.ToolCall) ResponseContext
+	createResponseContext(reqCtx requestContext, displayModel string, responseTokens *openaiserverapi.Tokenized,
+		finishReason *string, usageData *openaiserverapi.Usage, sendUsageData bool, logprobs *int,
+		toolCalls []openaiserverapi.ToolCall, mmEncoderOnlyMode bool) ResponseContext
 }
 
 type Request interface {
@@ -175,7 +176,7 @@ func (reqCtx *baseRequestContext) handleRequest() (ResponseContext, *openaiserve
 		}
 		sendUsageData := !req.IsStream() || req.IncludeUsage()
 		respCtx := req.createResponseContext(reqCtx, dispModel, &openaiserverapi.Tokenized{},
-			&finishReason, &usageData, sendUsageData, logprobs, nil)
+			&finishReason, &usageData, sendUsageData, logprobs, nil, reqCtx.sim.Config.MMEncoderOnly)
 		return respCtx, nil
 	}
 
@@ -219,7 +220,7 @@ func (reqCtx *baseRequestContext) handleRequest() (ResponseContext, *openaiserve
 	}
 
 	respCtx := req.createResponseContext(reqCtx, dispModel, responseTokens, &finishReason,
-		&usageData, sendUsageData, logprobs, toolCalls)
+		&usageData, sendUsageData, logprobs, toolCalls, reqCtx.sim.Config.MMEncoderOnly)
 
 	return respCtx, nil
 }

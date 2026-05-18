@@ -485,8 +485,9 @@ func (respBuilder *generateHTTPRespBuilder) createResponse(respCtx vllmsim.Respo
 	choice.Index = 0
 	choice.FinishReason = respCtx.FinishReason()
 	return &openaiserverapi.GenerateResponse{
-		Choices:      []openaiserverapi.GenerateRespChoice{choice},
-		GenRequestID: respCtx.RequestID(),
+		Choices:          []openaiserverapi.GenerateRespChoice{choice},
+		GenRequestID:     respCtx.RequestID(),
+		ECTransferParams: respCtx.ECTransferParams(),
 	}
 }
 
