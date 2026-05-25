@@ -704,7 +704,7 @@ func (c *InputContent) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
-	if raw.Type != "" && raw.Type != ResponsesInputText {
+	if raw.Type != "" && raw.Type != ResponsesInputText && raw.Type != ResponsesOutputText {
 		return fmt.Errorf("unsupported input content type %q", raw.Type)
 	}
 	c.Type = ResponsesInputText
