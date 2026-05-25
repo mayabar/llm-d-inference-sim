@@ -50,9 +50,10 @@ func (c *ChatCompletionsRequest) validate(toolsValidator *toolsValidator) (strin
 	return validateRequest(c)
 }
 
-func (c *ChatCompletionsRequest) buildRequestContext(simCtx *SimContext, channel common.Channel[*ResponseInfo]) requestContext {
+func (c *ChatCompletionsRequest) buildRequestContext(simCtx *SimContext, channel common.Channel[*ResponseInfo],
+	choiceIdx int, doneFn func()) requestContext {
 	reqCtx := &chatCompletionReqCtx{
-		baseRequestContext: newBaseRequestContext(simCtx, channel),
+		baseRequestContext: newBaseRequestContext(simCtx, channel, choiceIdx, doneFn),
 		req:                c,
 	}
 	// wire chatCompletionReqCtx into embedded requestContext interface
@@ -86,6 +87,11 @@ func (c *chatCompletionReqCtx) tokenizedPromptForEcho() (*openaiserverapi.Tokeni
 		return nil, err
 	}
 	return &openaiserverapi.Tokenized{Tokens: tokens, Strings: strTokens}, nil
+}
+
+// split is a no-op: chat completions always carry a single prompt.
+func (c *ChatCompletionsRequest) split() []Request {
+	return []Request{c}
 }
 
 var _ Request = (*ChatCompletionsRequest)(nil)

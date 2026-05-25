@@ -21,25 +21,77 @@ import (
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	openaiserverapi "github.com/llm-d/llm-d-inference-sim/pkg/openai-server-api"
+	"github.com/valyala/fasthttp"
 )
 
-// Implementation of request for /completions requests
+// TextCompletionsParsedRequest is the wire form of /completions requests:
+// it is unmarshaled from the HTTP body and immediately split into one or more
+// TextCompletionsRequest values inside HandleRequest. Workers never see this
+// type, so buildRequestContext / createResponseContext are unreachable on it.
+type TextCompletionsParsedRequest struct {
+	openaiserverapi.TextCompletionsParsedRequest
+}
+
+func (t *TextCompletionsParsedRequest) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, t)
+}
+
+func (t *TextCompletionsParsedRequest) validate(_ *toolsValidator) (string, int) {
+	if len(t.Prompt) == 0 {
+		return "prompt array must contain at least one prompt", fasthttp.StatusBadRequest
+	}
+	return validateRequest(t)
+}
+
+func (t *TextCompletionsParsedRequest) AsString() string {
+	return textCompletionsAsString(t.RequestID)
+}
+
+// split converts the parsed wire form into one or more processing-form
+// TextCompletionsRequest values. Each sub-request gets the parent envelope and
+// a "<requestID>-<i>" id stamped by openaiserverapi.AsSingle.
+func (t *TextCompletionsParsedRequest) split() []Request {
+	out := make([]Request, len(t.Prompt))
+	for i := range t.Prompt {
+		out[i] = &TextCompletionsRequest{TextCompletionsRequest: t.AsSingle(i)}
+	}
+	return out
+}
+
+// buildRequestContext / createResponseContext are required by the Request
+// interface but are unreachable: HandleRequest always calls split first and
+// only the resulting TextCompletionsRequest sub-requests reach a worker.
+func (t *TextCompletionsParsedRequest) buildRequestContext(_ *SimContext, _ common.Channel[*ResponseInfo],
+	_ int, _ func()) requestContext {
+	panic("TextCompletionsParsedRequest.buildRequestContext: split must be called first")
+}
+
+func (t *TextCompletionsParsedRequest) createResponseContext(_ requestContext, _ string,
+	_ *openaiserverapi.Tokenized, _ *string, _ *openaiserverapi.Usage, _ bool,
+	_ *int, _ []openaiserverapi.ToolCall, _ bool) ResponseContext {
+	panic("TextCompletionsParsedRequest.createResponseContext: split must be called first")
+}
+
+var _ Request = (*TextCompletionsParsedRequest)(nil)
+
+// TextCompletionsRequest is the processing form: a /completions request that
+// always carries a single prompt. Produced by TextCompletionsParsedRequest.split.
 type TextCompletionsRequest struct {
 	openaiserverapi.TextCompletionsRequest
 }
 
-// reads and parses data from the body of the given request
 func (t *TextCompletionsRequest) Unmarshal(data []byte) error {
 	return json.Unmarshal(data, t)
 }
 
-func (t *TextCompletionsRequest) validate(toolsValidator *toolsValidator) (string, int) {
+func (t *TextCompletionsRequest) validate(_ *toolsValidator) (string, int) {
 	return validateRequest(t)
 }
 
-func (t *TextCompletionsRequest) buildRequestContext(simCtx *SimContext, channel common.Channel[*ResponseInfo]) requestContext {
+func (t *TextCompletionsRequest) buildRequestContext(simCtx *SimContext, channel common.Channel[*ResponseInfo],
+	choiceIdx int, doneFn func()) requestContext {
 	reqCtx := &textCompletionReqCtx{
-		baseRequestContext: newBaseRequestContext(simCtx, channel),
+		baseRequestContext: newBaseRequestContext(simCtx, channel, choiceIdx, doneFn),
 		req:                t,
 	}
 	// wire textCompletionReqCtx into embedded requestContext interface
@@ -47,8 +99,13 @@ func (t *TextCompletionsRequest) buildRequestContext(simCtx *SimContext, channel
 	return reqCtx
 }
 
+// split is a no-op: TextCompletionsRequest is already the single-prompt form.
+func (t *TextCompletionsRequest) split() []Request {
+	return []Request{t}
+}
+
 func (t *TextCompletionsRequest) AsString() string {
-	return "text completion request (req id " + t.RequestID + ")"
+	return textCompletionsAsString(t.RequestID)
 }
 
 func (t *TextCompletionsRequest) createResponseContext(reqCtx requestContext, displayModel string,
@@ -62,6 +119,10 @@ func (t *TextCompletionsRequest) createResponseContext(reqCtx requestContext, di
 }
 
 var _ Request = (*TextCompletionsRequest)(nil)
+
+func textCompletionsAsString(requestID string) string {
+	return "text completion request (req id " + requestID + ")"
+}
 
 // Implementation of requestContext for /completions requests
 type textCompletionReqCtx struct {

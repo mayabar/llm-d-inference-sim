@@ -29,11 +29,17 @@ import (
 type requestBuilder interface {
 	Unmarshal(data []byte) error
 	validate(toolsValidator *toolsValidator) (string, int)
-	buildRequestContext(simCtx *SimContext, channel common.Channel[*ResponseInfo]) requestContext
+	buildRequestContext(simCtx *SimContext, channel common.Channel[*ResponseInfo], choiceIdx int, doneFn func()) requestContext
 	AsString() string
 	createResponseContext(reqCtx requestContext, displayModel string, responseTokens *openaiserverapi.Tokenized,
 		finishReason *string, usageData *openaiserverapi.Usage, sendUsageData bool, logprobs *int,
 		toolCalls []openaiserverapi.ToolCall, mmEncoderOnlyMode bool) ResponseContext
+	// split returns one or more processing-form Requests, each carrying a single
+	// prompt with a unique RequestID. For request types whose wire form is always
+	// a single prompt (chat, generation, responses, post-split text completions),
+	// the implementation is trivial: return the receiver wrapped in a one-element
+	// slice. Only TextCompletionsParsedRequest does real work here.
+	split() []Request
 }
 
 type Request interface {
@@ -52,6 +58,8 @@ type requestContext interface {
 	responseChannel() common.Channel[*ResponseInfo]
 	tokenizedPromptForEcho() (*openaiserverapi.Tokenized, error)
 	encode() ([]uint32, []string, *openaiserverapi.RenderMMFeatures, error)
+	choiceIndex() int
+	signalDone()
 }
 
 type baseRequestContext struct {
@@ -59,18 +67,32 @@ type baseRequestContext struct {
 	sim             *SimContext
 	startProcessing time.Time
 	respChannel     common.Channel[*ResponseInfo]
+	idx             int
+	doneFn          func()
 }
 
-func newBaseRequestContext(simCtx *SimContext, channel common.Channel[*ResponseInfo]) baseRequestContext {
+func newBaseRequestContext(simCtx *SimContext, channel common.Channel[*ResponseInfo], choiceIdx int, doneFn func()) baseRequestContext {
 	return baseRequestContext{
 		sim:             simCtx,
 		startProcessing: time.Now(),
 		respChannel:     channel,
+		idx:             choiceIdx,
+		doneFn:          doneFn,
 	}
 }
 
 func (b *baseRequestContext) responseChannel() common.Channel[*ResponseInfo] {
 	return b.respChannel
+}
+
+func (b *baseRequestContext) choiceIndex() int {
+	return b.idx
+}
+
+func (b *baseRequestContext) signalDone() {
+	if b.doneFn != nil {
+		b.doneFn()
+	}
 }
 
 func (b *baseRequestContext) startProcessingTime() time.Time {

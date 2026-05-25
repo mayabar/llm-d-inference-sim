@@ -40,7 +40,7 @@ func (c *Communication) Generate(in *pb.GenerateRequest, out grpc.ServerStreamin
 
 	req := c.pbRequestToRequest(in)
 	respBuilder := &generationGRPCRespBuilder{}
-	_, channel, err, _ := c.simulator.HandleRequest(req)
+	_, _, channel, err, _ := c.simulator.HandleRequest(req)
 	if err != nil {
 		return status.Errorf(extractGRPCCode(err), err.Message, err)
 	}
@@ -82,7 +82,7 @@ func (c *Communication) Generate(in *pb.GenerateRequest, out grpc.ServerStreamin
 	if in.Stream {
 		resp = respBuilder.createLastChunk(respCtx)
 	} else {
-		resp = respBuilder.createResponse(respCtx, &tokens)
+		resp = respBuilder.createResponse([]vllmsim.ResponseContext{respCtx}, []openaiserverapi.Tokenized{tokens})
 	}
 	if err := sendResponse(resp, out); err != nil {
 		return err
