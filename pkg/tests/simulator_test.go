@@ -2373,6 +2373,106 @@ var _ = Describe("Simulator", func() {
 			Expect(json.Unmarshal(body, &generateResp)).To(Succeed())
 			Expect(generateResp.ECTransferParams).To(BeNil())
 		})
+
+		It("Should return kv_transfer_params when do_remote_decode is true", func() {
+			ctx := context.TODO()
+			args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeRandom}
+			client, err := startServerWithArgs(ctx, args)
+			Expect(err).NotTo(HaveOccurred())
+
+			reqBody := fmt.Sprintf(`{
+				"model": "%s",
+				"token_ids": [1, 2, 3, 4],
+				"sampling_params": {"max_tokens": 5},
+				"kv_transfer_params": {"do_remote_decode": true}
+			}`, common.TestModelName)
+
+			resp, err := client.Post("http://localhost/inference/v1/generate", "application/json", strings.NewReader(reqBody))
+			Expect(err).NotTo(HaveOccurred())
+			defer func() {
+				err := resp.Body.Close()
+				Expect(err).NotTo(HaveOccurred())
+			}()
+
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+			body, err := io.ReadAll(resp.Body)
+			Expect(err).NotTo(HaveOccurred())
+
+			var generateResp openaiserverapi.GenerateResponse
+			Expect(json.Unmarshal(body, &generateResp)).To(Succeed())
+			Expect(generateResp.KVParams).NotTo(BeNil())
+			Expect(generateResp.KVParams.DoRemotePrefill).To(BeTrue())
+			Expect(generateResp.KVParams.DoRemoteDecode).To(BeFalse())
+			Expect(generateResp.KVParams.RemoteHost).NotTo(BeEmpty())
+			Expect(generateResp.KVParams.RemotePort).To(BeNumerically(">", 0))
+			Expect(generateResp.KVParams.RemoteBlockIds).NotTo(BeEmpty())
+			Expect(generateResp.KVParams.RemoteEngineId).NotTo(BeEmpty())
+		})
+
+		It("Should not return kv_transfer_params when do_remote_decode is absent", func() {
+			ctx := context.TODO()
+			args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeRandom}
+			client, err := startServerWithArgs(ctx, args)
+			Expect(err).NotTo(HaveOccurred())
+
+			reqBody := fmt.Sprintf(`{
+				"model": "%s",
+				"token_ids": [1, 2, 3, 4],
+				"sampling_params": {"max_tokens": 5}
+			}`, common.TestModelName)
+
+			resp, err := client.Post("http://localhost/inference/v1/generate", "application/json", strings.NewReader(reqBody))
+			Expect(err).NotTo(HaveOccurred())
+			defer func() {
+				err := resp.Body.Close()
+				Expect(err).NotTo(HaveOccurred())
+			}()
+
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+			body, err := io.ReadAll(resp.Body)
+			Expect(err).NotTo(HaveOccurred())
+
+			var generateResp openaiserverapi.GenerateResponse
+			Expect(json.Unmarshal(body, &generateResp)).To(Succeed())
+			Expect(generateResp.KVParams).To(BeNil())
+		})
+
+		It("Should return kv_transfer_params when do_remote_decode is true inside sampling_params.extra_args", func() {
+			ctx := context.TODO()
+			args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeRandom}
+			client, err := startServerWithArgs(ctx, args)
+			Expect(err).NotTo(HaveOccurred())
+
+			reqBody := fmt.Sprintf(`{
+				"model": "%s",
+				"token_ids": [1, 2, 3, 4],
+				"sampling_params": {"max_tokens": 5, "extra_args": {"kv_transfer_params": {"do_remote_decode": true}}}
+			}`, common.TestModelName)
+
+			resp, err := client.Post("http://localhost/inference/v1/generate", "application/json", strings.NewReader(reqBody))
+			Expect(err).NotTo(HaveOccurred())
+			defer func() {
+				err := resp.Body.Close()
+				Expect(err).NotTo(HaveOccurred())
+			}()
+
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+			body, err := io.ReadAll(resp.Body)
+			Expect(err).NotTo(HaveOccurred())
+
+			var generateResp openaiserverapi.GenerateResponse
+			Expect(json.Unmarshal(body, &generateResp)).To(Succeed())
+			Expect(generateResp.KVParams).NotTo(BeNil())
+			Expect(generateResp.KVParams.DoRemotePrefill).To(BeTrue())
+			Expect(generateResp.KVParams.DoRemoteDecode).To(BeFalse())
+			Expect(generateResp.KVParams.RemoteHost).NotTo(BeEmpty())
+			Expect(generateResp.KVParams.RemotePort).To(BeNumerically(">", 0))
+			Expect(generateResp.KVParams.RemoteBlockIds).NotTo(BeEmpty())
+			Expect(generateResp.KVParams.RemoteEngineId).NotTo(BeEmpty())
+		})
 	})
 
 	Context("kv-events for requests", func() {
