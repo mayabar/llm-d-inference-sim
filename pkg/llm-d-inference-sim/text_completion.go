@@ -22,6 +22,7 @@ import (
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	openaiserverapi "github.com/llm-d/llm-d-inference-sim/pkg/openai-server-api"
+	"github.com/llm-d/llm-d-inference-sim/pkg/tokenizer"
 	"github.com/valyala/fasthttp"
 )
 
@@ -37,7 +38,11 @@ func (t *TextCompletionsParsedRequest) Unmarshal(data []byte) error {
 	return json.Unmarshal(data, t)
 }
 
-func (t *TextCompletionsParsedRequest) validate(_ *toolsValidator) (string, int) {
+// ValidateBody checks that a /v1/completions/render body has the required text
+// shape — at minimum, a non-empty prompt with non-empty entries. Catches
+// chat-shaped bodies (which JSON-unmarshal cleanly into
+// TextCompletionsParsedRequest with empty Prompt).
+func (t *TextCompletionsParsedRequest) ValidateBody() (string, int) {
 	if len(t.Prompt) == 0 {
 		return "prompt array must contain at least one prompt", fasthttp.StatusBadRequest
 	}
@@ -49,6 +54,32 @@ func (t *TextCompletionsParsedRequest) validate(_ *toolsValidator) (string, int)
 		} else if p.Text == "" {
 			return "prompt must not contain an empty string", fasthttp.StatusBadRequest
 		}
+	}
+	return "", 0
+}
+
+// Render tokenizes each prompt for /v1/completions/render (passing
+// pre-tokenized prompts through verbatim) and returns one token slice per
+// prompt. Features is always nil for text completions.
+func (t *TextCompletionsParsedRequest) Render(tk tokenizer.Tokenizer) ([][]uint32, *openaiserverapi.RenderMMFeatures, error) {
+	result := make([][]uint32, len(t.Prompt))
+	for i, p := range t.Prompt {
+		tokens := p.Tokens
+		if !p.IsTokens() {
+			var err error
+			tokens, _, err = tk.RenderText(p.Text)
+			if err != nil {
+				return nil, nil, err
+			}
+		}
+		result[i] = tokens
+	}
+	return result, nil, nil
+}
+
+func (t *TextCompletionsParsedRequest) validate(_ *toolsValidator) (string, int) {
+	if msg, code := t.ValidateBody(); msg != "" {
+		return msg, code
 	}
 	return validateRequest(t)
 }
