@@ -124,7 +124,7 @@ type baseRequest struct {
 	// Stream is a boolean value, defines whether response should be sent as a Stream
 	Stream bool `json:"stream"`
 	// KVParams kv transfer related fields
-	KVParams *KVTransferParams `json:"kv_transfer_params"`
+	KVParams *KVTransferParams `json:"kv_transfer_params,omitempty"`
 	// The number of tokens in the prompt that are in the local KV Cache
 	cachedPromptTokens int
 	// IgnoreEOS is a boolean value, true when the model should ignore end-of-sequence tokens
@@ -886,7 +886,15 @@ type GenerateRequest struct {
 }
 
 type SamplingParams struct {
-	MaxTokens *int64 `json:"max_tokens"`
+	MaxTokens *int64             `json:"max_tokens"`
+	ExtraArgs *SamplingExtraArgs `json:"extra_args"`
+}
+
+// SamplingExtraArgs holds extra fields nested inside sampling_params.extra_args.
+// Real vLLM has a bug where kv_transfer_params is sometimes passed here instead of
+// at the root of the request, so we accept it in either location.
+type SamplingExtraArgs struct {
+	KVTransferParams *KVTransferParams `json:"kv_transfer_params"`
 }
 
 type EncodeMMFeatures struct {

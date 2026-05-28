@@ -33,6 +33,11 @@ func (g *GenerateRequest) Unmarshal(data []byte) error {
 	if err := json.Unmarshal(data, g); err != nil {
 		return err
 	}
+	// Fall back to sampling_params.extra_args.kv_transfer_params when not provided at the root.
+	// Real vLLM has a bug where the parameters land in extra_args; accept both locations.
+	if g.KVParams == nil && g.SamplingParams != nil && g.SamplingParams.ExtraArgs != nil {
+		g.KVParams = g.SamplingParams.ExtraArgs.KVTransferParams
+	}
 	g.SetTokenizedPrompt(&openaiserverapi.Tokenized{Tokens: g.TokenIDs, Strings: []string{}})
 	return nil
 }

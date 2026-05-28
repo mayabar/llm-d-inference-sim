@@ -515,11 +515,15 @@ func (respBuilder *generateHTTPRespBuilder) createResponse(respCtxPerChoice []vl
 	choice := openaiserverapi.GenerateRespChoice{TokenIDs: tokenIDs}
 	choice.Index = 0
 	choice.FinishReason = respCtx.FinishReason()
-	return &openaiserverapi.GenerateResponse{
+	resp := &openaiserverapi.GenerateResponse{
 		Choices:          []openaiserverapi.GenerateRespChoice{choice},
 		GenRequestID:     respCtx.RequestID(),
 		ECTransferParams: respCtx.ECTransferParams(),
 	}
+	if respCtx.DoRemoteDecode() {
+		resp.KVParams = openaiserverapi.BuildPrefillKVTransferParams()
+	}
+	return resp
 }
 
 func (respBuilder *generateHTTPRespBuilder) createUsageChunk(_ []vllmsim.ResponseContext) sseChunk {
