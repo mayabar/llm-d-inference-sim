@@ -33,6 +33,8 @@ const (
 	StartMessageSeparator = "### "
 	EndMessageSeparator   = "\n"
 	nullString            = "null"
+	// ResponsesIncludeLogprobs is the include value that enables logprobs in the Responses API
+	ResponsesIncludeLogprobs = "message.output_text.logprobs"
 )
 
 // Request defines an interface for request information retrieval
@@ -693,9 +695,6 @@ func NewGenerationRequest(requestID string, stream bool, model string, maxTokens
 		MaxTokens: maxTokens,
 	}
 }
-
-// ResponsesIncludeLogprobs is the include value that enables logprobs in the Responses API
-const ResponsesIncludeLogprobs = "message.output_text.logprobs"
 
 // Responses
 

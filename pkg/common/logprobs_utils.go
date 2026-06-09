@@ -249,9 +249,9 @@ func GenerateChatLogprobs(tokens []string, topLogprobsCount int) *openaiserverap
 	return logprobs
 }
 
-// GenerateResponsesLogprobs generates synthetic log probabilities for Responses API output_text content
+// GenerateMessagesLogprobs generates synthetic log probabilities for Responses API output_text content
 // topLogprobsCount specifies the number of top alternatives per token (0 = no alternatives, only main token)
-func GenerateResponsesLogprobs(tokens []string, topLogprobsCount int) []openaiserverapi.ResponsesLogprob {
+func GenerateMessagesLogprobs(tokens []string, topLogprobsCount int) []openaiserverapi.ResponsesLogprob {
 	chat := GenerateChatLogprobs(tokens, topLogprobsCount)
 	result := make([]openaiserverapi.ResponsesLogprob, len(chat.Content))
 	for i, c := range chat.Content {
