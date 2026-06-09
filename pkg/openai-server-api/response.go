@@ -38,6 +38,9 @@ const (
 	ResponsesStatusInProgress = "in_progress"
 	ResponsesOutputText       = "output_text"
 	ResponsesOutputMessage    = "message"
+
+	SSEDoneMarker = "[DONE]"
+	SSEDataPrefix = "data: "
 )
 
 // Response interface representing response types

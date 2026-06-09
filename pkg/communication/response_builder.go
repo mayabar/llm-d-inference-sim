@@ -40,7 +40,7 @@ func (j *jsonDataChunk) SSEBytes() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []byte("data: " + string(b) + "\n\n"), nil
+	return []byte(openaiserverapi.SSEDataPrefix + string(b) + "\n\n"), nil
 }
 
 // namedEventChunk formats its value as "event: <name>\ndata: <json>\n\n".
@@ -68,7 +68,9 @@ func (e *namedEventChunk) SSEBytes() ([]byte, error) {
 // doneMarker emits the SSE stream terminator "data: [DONE]\n\n".
 type doneMarker struct{}
 
-func (*doneMarker) SSEBytes() ([]byte, error) { return []byte("data: [DONE]\n\n"), nil }
+func (*doneMarker) SSEBytes() ([]byte, error) {
+	return []byte(openaiserverapi.SSEDataPrefix + openaiserverapi.SSEDoneMarker + "\n\n"), nil
+}
 
 // responseBuilder is the HTTP streaming builder interface.
 type responseBuilder interface {
