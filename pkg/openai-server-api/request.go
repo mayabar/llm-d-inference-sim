@@ -89,6 +89,12 @@ type Request interface {
 	ExtractMaxTokens() *int64
 	// GetLogprobs returns nil if no logprobs needed, or pointer to number of logprob options to include
 	GetLogprobs() *int
+	// GetN returns the number of completion choices to generate, defaulting to 1
+	GetN() int
+	// GetRawN returns the raw n pointer from the request, nil when the field was
+	// omitted. Used by validation to reject explicit n <= 0 while still allowing
+	// the absent case to default to 1.
+	GetRawN() *int
 	// GetCacheHitThreshold returns the cache hit threshold (0-1) or nil if not set
 	GetCacheHitThreshold() *float64
 	// TokenizedPrompt returns the tokenized prompt
@@ -152,6 +158,9 @@ type baseCompletionsRequest struct {
 	// cacheThresholdFinishReason is a boolean value extracted from the request's HTTP header,
 	//  when true, forces a cache_threshold finish reason
 	cacheThresholdFinishReason bool
+	// N is the number of completion choices to generate for each prompt.
+	// Optional and defaults to 1.
+	N *int `json:"n,omitempty"`
 }
 
 type KVTransferParams struct {
@@ -287,6 +296,16 @@ func (b *baseRequest) GetIgnoreEOS() bool {
 	return b.IgnoreEOS
 }
 
+// GetN returns 1 for non-completions requests that don't support the n parameter.
+func (b *baseRequest) GetN() int {
+	return 1
+}
+
+// GetRawN returns nil for non-completions requests that don't support the n parameter.
+func (b *baseRequest) GetRawN() *int {
+	return nil
+}
+
 // SetIgnoreEOS sets the value of IgnoreEOS
 func (b *baseRequest) SetIgnoreEOS(ignorEOS bool) {
 	b.IgnoreEOS = ignorEOS
@@ -345,6 +364,19 @@ func (b *baseRequest) SetMMFeatures(mmFeatures *RenderMMFeatures) {
 
 func (b *baseCompletionsRequest) IncludeUsage() bool {
 	return !b.Stream || (b.StreamOptions != nil && b.StreamOptions.IncludeUsage)
+}
+
+// GetN returns the number of completion choices to generate, defaulting to 1.
+func (b *baseCompletionsRequest) GetN() int {
+	if b.N == nil || *b.N <= 0 {
+		return 1
+	}
+	return *b.N
+}
+
+// GetRawN returns the raw n pointer, nil when the field was omitted.
+func (b *baseCompletionsRequest) GetRawN() *int {
+	return b.N
 }
 
 // GetCacheHitThreshold returns the cache hit threshold value
