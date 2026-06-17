@@ -415,9 +415,11 @@ func (c *Configuration) validate() error {
 	if c.PrefillTimeStdDev < 0 {
 		return errors.New("prefill time standard deviation cannot be negative")
 	}
-	if float32(c.PrefillTimeStdDev) > 0.3*float32(c.PrefillTimePerToken) {
-		return errors.New("prefill time standard deviation cannot be more than 30% of prefill time per token")
-	}
+	// No upper-bound check on PrefillTimeStdDev: it is applied to the total prefill time
+	// (prefill-overhead + n × prefill-time-per-token), which depends on the prompt length n
+	// and is unknown at config time. Sampled durations are clamped at runtime by
+	// RandomNormDuration to [0.3, 1.7] × mean, so an oversized std-dev cannot produce
+	// nonsensical values.
 
 	if c.KVCacheTransferTimePerToken < 0 {
 		return errors.New("kv-cache transfer time per token cannot be negative")
@@ -425,9 +427,10 @@ func (c *Configuration) validate() error {
 	if c.KVCacheTransferTimeStdDev < 0 {
 		return errors.New("kv-cache transfer time standard deviation cannot be negative")
 	}
-	if float32(c.KVCacheTransferTimeStdDev) > 0.3*float32(c.KVCacheTransferTimePerToken) {
-		return errors.New("kv-cache transfer time standard deviation cannot be more than 30% of kv-cache transfer time")
-	}
+	// No upper-bound check on KVCacheTransferTimeStdDev for the same reason: it is applied
+	// to the total transfer time (n × kv-cache-transfer-time-per-token), which depends on
+	// the prompt length n and is unknown at config time. Runtime clamping in
+	// RandomNormDuration handles oversized std-devs.
 
 	if c.KVCacheTransferLatency < 0 {
 		return errors.New("kv-cache transfer time cannot be negative")

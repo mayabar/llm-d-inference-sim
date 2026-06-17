@@ -60,6 +60,8 @@ Unlike simple mock servers that just "sleep" for a fixed time, this simulator mo
 
 - **Disaggregated Prefill (PD)**: Can simulate KV-cache transfer latency instead of standard TTFT when mimicking Prefill/Decode disaggregation architectures.
 
+For a detailed explanation of how the simulator models inference time and what each latency parameter does, see [Latency Simulation](docs/latency-simulation.md). For suggested values for each parameter and ready-to-use YAML profiles, see [Latency Reference Tables and Profiles](docs/latency-profiles.md).
+
 ### Tokenization
 The simulator offers flexible tokenization to balance accuracy vs. performance. The simulator automatically selects between two tokenization modes based on the provided `--model` name:
 * **HuggingFace Mode:** Used for real models (e.g., `meta-llama/Llama-3.1-8B-Instruct`). Downloads actual tokenizers for exact accuracy.
