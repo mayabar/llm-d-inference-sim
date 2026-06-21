@@ -75,7 +75,7 @@ Structure of requests/responses
           - prompt_tokens
           - completion_tokens
           - total_tokens
-          - prompt_tokens_detail
+          - prompt_tokens_details
             - cached_tokens
         - object
         - kv_transfer_params

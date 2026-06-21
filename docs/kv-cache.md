@@ -216,7 +216,7 @@ When KV cache is enabled, the response `usage` object includes cached token info
     "prompt_tokens": 100,
     "completion_tokens": 50,
     "total_tokens": 150,
-    "prompt_tokens_detail": {
+    "prompt_tokens_details": {
       "cached_tokens": 64
     }
   }

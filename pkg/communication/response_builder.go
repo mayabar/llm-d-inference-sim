@@ -115,8 +115,8 @@ func aggregateUsage(respCtxPerChoice []vllmsim.ResponseContext) *api.Usage {
 		if !seenIDs[rc.RequestID()] {
 			seenIDs[rc.RequestID()] = true
 			agg.PromptTokens += u.PromptTokens
-			if u.PromptTokensDetail != nil && agg.PromptTokensDetail == nil {
-				agg.PromptTokensDetail = u.PromptTokensDetail
+			if u.PromptTokensDetails != nil && agg.PromptTokensDetails == nil {
+				agg.PromptTokensDetails = u.PromptTokensDetails
 			}
 		}
 	}

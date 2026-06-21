@@ -238,7 +238,7 @@ func (reqCtx *baseRequestContext) handleRequest() (ResponseContext, *api.Error) 
 		PromptTokens:     numOfInputTokens,
 		CompletionTokens: completionTokens,
 		TotalTokens:      numOfInputTokens + completionTokens,
-		PromptTokensDetail: &api.PromptTokensDetail{
+		PromptTokensDetails: &api.PromptTokensDetails{
 			CachedTokens: prefixCacheStats.CachedTokens,
 		},
 	}
