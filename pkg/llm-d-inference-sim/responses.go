@@ -87,18 +87,28 @@ func convertInputToMessages(input []api.InputItem) []api.Message {
 				Role: inputMsg.Role,
 			}
 
-			// Convert InputContent to ChatComplContent
 			if len(inputMsg.Content) == 1 && inputMsg.Content[0].Type == api.ResponsesInputText {
 				// Simple text content
 				msg.Content.Raw = inputMsg.Content[0].Text
 			} else {
-				// Structured content
+				// Structured content (text, images, audio)
 				blocks := make([]api.ChatComplContentBlock, 0, len(inputMsg.Content))
 				for _, content := range inputMsg.Content {
-					if content.Type == api.ResponsesInputText {
+					switch content.Type {
+					case api.ResponsesInputText:
 						blocks = append(blocks, api.ChatComplContentBlock{
 							Type: "text",
 							Text: content.Text,
+						})
+					case api.ResponsesInputImage:
+						blocks = append(blocks, api.ChatComplContentBlock{
+							Type:     "image_url",
+							ImageURL: api.ChatComplImageBlock{Url: content.ImageURL},
+						})
+					case api.ResponsesInputAudio:
+						blocks = append(blocks, api.ChatComplContentBlock{
+							Type:       "input_audio",
+							InputAudio: api.ChatComplAudioBlock{Data: content.AudioData, Format: content.AudioFormat},
 						})
 					}
 				}
