@@ -19,6 +19,7 @@ package tests
 import (
 	"bufio"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,6 +29,7 @@ import (
 	"sync"
 	"time"
 
+	zmq4 "github.com/go-zeromq/zmq4"
 	"github.com/llm-d/llm-d-inference-sim/pkg/api"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	"github.com/llm-d/llm-d-inference-sim/pkg/communication"
@@ -1221,6 +1223,168 @@ force-dummy-tokenizer: false
 			firstCall := queryEngines(client)
 			secondCall := queryEngines(client)
 			Expect(secondCall).To(Equal(firstCall))
+		})
+	})
+
+	Context("kv-events replay", func() {
+		const (
+			replayModel  = common.QwenModelName
+			replayMode   = common.ModeRandom
+			replayPrompt = "This is a test message for kv cache events, has to be long enough to be tokenized into multiple blocks."
+		)
+
+		// setupReplayServer starts the simulator with replay enabled on a freshly
+		// probed free port (see freeTCPPort), rather than a fixed port that could
+		// collide with other tests or a leftover process.
+		// Returns the HTTP client, the PUB subscriber (for watching live events),
+		// the topic, and the replay endpoint the simulator was told to bind.
+		setupReplayServer := func(ctx context.Context) (*http.Client, zmq4.Socket, string, string) {
+			topic := kvcache.CreateKVEventsTopic("localhost", replayModel)
+			sub, zmqEndpoint := common.CreateSub(ctx, topic)
+
+			replayPort, err := common.FreeTCPPort()
+			Expect(err).NotTo(HaveOccurred())
+			replayEndpoint := fmt.Sprintf("tcp://127.0.0.1:%d", replayPort)
+
+			args := []string{"cmd", "--model", replayModel, "--mode", replayMode,
+				"--enable-kvcache", "true", "--kv-cache-size", "16", "--block-size", "8",
+				"--event-batch-size", "1", "--zmq-endpoint", zmqEndpoint,
+				"--kv-events-replay-endpoint", replayEndpoint,
+				"--kv-events-replay-queue-size", "64",
+			}
+			client, err := startServerWithArgsAndEnv(ctx, replayMode, args, map[string]string{"POD_IP": "localhost"})
+			Expect(err).NotTo(HaveOccurred())
+			return client, sub, topic, replayEndpoint
+		}
+
+		// sendReplayRequestAndRecv requests replay from startSeq via the shared
+		// kvcache.SendReplayRequestAndRecv helper and aggregates the blocks in the
+		// returned batches, skipping the end-of-replay sentinel (identified by its
+		// empty topic frame). Returns (totalStoredBlocks, lastSeq).
+		sendReplayRequestAndRecv := func(ctx context.Context, replayEndpoint string, startSeq uint64) (int, uint64) {
+			msgs := kvcache.SendReplayRequestAndRecv(ctx, replayEndpoint, startSeq)
+
+			totalStored := 0
+			var lastSeq uint64
+			for _, msg := range msgs {
+				if len(msg.Frames[0]) == 0 {
+					break
+				}
+				seq := binary.BigEndian.Uint64(msg.Frames[1])
+				stored, _, _ := kvcache.CountKVEventBlocks(msg.Frames, kvcache.CreateKVEventsTopic("localhost", replayModel), seq)
+				totalStored += stored
+				lastSeq = seq
+			}
+			return totalStored, lastSeq
+		}
+
+		// startSubReceiver pumps all PUB messages from sub into a channel.
+		startSubReceiver := func(sub zmq4.Socket) chan zmq4.Msg {
+			ch := make(chan zmq4.Msg, 64)
+			go func() {
+				for {
+					msg, err := sub.Recv()
+					if err != nil {
+						return
+					}
+					ch <- msg
+				}
+			}()
+			return ch
+		}
+
+		// drainPubUntilQuiet reads live PUB events until idle, returning
+		// total stored blocks and last sequence number seen.
+		drainPubUntilQuiet := func(msgCh chan zmq4.Msg, topic string, timeout time.Duration) (totalStored int, lastSeq uint64) {
+			for {
+				select {
+				case msg := <-msgCh:
+					if len(msg.Frames) != 3 {
+						continue
+					}
+					seq := binary.BigEndian.Uint64(msg.Frames[1])
+					stored, _, _ := kvcache.CountKVEventBlocks(msg.Frames, topic, seq)
+					totalStored += stored
+					lastSeq = seq
+				case <-time.After(timeout):
+					return
+				}
+			}
+		}
+
+		It("stores published batches and replays them from a given sequence number", func() {
+			ctx := context.TODO()
+			client, sub, topic, replayEndpoint := setupReplayServer(ctx)
+			defer sub.Close() //nolint:errcheck
+
+			msgCh := startSubReceiver(sub)
+
+			// Allow replayer socket to bind
+			time.Sleep(300 * time.Millisecond)
+
+			// Trigger two chat completions
+			for range 2 {
+				openaiclient, params := getOpenAIClientAndChatParams(client, replayModel, replayPrompt, false)
+				resp, err := openaiclient.Chat.Completions.New(ctx, params)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.Choices).ShouldNot(BeEmpty())
+			}
+
+			// Drain all live events; record last seq published
+			_, lastSeq := drainPubUntilQuiet(msgCh, topic, 500*time.Millisecond)
+			Expect(lastSeq).To(BeNumerically(">", 0))
+
+			// Request replay from the last seq — exactly that one batch should come back
+			replayedTotal, replayedLastSeq := sendReplayRequestAndRecv(ctx, replayEndpoint, lastSeq)
+			Expect(replayedTotal).To(BeNumerically(">", 0))
+			Expect(replayedLastSeq).To(Equal(lastSeq))
+		})
+
+		It("replays all stored batches when startSeq is 1", func() {
+			ctx := context.TODO()
+			client, sub, topic, replayEndpoint := setupReplayServer(ctx)
+			defer sub.Close() //nolint:errcheck
+
+			msgCh := startSubReceiver(sub)
+
+			time.Sleep(300 * time.Millisecond)
+
+			// Trigger one completion
+			openaiclient, params := getOpenAIClientAndChatParams(client, replayModel, replayPrompt, false)
+			resp, err := openaiclient.Chat.Completions.New(ctx, params)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resp.Choices).ShouldNot(BeEmpty())
+
+			// Count blocks from the live PUB stream
+			origTotal, _ := drainPubUntilQuiet(msgCh, topic, 500*time.Millisecond)
+			Expect(origTotal).To(BeNumerically(">", 0))
+
+			// Replay from seq 1 — all stored batches must be returned
+			replayedTotal, _ := sendReplayRequestAndRecv(ctx, replayEndpoint, 1)
+			Expect(replayedTotal).To(Equal(origTotal))
+		})
+
+		It("returns only the sentinel when startSeq is beyond all stored batches", func() {
+			ctx := context.TODO()
+			client, sub, topic, replayEndpoint := setupReplayServer(ctx)
+			defer sub.Close() //nolint:errcheck
+
+			msgCh := startSubReceiver(sub)
+
+			time.Sleep(300 * time.Millisecond)
+
+			// Trigger one completion
+			openaiclient, params := getOpenAIClientAndChatParams(client, replayModel, replayPrompt, false)
+			resp, err := openaiclient.Chat.Completions.New(ctx, params)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resp.Choices).ShouldNot(BeEmpty())
+
+			// Drain live events
+			drainPubUntilQuiet(msgCh, topic, 500*time.Millisecond)
+
+			// Ask for a seq far beyond what was stored — only the sentinel comes back
+			replayedTotal, _ := sendReplayRequestAndRecv(ctx, replayEndpoint, 999999)
+			Expect(replayedTotal).To(Equal(0))
 		})
 	})
 })

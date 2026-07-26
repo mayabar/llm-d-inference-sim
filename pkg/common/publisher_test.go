@@ -20,7 +20,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"net"
+	"fmt"
 
 	"time"
 
@@ -52,7 +52,7 @@ var _ = Describe("Publisher", func() {
 		go func() {
 			// Make sure that sub.RecvMessageBytes is called before pub.PublishEvent
 			time.Sleep(time.Second)
-			err := pub.PublishEvent(ctx, topic, data)
+			_, _, err := pub.PublishEvent(ctx, topic, data)
 			Expect(err).NotTo(HaveOccurred())
 		}()
 
@@ -81,10 +81,9 @@ var _ = Describe("Publisher", func() {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		freePort, err := getFreePort()
+		freePort, err := FreeTCPPort()
 		Expect(err).NotTo(HaveOccurred())
-		Expect(freePort).ToNot(BeEmpty())
-		endpoint := "tcp://127.0.0.1:" + freePort
+		endpoint := fmt.Sprintf("tcp://127.0.0.1:%d", freePort)
 
 		// create publisher - it will try to connect to the listener, but the listener is not started yet
 		pub, err := NewPublisher(ctx, endpoint)
@@ -149,17 +148,3 @@ var _ = Describe("Publisher", func() {
 
 	})
 })
-
-func getFreePort() (string, error) {
-	var listener net.Listener
-	var err error
-	if listener, err = net.Listen("tcp", ":0"); err == nil {
-		var port string
-		_, port, err = net.SplitHostPort(listener.Addr().String())
-		defer func() {
-			_ = listener.Close()
-		}()
-		return port, err
-	}
-	return "", err
-}
