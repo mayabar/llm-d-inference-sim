@@ -280,17 +280,37 @@ func (c *Communication) handleHTTP(req vllmsim.Request, respBuilder responseBuil
 
 	c.logger.V(logging.DEBUG).Info("Received", "new HTTP", req.AsString())
 
-	ctx.SetStatusCode(fasthttp.StatusOK)
-
 	c.addResponseHeaders(ctx, req.GetRequestID())
 
 	if isStream {
-		ctx.SetContentType("text/event-stream")
-		c.sendStream(ctx, *channel, respBuilder, numChoices)
+		c.handleStream(ctx, *channel, respBuilder, numChoices)
 	} else {
+		ctx.SetStatusCode(fasthttp.StatusOK)
 		ctx.SetContentType("application/json")
 		c.sendNonStream(ctx, *channel, respBuilder, numChoices)
 	}
+}
+
+// handleStream peeks the first response before committing to a streamed
+// reply. Once ctx.Response.SetBodyStream is called, fasthttp writes the
+// status line and headers before any body byte is read from the stream, so
+// the status code can no longer change afterwards. Peeking lets a request
+// that fails before producing any content (e.g. queue full, or a validation
+// error caught only once processing starts) still be reported with its real
+// HTTP status instead of being forced into a 200 SSE error frame.
+func (c *Communication) handleStream(ctx *fasthttp.RequestCtx, channel common.Channel[*vllmsim.ResponseInfo],
+	respBuilder responseBuilder, numChoices int) {
+	first := <-channel.Channel
+	if first != nil && first.Err != nil {
+		go drainResponseChannel(channel)
+		c.sendError(ctx, first.Err, false)
+		return
+	}
+
+	ctx.SetStatusCode(fasthttp.StatusOK)
+	ctx.SetContentType("text/event-stream")
+
+	c.sendStream(ctx, channel, respBuilder, numChoices, first)
 }
 
 func (c *Communication) sendNonStream(ctx *fasthttp.RequestCtx, channel common.Channel[*vllmsim.ResponseInfo],
@@ -389,7 +409,7 @@ func (c *Communication) sendOrFail(ctx *fasthttp.RequestCtx, w *bufio.Writer, ch
 }
 
 func (c *Communication) sendStream(ctx *fasthttp.RequestCtx, channel common.Channel[*vllmsim.ResponseInfo],
-	respBuilder responseBuilder, numChoices int) {
+	respBuilder responseBuilder, numChoices int, first *vllmsim.ResponseInfo) {
 	pr, pw := io.Pipe()
 
 	go func() {
@@ -402,7 +422,18 @@ func (c *Communication) sendStream(ctx *fasthttp.RequestCtx, channel common.Chan
 			pw.Close() //nolint:errcheck
 		}()
 
-		for response := range channel.Channel {
+		for {
+			var response *vllmsim.ResponseInfo
+			if first != nil {
+				response, first = first, nil
+			} else {
+				r, ok := <-channel.Channel
+				if !ok {
+					break
+				}
+				response = r
+			}
+
 			if response.Err != nil {
 				// Fail-fast: previously streamed chunks remain sent; emit a single error
 				// frame followed by [DONE] and stop reading from the other prompts.
@@ -505,7 +536,7 @@ func (c *Communication) emitResponseChunks(ctx *fasthttp.RequestCtx, w *bufio.Wr
 	}
 
 	errToSend := api.NewError("unexpected response part in streaming", fasthttp.StatusInternalServerError, nil)
-	c.sendError(ctx, &errToSend, false)
+	c.sendStreamErrorAndDone(w, &errToSend)
 	return false, false
 }
 
