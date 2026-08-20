@@ -50,8 +50,8 @@ The codebase uses `go-logr` directly (`github.com/go-logr/logr`). Verbosity cons
 
 **Level conventions:**
 
-- `logger.Info(...)` for once-per-request operational signals (emitted at `INFO`).
-- `logger.V(logging.DEBUG).Info(...)` for per-item or per-loop signals that fire multiple times per request.
+- `logger.V(logging.INFO).Info(...)` for service-lifecycle milestones that fire a bounded number of times (startup, dataset load, tokenizer init, request-processing start/done).
+- `logger.V(logging.DEBUG).Info(...)` for once-per-request operational signals (emitted at `INFO`).
 - `logger.V(logging.TRACE).Info(...)` for detailed state transitions (KV-cache block operations, worker queue events, token-by-token generation).
 - `logger.Error(err, "msg", ...)` for recoverable errors that carry an underlying `error` value.
 
