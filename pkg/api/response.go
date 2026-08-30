@@ -219,24 +219,21 @@ type ChatComplContent struct {
 }
 
 type ChatComplContentBlock struct {
-	Type       string               `json:"type"`
-	Text       string               `json:"text,omitempty"`
-	ImageURL   *ChatComplImageBlock `json:"image_url,omitempty"`
-	InputAudio *ChatComplAudioBlock `json:"input_audio,omitempty"`
-	VideoURL   *ChatComplVideoBlock `json:"video_url,omitempty"`
+	Type       string                    `json:"type"`
+	Text       string                    `json:"text,omitempty"`
+	ImageURL   *ChatComplURLBlock        `json:"image_url,omitempty"`
+	InputAudio *ChatComplInputAudioBlock `json:"input_audio,omitempty"`
+	AudioURL   *ChatComplURLBlock        `json:"audio_url,omitempty"`
+	VideoURL   *ChatComplURLBlock        `json:"video_url,omitempty"`
 }
 
-type ChatComplImageBlock struct {
+type ChatComplURLBlock struct {
 	Url string `json:"url,omitempty"`
 }
 
-type ChatComplAudioBlock struct {
+type ChatComplInputAudioBlock struct {
 	Data   string `json:"data,omitempty"`
 	Format string `json:"format,omitempty"`
-}
-
-type ChatComplVideoBlock struct {
-	Url string `json:"url,omitempty"`
 }
 
 // UnmarshalJSON allow use both format
@@ -478,7 +475,7 @@ func CreateImageModalityChunk(base baseCompletionsResponse, choiceIdx int, image
 		CreateChatRespChunkChoice(
 			CreateBaseResponseChoice(choiceIdx, nil),
 			Message{Content: ChatComplContent{Structured: []ChatComplContentBlock{
-				{Type: "image_url", ImageURL: &ChatComplImageBlock{Url: "data:image/png;base64," + imageData}},
+				{Type: "image_url", ImageURL: &ChatComplURLBlock{Url: "data:image/png;base64," + imageData}},
 			}}}),
 	})
 	chunk.Modality = "image"

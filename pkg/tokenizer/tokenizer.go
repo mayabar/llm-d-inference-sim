@@ -149,7 +149,7 @@ func stubMMFeaturesForMessages(messages []api.Message, totalTokens int) *api.Ren
 	}
 
 	var items []item
-	var imgIdx, audIdx, vidIdx int
+	var imgIdx, audIdx, inputAudioIdx, vidIdx int
 	for _, msg := range messages {
 		for _, block := range msg.Content.Structured {
 			switch block.Type {
@@ -163,7 +163,13 @@ func stubMMFeaturesForMessages(messages []api.Message, totalTokens int) *api.Ren
 				if block.InputAudio == nil || block.InputAudio.Data == "" {
 					continue
 				}
-				items = append(items, item{mmModalityAudio, "audio", block.InputAudio.Data, audIdx})
+				items = append(items, item{mmModalityAudio, "input_audio", block.InputAudio.Data, inputAudioIdx})
+				inputAudioIdx++
+			case "audio_url":
+				if block.AudioURL == nil || block.AudioURL.Url == "" {
+					continue
+				}
+				items = append(items, item{mmModalityAudio, "audio", block.AudioURL.Url, audIdx})
 				audIdx++
 			case "video_url":
 				if block.VideoURL == nil || block.VideoURL.Url == "" {

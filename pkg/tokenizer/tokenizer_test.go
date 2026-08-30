@@ -117,7 +117,7 @@ var _ = Describe("tokenizer", func() {
 		audio := func(data, format string) api.ChatComplContentBlock {
 			return api.ChatComplContentBlock{
 				Type:       "input_audio",
-				InputAudio: &api.ChatComplAudioBlock{Data: data, Format: format},
+				InputAudio: &api.ChatComplInputAudioBlock{Data: data, Format: format},
 			}
 		}
 		video := func(url string) api.ChatComplContentBlock {
