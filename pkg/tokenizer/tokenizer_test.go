@@ -157,7 +157,7 @@ var _ = Describe("tokenizer", func() {
 			feats := stubMMFeaturesForMessages([]api.Message{mkMsg(text("transcribe"), audio("base64data", "wav"))}, 100)
 			Expect(feats).NotTo(BeNil())
 			Expect(feats.MMHashes).To(HaveKey(mmModalityAudio))
-			Expect(feats.MMHashes[mmModalityAudio][0]).To(HavePrefix("sim_audio_"))
+			Expect(feats.MMHashes[mmModalityAudio][0]).To(HavePrefix("sim_input_audio_"))
 		})
 
 		It("emits an audio hash for audio_url keyed by audio", func() {
