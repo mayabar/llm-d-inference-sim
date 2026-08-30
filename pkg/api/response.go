@@ -194,6 +194,18 @@ func (m *Message) PlainText(includeRole bool) string {
 				if block.ImageURL != nil {
 					parts = append(parts, "image: "+block.ImageURL.Url)
 				}
+			case "audio_url":
+				if block.AudioURL != nil {
+					parts = append(parts, "audio: "+block.AudioURL.Url)
+				}
+			case "input_audio":
+				if block.InputAudio != nil {
+					parts = append(parts, "input_audio: "+block.InputAudio.Format)
+				}
+			case "video_url":
+				if block.VideoURL != nil {
+					parts = append(parts, "video: "+block.VideoURL.Url)
+				}
 			}
 		}
 

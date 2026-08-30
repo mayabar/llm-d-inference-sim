@@ -411,7 +411,6 @@ var _ = Describe("Simulator", func() {
 			"messages": [{
 				"role": "user",
 				"content": [
-					{"type": "text", "text": "What is being said in this audio?"},
 					{"type": "audio_url", "audio_url": {"url": "https://example.com/sample.flac"}}
 				]
 			}]
