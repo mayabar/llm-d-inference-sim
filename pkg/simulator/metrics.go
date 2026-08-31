@@ -30,7 +30,6 @@ import (
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/api"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
-	"github.com/llm-d/llm-d-inference-sim/pkg/kvcache"
 	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 )
 
@@ -112,7 +111,7 @@ type metricsData struct {
 	kvCacheUsageChan common.Channel[common.MetricInfo]
 
 	// prefixCacheStatsChan is a channel to update prefix cache hit/query counters
-	prefixCacheStatsChan common.Channel[kvcache.PrefixCacheStats]
+	prefixCacheStatsChan common.Channel[metrics.PrefixCacheQueried]
 
 	generatedFakeMetrics  map[string]generatedFakeMetrics
 	stopFakeMetricsTicker chan struct{}
@@ -370,8 +369,8 @@ func (s *SimContext) createAndRegisterPrometheus(ctx context.Context) error {
 		return err
 	}
 
-	s.metrics.prefixCacheStatsChan = common.Channel[kvcache.PrefixCacheStats]{
-		Channel: make(chan kvcache.PrefixCacheStats, maxNumberOfRunningRequests),
+	s.metrics.prefixCacheStatsChan = common.Channel[metrics.PrefixCacheQueried]{
+		Channel: make(chan metrics.PrefixCacheQueried, maxNumberOfRunningRequests),
 		Name:    "metrics.prefixCacheStatsChan",
 		Done:    ctx.Done(),
 	}
@@ -586,7 +585,7 @@ func (s *SimContext) prefixCacheStatsUpdater(ctx context.Context) {
 }
 
 // reportPrefixCacheStats increments the prefix cache counters
-func (s *SimContext) reportPrefixCacheStats(stats kvcache.PrefixCacheStats) {
+func (s *SimContext) reportPrefixCacheStats(stats metrics.PrefixCacheQueried) {
 	if s.Config().FakeMetrics != nil {
 		return
 	}
@@ -595,7 +594,7 @@ func (s *SimContext) reportPrefixCacheStats(stats kvcache.PrefixCacheStats) {
 		s.metrics.prefixCacheQueriesTotal.WithLabelValues(s.Config().DisplayModelName).Add(float64(stats.QueriedTokens))
 	}
 	if s.metrics.prefixCacheHitsTotal != nil {
-		s.metrics.prefixCacheHitsTotal.WithLabelValues(s.Config().DisplayModelName).Add(float64(stats.CachedTokens))
+		s.metrics.prefixCacheHitsTotal.WithLabelValues(s.Config().DisplayModelName).Add(float64(stats.CachedPromptTokens))
 	}
 }
 

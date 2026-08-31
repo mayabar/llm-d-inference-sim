@@ -22,7 +22,6 @@ import (
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/api"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
-	"github.com/llm-d/llm-d-inference-sim/pkg/kvcache"
 	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 	"github.com/llm-d/llm-d-inference-sim/pkg/tokenizer"
 	"github.com/valyala/fasthttp"
@@ -68,7 +67,7 @@ type requestContext interface {
 	request() Request
 	startProcessingTime() time.Time
 	tokenize() *api.Error
-	kvCacheOnRequestStart() (stats kvcache.PrefixCacheStats, serverError *api.Error)
+	kvCacheOnRequestStart() (stats metrics.PrefixCacheQueried, serverError *api.Error)
 	kvCacheOnRequestEnd()
 	createToolCalls() ([]api.ToolCall, int, string, error)
 	handleRequest() (ResponseContext, *api.Error)
@@ -219,7 +218,7 @@ func (reqCtx *baseRequestContext) handleRequest() (ResponseContext, *api.Error) 
 	}
 	hitRate := float64(0)
 	if prefixCacheStats.QueriedTokens > 0 {
-		hitRate = float64(prefixCacheStats.CachedTokens) / float64(prefixCacheStats.QueriedTokens)
+		hitRate = float64(prefixCacheStats.CachedPromptTokens) / float64(prefixCacheStats.QueriedTokens)
 	}
 
 	var finishReason string
@@ -263,7 +262,7 @@ func (reqCtx *baseRequestContext) handleRequest() (ResponseContext, *api.Error) 
 		CompletionTokens: completionTokens,
 		TotalTokens:      numOfInputTokens + completionTokens,
 		PromptTokensDetails: &api.PromptTokensDetails{
-			CachedTokens: prefixCacheStats.CachedTokens,
+			CachedTokens: prefixCacheStats.CachedPromptTokens,
 		},
 	}
 
@@ -314,17 +313,17 @@ func (reqCtx *baseRequestContext) shouldReturnCacheThresholdFinishReason(req api
 	return false
 }
 
-func (reqCtx *baseRequestContext) kvCacheOnRequestStart() (stat kvcache.PrefixCacheStats, oaiServerError *api.Error) {
+func (reqCtx *baseRequestContext) kvCacheOnRequestStart() (stat metrics.PrefixCacheQueried, oaiServerError *api.Error) {
 	if reqCtx.sim.Config().EnableKVCache {
 		var err error
 		stat, err = reqCtx.sim.kvcacheHelper.OnRequestStart(reqCtx.request())
 		if err != nil {
 			serverError := api.NewError(err.Error(), fasthttp.StatusInternalServerError, nil)
-			return kvcache.PrefixCacheStats{}, &serverError
+			return metrics.PrefixCacheQueried{}, &serverError
 		}
 		return stat, nil
 	}
-	return kvcache.PrefixCacheStats{}, nil
+	return metrics.PrefixCacheQueried{}, nil
 }
 
 func (reqCtx *baseRequestContext) kvCacheOnRequestEnd() {
