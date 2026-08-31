@@ -163,7 +163,7 @@ func stubMMFeaturesForMessages(messages []api.Message, totalTokens int) *api.Ren
 				if block.InputAudio == nil || block.InputAudio.Data == "" {
 					continue
 				}
-				items = append(items, item{mmModalityAudio, "input_audio", block.InputAudio.Data, audIdx})
+				items = append(items, item{mmModalityAudio, "audio", block.InputAudio.Data, audIdx})
 				audIdx++
 			case "audio_url":
 				if block.AudioURL == nil || block.AudioURL.Url == "" {
