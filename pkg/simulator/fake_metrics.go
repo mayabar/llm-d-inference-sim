@@ -19,7 +19,6 @@ limitations under the License.
 package simulator
 
 import (
-	"math"
 	"strconv"
 	"time"
 
@@ -40,11 +39,9 @@ func (s *SimContext) UpdateFakeMetricsFromBody(body []byte) error {
 	return s.ApplyConfigUpdate(wrapped)
 }
 
-type generator func(params *common.FunctionInfo, t time.Duration) float64
-
 type generatedFakeMetrics struct {
 	updateChan common.Channel[common.MetricInfo]
-	genFun     generator
+	genFun     metrics.Generator
 	params     *common.FunctionInfo
 	roundToInt bool
 }
@@ -88,60 +85,6 @@ func (s *SimContext) updateGeneratedFakeMetrics() {
 			}
 		}
 	}
-}
-
-func mapFun(name string) generator {
-	switch name {
-	case common.OscillateFuncName:
-		return oscillate
-	case common.RampFuncName:
-		return ramp
-	case common.RampWithResetFuncName:
-		return rampWithReset
-	case common.SquarewaveFuncName:
-		return squarewave
-	}
-	return nil
-}
-
-// oscillate: generates a smooth sine-wave between min and max over each period
-func oscillate(params *common.FunctionInfo, t time.Duration) float64 {
-	phase := (2 * math.Pi * t.Seconds()) / params.Period.Seconds()
-	amp := (params.End - params.Start) / 2
-	mid := (params.Start + params.End) / 2
-	return mid + amp*math.Sin(phase)
-}
-
-// ramp returns a value that ramps from min to max over period, then stays at max
-func ramp(params *common.FunctionInfo, t time.Duration) float64 {
-	frac := t.Seconds() / params.Period.Seconds() // 0..∞
-	if frac >= 1 {
-		return params.End
-	}
-	return params.Start + frac*(params.End-params.Start)
-}
-
-// rampWithReset returns a value in [min,max] that ramps linearly and resets every period
-func rampWithReset(params *common.FunctionInfo, t time.Duration) float64 {
-	// elapsed within current period in seconds (0..period)
-	elapsedSec := (t % params.Period).Seconds()
-	periodSec := params.Period.Seconds()
-	frac := elapsedSec / periodSec // in [0,1]
-	if frac > 1 {
-		frac = 1
-	}
-	return params.Start + frac*(params.End-params.Start)
-}
-
-// squarewave alternates between min and max, staying at each level for half of the period
-func squarewave(params *common.FunctionInfo, t time.Duration) float64 {
-	// Time within current period
-	within := t % params.Period
-	half := params.Period / 2
-	if within < half {
-		return params.Start
-	}
-	return params.End
 }
 
 // initFakeHistogram initializes the given histogram values based on the input
@@ -474,7 +417,7 @@ func (s *SimContext) setFakeMetricWithFunction(modelName string, fm *common.Fake
 	if fm.IsFunction {
 		genFakeMetric := generatedFakeMetrics{
 			updateChan: channel,
-			genFun:     mapFun(fm.Function.Name),
+			genFun:     metrics.Dispatch(fm.Function.Name),
 			params:     fm.Function,
 			roundToInt: roundToInt,
 		}

@@ -60,6 +60,8 @@ const (
 	VLLMPrefixCacheQueriesTotalMetricName = "vllm:prefix_cache_queries_total"
 )
 
+var modelLabel = []string{api.PromLabelModelName}
+
 // VLLMMetricsAdapter implements EngineMetricsAdapter and produces the vLLM
 // Prometheus metric surface documented in docs/metrics.md.
 //
@@ -736,9 +738,78 @@ func (m *VLLMMetricsAdapter) decrementLoraRefCount(lora string, theMap *sync.Map
 
 // -- Prometheus wiring ------------------------------------------------------
 
+// buildMetrics constructs and registers all Prometheus collectors. It is called once during adapter construction.
 func (m *VLLMMetricsAdapter) buildMetrics() error {
-	modelLabel := []string{api.PromLabelModelName}
+	if err := m.createAndRegisterRunningRequestsGauge(); err != nil {
+		return err
+	}
+	if err := m.createAndRegisterWaitingRequestsGauge(); err != nil {
+		return err
+	}
+	if err := m.createAndRegisterKVCacheUsageGauge(); err != nil {
+		return err
+	}
+	if err := m.createAndRegisterLoraInfoGauge(); err != nil {
+		return err
+	}
+	if err := m.createAndRegisterCacheConfigGauge(); err != nil {
+		return err
+	}
+	if err := m.createAndRegisterTTFTHistogram(); err != nil {
+		return err
+	}
+	if err := m.createAndRegisterTPOTAndInterTokenHistograms(); err != nil {
+		return err
+	}
+	if err := m.createAndRegisterReqTpotHistogram(); err != nil {
+		return err
+	}
+	if err := m.createAndRegisterE2EReqLatencyHistogram(); err != nil {
+		return err
+	}
+	if err := m.createAndRegisterReqQueueTimeHistogram(); err != nil {
+		return err
+	}
+	if err := m.createAndRegisterReqInferenceTimeHistogram(); err != nil {
+		return err
+	}
+	if err := m.createAndRegisterReqPrefillTimeHistogram(); err != nil {
+		return err
+	}
+	if err := m.createAndRegisterReqDecodeTimeHistogram(); err != nil {
+		return err
+	}
+	if err := m.createAndRegisterReqPromptTokensHistogram(); err != nil {
+		return err
+	}
+	if err := m.createAndRegisterReqGenerationTokensHistogram(); err != nil {
+		return err
+	}
+	if err := m.createAndRegisterMaxNumGenerationTokensHistogram(); err != nil {
+		return err
+	}
+	if err := m.createAndRegisterReqParamsMaxTokensHistogram(); err != nil {
+		return err
+	}
+	if err := m.createAndRegisterPromptTokensTotalCounter(); err != nil {
+		return err
+	}
+	if err := m.createAndRegisterGenerationTokensTotalCounter(); err != nil {
+		return err
+	}
+	if err := m.createAndRegisterRequestSuccessTotalCounter(); err != nil {
+		return err
+	}
+	if err := m.createAndRegisterPrefixCacheHitsTotalCounter(); err != nil {
+		return err
+	}
+	if err := m.createAndRegisterPrefixCacheQueriesTotalCounter(); err != nil {
+		return err
+	}
+	return nil
+}
 
+func (m *VLLMMetricsAdapter) createAndRegisterRunningRequestsGauge() error {
 	m.runningRequests = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: VLLMReqRunningMetricName,
 		Help: "Number of requests currently running on GPU.",
@@ -747,7 +818,10 @@ func (m *VLLMMetricsAdapter) buildMetrics() error {
 		m.logger.Error(err, "prometheus number of running requests gauge register failed")
 		return err
 	}
+	return nil
+}
 
+func (m *VLLMMetricsAdapter) createAndRegisterWaitingRequestsGauge() error {
 	m.waitingRequests = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: VLLMReqWaitingMetricName,
 		Help: "Prometheus metric for the number of queued requests.",
@@ -756,7 +830,10 @@ func (m *VLLMMetricsAdapter) buildMetrics() error {
 		m.logger.Error(err, "prometheus number of requests in queue gauge register failed")
 		return err
 	}
+	return nil
+}
 
+func (m *VLLMMetricsAdapter) createAndRegisterKVCacheUsageGauge() error {
 	m.kvCacheUsagePercentage = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: VLLMKVCacheUsageMetricName,
 		Help: "Prometheus metric for the fraction of KV-cache blocks currently in use (from 0 to 1).",
@@ -765,7 +842,10 @@ func (m *VLLMMetricsAdapter) buildMetrics() error {
 		m.logger.Error(err, "prometheus kv cache usage percentage gauge register failed")
 		return err
 	}
+	return nil
+}
 
+func (m *VLLMMetricsAdapter) createAndRegisterLoraInfoGauge() error {
 	m.loraInfo = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: VLLMLoRARequestsMetricName,
 		Help: "Running stats on lora requests.",
@@ -774,7 +854,10 @@ func (m *VLLMMetricsAdapter) buildMetrics() error {
 		m.logger.Error(err, "prometheus lora info gauge register failed")
 		return err
 	}
+	return nil
+}
 
+func (m *VLLMMetricsAdapter) createAndRegisterCacheConfigGauge() error {
 	m.cacheConfig = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: VLLMCacheConfigName,
 		Help: "Information of the LLMEngine CacheConfig.",
@@ -783,7 +866,10 @@ func (m *VLLMMetricsAdapter) buildMetrics() error {
 		m.logger.Error(err, "prometheus cache config register failed")
 		return err
 	}
+	return nil
+}
 
+func (m *VLLMMetricsAdapter) createAndRegisterTTFTHistogram() error {
 	m.ttft = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    VLLMTTFTMetricName,
 		Help:    "Histogram of time to first token in seconds.",
@@ -793,7 +879,10 @@ func (m *VLLMMetricsAdapter) buildMetrics() error {
 		m.logger.Error(err, "prometheus time to first token histogram register failed")
 		return err
 	}
+	return nil
+}
 
+func (m *VLLMMetricsAdapter) createAndRegisterTPOTAndInterTokenHistograms() error {
 	m.tpot = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    VLLMTPOTMetricName,
 		Help:    "Histogram of time per output token in seconds.",
@@ -813,7 +902,10 @@ func (m *VLLMMetricsAdapter) buildMetrics() error {
 		m.logger.Error(err, "prometheus inter-token latency histogram register failed")
 		return err
 	}
+	return nil
+}
 
+func (m *VLLMMetricsAdapter) createAndRegisterReqTpotHistogram() error {
 	m.reqTpot = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    VLLMReqTPOTMetricName,
 		Help:    "Histogram of time_per_output_token_seconds per request.",
@@ -823,7 +915,10 @@ func (m *VLLMMetricsAdapter) buildMetrics() error {
 		m.logger.Error(err, "prometheus time_per_output_token_seconds per request histogram register failed")
 		return err
 	}
+	return nil
+}
 
+func (m *VLLMMetricsAdapter) createAndRegisterE2EReqLatencyHistogram() error {
 	m.e2eReqLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    VLLME2EReqLatencyMetricName,
 		Help:    "Histogram of end to end request latency in seconds.",
@@ -833,7 +928,10 @@ func (m *VLLMMetricsAdapter) buildMetrics() error {
 		m.logger.Error(err, "prometheus e2e request latency histogram register failed")
 		return err
 	}
+	return nil
+}
 
+func (m *VLLMMetricsAdapter) createAndRegisterReqQueueTimeHistogram() error {
 	m.reqQueueTime = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    VLLMReqQueueTimeMetricName,
 		Help:    "Histogram of time spent in WAITING phase for request.",
@@ -843,7 +941,10 @@ func (m *VLLMMetricsAdapter) buildMetrics() error {
 		m.logger.Error(err, "prometheus request queue time histogram register failed")
 		return err
 	}
+	return nil
+}
 
+func (m *VLLMMetricsAdapter) createAndRegisterReqInferenceTimeHistogram() error {
 	m.reqInferenceTime = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    VLLMReqInferenceTimeMetricName,
 		Help:    "Histogram of time spent in RUNNING phase for request.",
@@ -853,7 +954,10 @@ func (m *VLLMMetricsAdapter) buildMetrics() error {
 		m.logger.Error(err, "prometheus request inference time histogram register failed")
 		return err
 	}
+	return nil
+}
 
+func (m *VLLMMetricsAdapter) createAndRegisterReqPrefillTimeHistogram() error {
 	m.reqPrefillTime = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    VLLMPrefillTimeMetricName,
 		Help:    "Histogram of time spent in PREFILL phase for request.",
@@ -863,7 +967,10 @@ func (m *VLLMMetricsAdapter) buildMetrics() error {
 		m.logger.Error(err, "prometheus request prefill time histogram register failed")
 		return err
 	}
+	return nil
+}
 
+func (m *VLLMMetricsAdapter) createAndRegisterReqDecodeTimeHistogram() error {
 	m.reqDecodeTime = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    VLLMDecodeTimeMetricName,
 		Help:    "Histogram of time spent in DECODE phase for request.",
@@ -873,7 +980,10 @@ func (m *VLLMMetricsAdapter) buildMetrics() error {
 		m.logger.Error(err, "prometheus request decode time histogram register failed")
 		return err
 	}
+	return nil
+}
 
+func (m *VLLMMetricsAdapter) createAndRegisterReqPromptTokensHistogram() error {
 	m.requestPromptTokens = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    VLLMPromptTokensMetricName,
 		Help:    "Number of prefill tokens processed.",
@@ -883,7 +993,10 @@ func (m *VLLMMetricsAdapter) buildMetrics() error {
 		m.logger.Error(err, "prometheus request_prompt_tokens histogram register failed")
 		return err
 	}
+	return nil
+}
 
+func (m *VLLMMetricsAdapter) createAndRegisterReqGenerationTokensHistogram() error {
 	m.requestGenerationTokens = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    VLLMGenerationTokensMetricName,
 		Help:    "Number of generation tokens processed.",
@@ -893,6 +1006,10 @@ func (m *VLLMMetricsAdapter) buildMetrics() error {
 		m.logger.Error(err, "prometheus request_generation_tokens histogram register failed")
 		return err
 	}
+	return nil
+}
+
+func (m *VLLMMetricsAdapter) createAndRegisterMaxNumGenerationTokensHistogram() error {
 	m.maxNumGenerationTokens = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    VLLMMaxNumGenerationTokensMetricName,
 		Help:    "Histogram of maximum number of requested generation tokens.",
@@ -902,7 +1019,10 @@ func (m *VLLMMetricsAdapter) buildMetrics() error {
 		m.logger.Error(err, "prometheus max_num_generation_tokens histogram register failed")
 		return err
 	}
+	return nil
+}
 
+func (m *VLLMMetricsAdapter) createAndRegisterReqParamsMaxTokensHistogram() error {
 	m.requestParamsMaxTokens = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    VLLMParamMaxTokensMetricName,
 		Help:    "Histogram of the max_tokens request parameter.",
@@ -912,7 +1032,10 @@ func (m *VLLMMetricsAdapter) buildMetrics() error {
 		m.logger.Error(err, "prometheus request_params_max_tokens histogram register failed")
 		return err
 	}
+	return nil
+}
 
+func (m *VLLMMetricsAdapter) createAndRegisterPromptTokensTotalCounter() error {
 	m.promptTokensTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: VLLMPromptTokensTotalMetricName,
 		Help: "Total number of prompt tokens processed.",
@@ -921,7 +1044,10 @@ func (m *VLLMMetricsAdapter) buildMetrics() error {
 		m.logger.Error(err, "prometheus prompt_tokens_total counter register failed")
 		return err
 	}
+	return nil
+}
 
+func (m *VLLMMetricsAdapter) createAndRegisterGenerationTokensTotalCounter() error {
 	m.generationTokensTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: VLLMGenerationTokensTotalMetricName,
 		Help: "Total number of generated tokens.",
@@ -930,7 +1056,10 @@ func (m *VLLMMetricsAdapter) buildMetrics() error {
 		m.logger.Error(err, "prometheus generation_tokens_total counter register failed")
 		return err
 	}
+	return nil
+}
 
+func (m *VLLMMetricsAdapter) createAndRegisterRequestSuccessTotalCounter() error {
 	m.requestSuccessTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: VLLMSuccessTotalMetricName,
 		Help: "Count of successfully processed requests.",
@@ -939,7 +1068,10 @@ func (m *VLLMMetricsAdapter) buildMetrics() error {
 		m.logger.Error(err, "prometheus request_success_total counter register failed")
 		return err
 	}
+	return nil
+}
 
+func (m *VLLMMetricsAdapter) createAndRegisterPrefixCacheHitsTotalCounter() error {
 	m.prefixCacheHitsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: VLLMPrefixCacheHitsTotalMetricName,
 		Help: "Prefix cache hits, in terms of number of cached tokens.",
@@ -948,7 +1080,10 @@ func (m *VLLMMetricsAdapter) buildMetrics() error {
 		m.logger.Error(err, "prometheus prefix_cache_hits_total counter register failed")
 		return err
 	}
+	return nil
+}
 
+func (m *VLLMMetricsAdapter) createAndRegisterPrefixCacheQueriesTotalCounter() error {
 	m.prefixCacheQueriesTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: VLLMPrefixCacheQueriesTotalMetricName,
 		Help: "Prefix cache queries, in terms of number of queried tokens.",
@@ -957,7 +1092,6 @@ func (m *VLLMMetricsAdapter) buildMetrics() error {
 		m.logger.Error(err, "prometheus prefix_cache_queries_total counter register failed")
 		return err
 	}
-
 	return nil
 }
 
@@ -965,7 +1099,11 @@ func (m *VLLMMetricsAdapter) buildMetrics() error {
 // stamps the one-shot cache_config_info and lora_requests_info series so
 // output stays consistent with the current metrics.go behavior before any
 // request runs.
-func (m *VLLMMetricsAdapter) setInitialValues() {
+func (m *VLLMMetricsAdapter) setInitialValues() error {
+	if m.config.FakeMetrics != nil {
+		return m.setInitialFakeMetrics()
+	}
+
 	m.runningRequests.WithLabelValues(m.config.DisplayModelName).Set(0)
 	m.waitingRequests.WithLabelValues(m.config.DisplayModelName).Set(0)
 	m.kvCacheUsagePercentage.WithLabelValues(m.config.DisplayModelName).Set(0)
@@ -979,5 +1117,21 @@ func (m *VLLMMetricsAdapter) setInitialValues() {
 		"",
 	).Set(float64(time.Now().Unix()))
 
-	// TODO - if fake metrics are enabled, we should set the initial values for the fake metrics as well.
+	return nil
+}
+
+func (m *VLLMMetricsAdapter) setInitialFakeMetrics() error {
+	return nil
+	// m.generatedFakeMetrics = make(map[string]generatedFakeMetrics)
+
+	// initial := m.config.FakeMetrics
+
+	// // Loras always need processing on initial setup so the default empty
+	// // entry (no adapters, current timestamp) gets registered. Parser
+	// // initializes LoraMetrics to a non-nil (possibly empty) slice for the
+	// // configured case; force non-nil here to cover any path that didn't.
+	// if initial.LoraMetrics == nil {
+	// 	initial.LoraMetrics = []common.LorasMetrics{}
+	// }
+	// return m.updateFakeMetrics(initial, nil)
 }
