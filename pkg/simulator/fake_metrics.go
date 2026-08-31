@@ -26,6 +26,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
+	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 )
 
 // UpdateFakeMetricsFromBody applies a partial fake-metrics update parsed from
@@ -290,7 +291,7 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 		s.initFakeHistogram(s.metrics.reqTpot, common.TPOTBucketsBoundaries, update.ReqTPOTBucketValues)
 	}
 
-	buckets := Build125Buckets(s.Config().MaxModelLen)
+	buckets := metrics.Build125Buckets(s.Config().MaxModelLen)
 
 	if update.RequestParamsMaxTokens != nil {
 		if old != nil && old.RequestParamsMaxTokens != nil {

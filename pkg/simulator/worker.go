@@ -23,6 +23,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common/logging"
+	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 )
 
 // worker runs simulators requests
@@ -62,11 +63,23 @@ func (s *Simulator) processRequest(reqCtx requestContext) {
 
 	startTime := time.Now()
 	req := reqCtx.request()
+	dispModel := req.GetDisplayedModel()
+	isLoRA := s.Context.isLora(dispModel)
 	respCtx, err := reqCtx.handleRequest()
 	if err != nil {
 		common.WriteToChannel(reqCtx.responseChannel(),
 			&ResponseInfo{RespCtx: respCtx, Err: err, ChoiceIdx: reqCtx.choiceIndex()},
 			s.Context.logger)
+		if s.Context.metricsBus != nil {
+			// api.Error is a struct wire type (not error interface); drop it here
+			common.WriteToChannel(s.Context.metricsBus.RequestFailed,
+				metrics.RequestFailed{
+					BaseEvent:     metrics.BaseEvent{Model: dispModel},
+					IsLoRA:        isLoRA,
+					E2ELatency:    time.Since(reqCtx.startProcessingTime()).Seconds(),
+					InferenceTime: time.Since(startTime).Seconds(),
+				}, s.Context.logger)
+		}
 		return
 	}
 
@@ -84,6 +97,21 @@ func (s *Simulator) processRequest(reqCtx requestContext) {
 
 	common.WriteToChannel(s.Context.metrics.e2eReqLatencyChan, time.Since(reqCtx.startProcessingTime()).Seconds(), s.Context.logger)
 	common.WriteToChannel(s.Context.metrics.reqInferenceTimeChan, time.Since(startTime).Seconds(), s.Context.logger)
+
+	if s.Context.metricsBus != nil {
+		common.WriteToChannel(s.Context.metricsBus.RequestSucceeded,
+			metrics.RequestSucceeded{
+				BaseEvent:          metrics.BaseEvent{Model: dispModel},
+				IsLoRA:             isLoRA,
+				PromptTokens:       respCtx.UsageData().PromptTokens,
+				GenerationTokens:   respCtx.UsageData().CompletionTokens,
+				GenTokensPerChoice: []int{respCtx.UsageData().CompletionTokens},
+				MaxTokens:          req.GetMaxCompletionTokens(),
+				FinishReason:       *respCtx.FinishReason(),
+				E2ELatency:         time.Since(reqCtx.startProcessingTime()).Seconds(),
+				InferenceTime:      time.Since(startTime).Seconds(),
+			}, s.Context.logger)
+	}
 }
 
 // getFreeWorker returns a free worker or nil if none are available (non-blocking)

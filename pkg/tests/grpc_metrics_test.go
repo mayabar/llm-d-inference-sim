@@ -28,6 +28,7 @@ import (
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	"github.com/llm-d/llm-d-inference-sim/pkg/communication/grpc/pb"
+	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 	"github.com/llm-d/llm-d-inference-sim/pkg/simulator"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -114,30 +115,30 @@ var _ = Describe("gRPC Metrics", Ordered, func() {
 
 		data, err := io.ReadAll(metricsResp.Body)
 		Expect(err).NotTo(HaveOccurred())
-		metrics := string(data)
+		metricsData := string(data)
 
 		// Check prompt tokens and max tokens bucket distributions
-		buckets := simulator.Build125Buckets(1024)
+		buckets := metrics.Build125Buckets(1024)
 		for _, boundary := range buckets {
 			if boundary <= 20 {
-				Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.PromptTokensMetricName, boundary, 0)))
-				Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.ParamMaxTokensMetricName, boundary, 0)))
+				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.PromptTokensMetricName, boundary, 0)))
+				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.ParamMaxTokensMetricName, boundary, 0)))
 			} else {
-				Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.PromptTokensMetricName, boundary, 1)))
-				Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.ParamMaxTokensMetricName, boundary, 1)))
+				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.PromptTokensMetricName, boundary, 1)))
+				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.ParamMaxTokensMetricName, boundary, 1)))
 			}
 		}
-		Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.PromptTokensMetricName, math.Inf(1), 1)))
-		Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.ParamMaxTokensMetricName, math.Inf(1), 1)))
+		Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.PromptTokensMetricName, math.Inf(1), 1)))
+		Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.ParamMaxTokensMetricName, math.Inf(1), 1)))
 
-		Expect(metrics).To(MatchRegexp(fmt.Sprintf(`vllm:prompt_tokens_total{model_name="%s"} %d`, common.TestModelName, expectedPromptTokensCnt)))
+		Expect(metricsData).To(MatchRegexp(fmt.Sprintf(`vllm:prompt_tokens_total{model_name="%s"} %d`, common.TestModelName, expectedPromptTokensCnt)))
 
 		// Check generation tokens - in echo mode we get the same number of tokens back
 		// We only check the count since the response length is deterministic in echo mode
 		// and skip the bucket distribution.
-		Expect(metrics).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.GenerationTokensMetricName+"_count", 1)))
+		Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.GenerationTokensMetricName+"_count", 1)))
 		// request_success_total
-		Expect(metrics).To(MatchRegexp(fmt.Sprintf(`vllm:request_success_total{finish_reason="(stop|length)",model_name="%s"} 1`, common.TestModelName)))
+		Expect(metricsData).To(MatchRegexp(fmt.Sprintf(`vllm:request_success_total{finish_reason="(stop|length)",model_name="%s"} 1`, common.TestModelName)))
 	})
 
 	It("should send correct ttft, tpot and inter_token_latency metrics via gRPC", func() {

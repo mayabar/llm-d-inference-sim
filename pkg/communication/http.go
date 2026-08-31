@@ -81,6 +81,11 @@ func (c *Communication) startHTTPServer(ctx context.Context, listener net.Listen
 	r.POST("/v1/unload_lora_adapter", c.HandleUnloadLora)
 	// supports /metrics prometheus API
 	r.GET("/metrics", fasthttpadaptor.NewFastHTTPHandler(promhttp.HandlerFor(c.simulator.Context.MetricsRegistry(), promhttp.HandlerOpts{})))
+	// /metrics_new exposes the parallel event-driven pipeline's registry
+	// so it can be validated against /metrics during the transition.
+	if busReg := c.simulator.Context.BusMetricsRegistry(); busReg != nil {
+		r.GET("/metrics_new", fasthttpadaptor.NewFastHTTPHandler(promhttp.HandlerFor(busReg, promhttp.HandlerOpts{})))
+	}
 	r.POST("/fake_metrics", c.HandleFakeMetrics)
 	// supports standard Kubernetes health and readiness checks
 	r.GET("/health", c.HandleHealth)

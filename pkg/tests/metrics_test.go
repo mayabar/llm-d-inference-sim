@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
+	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 	"github.com/llm-d/llm-d-inference-sim/pkg/simulator"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -194,32 +195,32 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 
 		data, err := io.ReadAll(metricsResp.Body)
 		Expect(err).NotTo(HaveOccurred())
-		metrics := string(data)
+		metricsData := string(data)
 		// request_prompt_tokens_bucket and request_params_max_tokens_bucket
-		buckets := simulator.Build125Buckets(1024)
+		buckets := metrics.Build125Buckets(1024)
 
 		for _, boundary := range buckets {
 			if boundary <= 20 {
-				Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(model, simulator.PromptTokensMetricName, boundary, 0)))
-				Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(model, simulator.ParamMaxTokensMetricName, boundary, 0)))
+				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(model, simulator.PromptTokensMetricName, boundary, 0)))
+				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(model, simulator.ParamMaxTokensMetricName, boundary, 0)))
 			} else {
-				Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(model, simulator.PromptTokensMetricName, boundary, 1)))
-				Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(model, simulator.ParamMaxTokensMetricName, boundary, 1)))
+				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(model, simulator.PromptTokensMetricName, boundary, 1)))
+				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(model, simulator.ParamMaxTokensMetricName, boundary, 1)))
 			}
 		}
-		Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(model, simulator.PromptTokensMetricName, math.Inf(1), 1)))
-		Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(model, simulator.ParamMaxTokensMetricName, math.Inf(1), 1)))
+		Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(model, simulator.PromptTokensMetricName, math.Inf(1), 1)))
+		Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(model, simulator.ParamMaxTokensMetricName, math.Inf(1), 1)))
 
-		Expect(metrics).To(MatchRegexp(fmt.Sprintf(`vllm:prompt_tokens_total{model_name="%s"} %d`, model, expectedPromptTokensCnt)))
+		Expect(metricsData).To(MatchRegexp(fmt.Sprintf(`vllm:prompt_tokens_total{model_name="%s"} %d`, model, expectedPromptTokensCnt)))
 
 		// request_generation_tokens
 		// We do not verify the distribution of the number of tokens generated per request,
 		// as the number of generated tokens is unpredictable in this test.
 		// Therefore, we only verify the number of requests and the total number of generated tokens,
 		// and skip the bucket distribution.
-		Expect(metrics).To(ContainSubstring(getCountMetricLine(model, simulator.GenerationTokensMetricName+"_count", 1)))
+		Expect(metricsData).To(ContainSubstring(getCountMetricLine(model, simulator.GenerationTokensMetricName+"_count", 1)))
 		// request_success_total
-		Expect(metrics).To(MatchRegexp(fmt.Sprintf(`vllm:request_success_total{finish_reason="(stop|length)",model_name="%s"} 1`, common.TestModelName)))
+		Expect(metricsData).To(MatchRegexp(fmt.Sprintf(`vllm:request_success_total{finish_reason="(stop|length)",model_name="%s"} 1`, common.TestModelName)))
 	})
 
 	It("Should record correct metrics for text completions with array prompt", func() {
@@ -1083,7 +1084,7 @@ var _ = Describe("build125Buckets", Ordered, func() {
 		}
 
 		for _, test := range tests {
-			got := simulator.Build125Buckets(test.maxValue)
+			got := metrics.Build125Buckets(test.maxValue)
 			Expect(got).To(Equal(test.want))
 		}
 	})

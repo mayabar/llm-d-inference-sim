@@ -20,7 +20,6 @@ package simulator
 
 import (
 	"context"
-	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,9 +31,11 @@ import (
 	"github.com/llm-d/llm-d-inference-sim/pkg/api"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	"github.com/llm-d/llm-d-inference-sim/pkg/kvcache"
+	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 )
 
 const (
+	// DONE
 	E2EReqLatencyMetricName           = "vllm:e2e_request_latency_seconds"
 	ReqQueueTimeMetricName            = "vllm:request_queue_time_seconds"
 	ReqInferenceTimeMetricName        = "vllm:request_inference_time_seconds"
@@ -85,17 +86,10 @@ type metricsData struct {
 	waitingLoras sync.Map
 	// lorasChan is a channel to update waitingLoras and runningLoras
 	lorasChan common.Channel[loraUsage]
-	// nRunningReqs is the number of inference requests that are currently being processed.
-	// Written only by runningRequestsUpdater, but read concurrently by worker goroutines
-	// (via SimContext.simulateTTFT/simulateInterTokenLatency) for load-dependent latency, so
-	// it needs atomic access.
-	nRunningReqs atomic.Int64
 	// runReqChan is a channel to update nRunningReqs
 	runReqChan common.Channel[common.MetricInfo]
 	// requestSuccessChan is a channel to update requestSuccessReqs
 	requestSuccessChan common.Channel[requestSuccessEvent]
-	// nWaitingReqs is the number of inference requests that are waiting to be processed
-	nWaitingReqs int64
 	// waitingReqChan is a channel to update nWaitingReqs
 	waitingReqChan common.Channel[common.MetricInfo]
 	// ttftChan is a channel to update time to first token
@@ -116,14 +110,37 @@ type metricsData struct {
 	reqTpotChan common.Channel[float64]
 	// kvCacheUsageChan is a channel to update kvCacheUsagePercentage
 	kvCacheUsageChan common.Channel[common.MetricInfo]
+
+	// prefixCacheStatsChan is a channel to update prefix cache hit/query counters
+	prefixCacheStatsChan common.Channel[kvcache.PrefixCacheStats]
+
+	generatedFakeMetrics  map[string]generatedFakeMetrics
+	stopFakeMetricsTicker chan struct{}
+
+	// DONE
+	// nWaitingReqs is the number of inference requests that are waiting to be processed
+	nWaitingReqs int64
+	// nRunningReqs is the number of inference requests that are currently being processed.
+	// Written only by runningRequestsUpdater, but read concurrently by worker goroutines
+	// (via SimContext.simulateTTFT/simulateInterTokenLatency) for load-dependent latency, so
+	// it needs atomic access.
+	nRunningReqs atomic.Int64
+
+	// DONE
 	// registry is a Prometheus registry
 	registry *prometheus.Registry
+
+	// DONE (+cache config)
 	// loraInfo is prometheus gauge
 	loraInfo *prometheus.GaugeVec
 	// runningRequests is prometheus gauge
 	runningRequests *prometheus.GaugeVec
 	// waitingRequests is prometheus gauge for number of queued requests
 	waitingRequests *prometheus.GaugeVec
+	// kvCacheUsagePercentage is prometheus gauge
+	kvCacheUsagePercentage *prometheus.GaugeVec
+
+	// DONE
 	// ttft is prometheus histogram for time to first token in seconds
 	ttft *prometheus.HistogramVec
 	// tpot is prometheus histogram for time per output token in seconds (deprecated since vLLM 0.11
@@ -142,35 +159,37 @@ type metricsData struct {
 	reqDecodeTime *prometheus.HistogramVec
 	// reqtpot is prometheus histogram for time_per_output_token_seconds per request
 	reqTpot *prometheus.HistogramVec
-	// kvCacheUsagePercentage is prometheus gauge
-	kvCacheUsagePercentage *prometheus.GaugeVec
 	// requestPromptTokens is prometheus histogram for number of input (prompt) tokens in request
 	requestPromptTokens *prometheus.HistogramVec
 	// requestGenerationTokens is prometheus histogram for number of generated tokens in request
 	requestGenerationTokens *prometheus.HistogramVec
-	// promptTokensTotal is prometheus counter for total number of input (prompt) tokens
-	promptTokensTotal *prometheus.CounterVec
-	// generationTokensTotal is prometheus counter for total number of generated tokens
-	generationTokensTotal *prometheus.CounterVec
 	// maxNumGenerationTokens is prometheus histogram for maximum number of generated tokens in request
 	maxNumGenerationTokens *prometheus.HistogramVec
 	// requestParamsMaxTokens is prometheus histogram for 'max_tokens' parameter in request
 	requestParamsMaxTokens *prometheus.HistogramVec
+
+	// DONE
+	// promptTokensTotal is prometheus counter for total number of input (prompt) tokens
+	promptTokensTotal *prometheus.CounterVec
+	// generationTokensTotal is prometheus counter for total number of generated tokens
+	generationTokensTotal *prometheus.CounterVec
 	// requestSuccessTotal is prometheus counter for total number of successful requests
 	requestSuccessTotal *prometheus.CounterVec
 	// prefixCacheHitsTotal is prometheus counter for total cached tokens (prefix cache hits)
 	prefixCacheHitsTotal *prometheus.CounterVec
 	// prefixCacheQueriesTotal is prometheus counter for total queried tokens (prefix cache queries)
 	prefixCacheQueriesTotal *prometheus.CounterVec
-	// prefixCacheStatsChan is a channel to update prefix cache hit/query counters
-	prefixCacheStatsChan common.Channel[kvcache.PrefixCacheStats]
-
-	generatedFakeMetrics  map[string]generatedFakeMetrics
-	stopFakeMetricsTicker chan struct{}
 }
 
 func (s *SimContext) MetricsRegistry() *prometheus.Registry {
 	return s.metrics.registry
+}
+
+// BusMetricsRegistry returns the Prometheus registry populated by the
+// parallel event-driven metrics pipeline, or nil if it isn't wired.
+// Served on /metrics_new so both surfaces can be scraped independently.
+func (s *SimContext) BusMetricsRegistry() *prometheus.Registry {
+	return s.metricsBus.Registry()
 }
 
 // createAndRegisterPrometheus creates and registers prometheus metrics used by vLLM simulator
@@ -773,35 +792,6 @@ func (s *SimContext) recordRequestMetricsOnSuccess(promptTokens,
 	}
 }
 
-// Build125Buckets generates histogram buckets in powers of 10 scaled by [1,2,5].
-// This matches vLLM's build_1_2_5_buckets() in metrics.py.
-//
-// Reference: https://github.com/vllm-project/vllm/blob/main/vllm/engine/metrics.py#L175
-func Build125Buckets(maxValue int) []float64 {
-	if maxValue <= 0 {
-		return []float64{}
-	}
-	var buckets []float64
-	exponent := 0
-	mantissa := []int{1, 2, 5}
-
-	for {
-		complete := true
-		for _, m := range mantissa {
-			value := m * int(math.Pow10(exponent))
-			if value <= maxValue {
-				buckets = append(buckets, float64(value))
-				complete = false
-			}
-		}
-		if complete {
-			break
-		}
-		exponent++
-	}
-	return buckets
-}
-
 func (s *SimContext) createAndRegisterTTFTMetric() error {
 	s.metrics.ttft = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -861,7 +851,7 @@ func (s *SimContext) createAndRegisterReqPromptTokensMetrics() error {
 			Subsystem: "",
 			Name:      PromptTokensMetricName,
 			Help:      "Number of prefill tokens processed.",
-			Buckets:   Build125Buckets(s.Config().MaxModelLen),
+			Buckets:   metrics.Build125Buckets(s.Config().MaxModelLen),
 		},
 		[]string{api.PromLabelModelName},
 	)
@@ -896,7 +886,7 @@ func (s *SimContext) createAndRegisterReqGenerationTokensMetrics() error {
 			Subsystem: "",
 			Name:      GenerationTokensMetricName,
 			Help:      "Number of generation tokens processed.",
-			Buckets:   Build125Buckets(s.Config().MaxModelLen),
+			Buckets:   metrics.Build125Buckets(s.Config().MaxModelLen),
 		},
 		[]string{api.PromLabelModelName},
 	)
@@ -1025,7 +1015,7 @@ func (s *SimContext) createAndRegisterReqParamsMaxTokensMetric() error {
 		prometheus.HistogramOpts{
 			Name:    ParamMaxTokensMetricName,
 			Help:    "Histogram of the max_tokens request parameter.",
-			Buckets: Build125Buckets(s.Config().MaxModelLen),
+			Buckets: metrics.Build125Buckets(s.Config().MaxModelLen),
 		},
 		[]string{api.PromLabelModelName},
 	)
@@ -1041,7 +1031,7 @@ func (s *SimContext) createAndRegisterMaxNumGenerationTokensMetric() error {
 		prometheus.HistogramOpts{
 			Name:    MaxNumGenerationTokensMetricName,
 			Help:    "Histogram of maximum number of requested generation tokens.",
-			Buckets: Build125Buckets(s.Config().MaxModelLen),
+			Buckets: metrics.Build125Buckets(s.Config().MaxModelLen),
 		},
 		[]string{api.PromLabelModelName},
 	)

@@ -25,12 +25,14 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/api"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common/logging"
 	"github.com/llm-d/llm-d-inference-sim/pkg/dataset"
 	"github.com/llm-d/llm-d-inference-sim/pkg/kvcache"
+	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 	"github.com/llm-d/llm-d-inference-sim/pkg/tokenizer"
 )
 
@@ -52,6 +54,12 @@ type SimContext struct {
 	logger logr.Logger
 	// metrics contains all Prometheus metrics related data
 	metrics metricsData
+	// metricsBus is the event-driven metrics pipeline that runs alongside
+	// the legacy `metrics` path. Producers emit BaseEvents onto its channels;
+	// the wired EngineMetricsAdapter drains them and updates its own private
+	// Prometheus registry. Kept in parallel with `metrics` during the
+	// transition so both surfaces can be validated against each other.
+	metricsBus *metrics.MetricsBus
 	// config holds the simulator's configuration as an atomic pointer so that
 	// admin updates can swap it under concurrent readers. Access via Config()/SetConfig().
 	config atomic.Pointer[common.Configuration]
@@ -77,6 +85,8 @@ type SimContext struct {
 	latencyCalculator atomic.Pointer[latencyCalcHolder]
 	// Tokenizer used for request tokenization and in /tokenize
 	Tokenizer tokenizer.Tokenizer
+	// nRunningReqs is the number of inference requests that are currently being processed.
+	nRunningReqs atomic.Int64
 }
 
 type latencyCalcHolder struct {
@@ -171,11 +181,22 @@ func (s *SimContext) initialize(ctx context.Context) error {
 		return err
 	}
 
+	// Parallel event-driven metrics pipeline. Uses its own private registry
+	// so its collectors do not collide with the legacy s.metrics registry;
+	// both pipelines run side-by-side during the transition.
+	s.metricsBus, err = metrics.NewMetricsBus(ctx, *s.Config(), prometheus.NewRegistry(), s.logger)
+	if err != nil {
+		return err
+	}
+	if err := s.metricsBus.GetAdapter().Start(ctx, s.metricsBus); err != nil {
+		return err
+	}
+
 	// KVCache doesn't support images at the moment, so in mm-encoder only mode
 	// we don't start it.
 	if s.Config().EnableKVCache && !s.Config().MMEncoderOnly {
 		s.kvcacheHelper, err = kvcache.NewKVCacheHelper(ctx, s.Config(), s.logger,
-			s.metrics.kvCacheUsageChan, s.metrics.prefixCacheStatsChan, s.Tokenizer)
+			s.metrics.kvCacheUsageChan, s.metrics.prefixCacheStatsChan, s.Tokenizer, s.metricsBus)
 		if err != nil {
 			return err
 		}
@@ -264,8 +285,13 @@ func (s *SimContext) simulateTTFT(respCtx ResponseContext) {
 	ttft := s.latencyCalc().GetTimeToFirstToken(&params)
 	time.Sleep(ttft)
 	// report ttft in seconds
+	// TODO - why ttft and reqPrefillTime are calculted separately? They are the same value, right?
 	common.WriteToChannel(s.metrics.ttftChan, ttft.Seconds(), s.logger)
 	common.WriteToChannel(s.metrics.reqPrefillTimeChan, time.Since(startPrefill).Seconds(), s.logger)
+	if s.metricsBus != nil {
+		common.WriteToChannel(s.metricsBus.PrefillEnded,
+			metrics.PrefillEnded{PrefillDuration: ttft.Seconds()}, s.logger)
+	}
 }
 
 func (s *SimContext) simulateImageGenerationLatency() {
@@ -282,6 +308,10 @@ func (s *SimContext) simulateInterTokenLatency() {
 
 	// report tpot in seconds
 	common.WriteToChannel(s.metrics.tpotChan, perTokenLatency.Seconds(), s.logger)
+	if s.metricsBus != nil {
+		common.WriteToChannel(s.metricsBus.TokenGenerated,
+			metrics.TokenGenerated{InterTokenLatency: perTokenLatency.Seconds()}, s.logger)
+	}
 }
 
 // CreateModelsResponse creates and returns ModelResponse for the current state, returned array of models contains the base model + LoRA adapters if exist

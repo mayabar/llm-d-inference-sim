@@ -32,6 +32,7 @@ import (
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common/logging"
 	"github.com/llm-d/llm-d-inference-sim/pkg/dataset"
+	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 	"github.com/llm-d/llm-d-inference-sim/pkg/tokenizer"
 )
 
@@ -333,9 +334,16 @@ func (s *Simulator) addRequestToQueue(reqCtx requestContext) {
 	}
 	// increment the waiting requests metric
 	common.WriteToChannel(s.Context.metrics.waitingReqChan, common.MetricInfo{Value: 1}, s.Context.logger)
+	dispModel := reqCtx.request().GetDisplayedModel()
+	isLoRA := s.Context.isLora(dispModel)
 	// update loraInfo metrics with the new waiting request
-	if s.Context.isLora(reqCtx.request().GetDisplayedModel()) {
-		common.WriteToChannel(s.Context.metrics.lorasChan, loraUsage{reqCtx.request().GetDisplayedModel(), waitingUsageState},
+	if isLoRA {
+		common.WriteToChannel(s.Context.metrics.lorasChan, loraUsage{dispModel, waitingUsageState},
+			s.Context.logger)
+	}
+	if s.Context.metricsBus != nil {
+		common.WriteToChannel(s.Context.metricsBus.RequestQueued,
+			metrics.RequestQueued{BaseEvent: metrics.BaseEvent{Model: dispModel}, IsLoRA: isLoRA},
 			s.Context.logger)
 	}
 }
@@ -426,8 +434,15 @@ func (s *Simulator) dequeue() requestContext {
 		if ok && item.reqCtx != nil && s.Context.loraIsLoaded(item.reqCtx.request().GetDisplayedModel()) {
 			s.waitingQueue.Remove(elem)
 			s.Context.incrementLora(item.reqCtx.request().GetDisplayedModel())
-			common.WriteToChannel(s.Context.metrics.reqQueueTimeChan, time.Since(item.enqueueTime).Seconds(),
-				s.Context.logger)
+			queueTime := time.Since(item.enqueueTime).Seconds()
+			common.WriteToChannel(s.Context.metrics.reqQueueTimeChan, queueTime, s.Context.logger)
+			if s.Context.metricsBus != nil {
+				common.WriteToChannel(s.Context.metricsBus.RequestDequeued,
+					metrics.RequestDequeued{
+						BaseEvent: metrics.BaseEvent{Model: item.reqCtx.request().GetDisplayedModel()},
+						QueueTime: queueTime,
+					}, s.Context.logger)
+			}
 			return item.reqCtx
 		}
 	}
@@ -437,8 +452,15 @@ func (s *Simulator) dequeue() requestContext {
 		item, ok := elem.Value.(waitingQueueItem)
 		if ok && item.reqCtx != nil && s.Context.loadLora(item.reqCtx.request().GetDisplayedModel()) {
 			s.waitingQueue.Remove(elem)
-			common.WriteToChannel(s.Context.metrics.reqQueueTimeChan, time.Since(item.enqueueTime).Seconds(),
-				s.Context.logger)
+			queueTime := time.Since(item.enqueueTime).Seconds()
+			common.WriteToChannel(s.Context.metrics.reqQueueTimeChan, queueTime, s.Context.logger)
+			if s.Context.metricsBus != nil {
+				common.WriteToChannel(s.Context.metricsBus.RequestDequeued,
+					metrics.RequestDequeued{
+						BaseEvent: metrics.BaseEvent{Model: item.reqCtx.request().GetDisplayedModel()},
+						QueueTime: queueTime,
+					}, s.Context.logger)
+			}
 			return item.reqCtx
 		}
 	}
@@ -519,6 +541,11 @@ func (s *Simulator) simulateResponseProcessing(respCtx ResponseContext) {
 		}
 		common.WriteToChannel(s.Context.metrics.reqTpotChan, meanTPOT, s.Context.logger)
 		common.WriteToChannel(s.Context.metrics.reqDecodeTimeChan, decodeTime, s.Context.logger)
+		if s.Context.metricsBus != nil {
+			common.WriteToChannel(s.Context.metricsBus.DecodeEnded,
+				metrics.DecodeEnded{GenerationTokens: nTokens, DecodeDuration: decodeTime},
+				s.Context.logger)
+		}
 
 		if reqCtx.request().SendImage() {
 			s.Context.simulateImageGenerationLatency()
@@ -529,6 +556,7 @@ func (s *Simulator) simulateResponseProcessing(respCtx ResponseContext) {
 // request processing finished
 func (s *Simulator) onResponseProcessingFinished(reqCtx requestContext) {
 	// decrement running requests count
+	s.Context.nRunningReqs.Add(-1)
 	common.WriteToChannel(s.Context.metrics.runReqChan, common.MetricInfo{Value: -1}, s.Context.logger)
 
 	model := reqCtx.request().GetDisplayedModel()

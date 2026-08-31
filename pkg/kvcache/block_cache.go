@@ -27,6 +27,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common/logging"
+	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 )
 
 const (
@@ -62,13 +63,14 @@ type blockCache struct {
 	eventSender     *KVEventSender                     // emits kv events
 	eventChan       common.Channel[EventData]          // channel for asynchronous event processing
 	usageChan       *common.Channel[common.MetricInfo] // channel for usage reporting
+	metrics         *metrics.MetricsBus                // optional parallel emitter (event bus)
 	logger          logr.Logger
 	disabled        bool // indicated whether the cache is disabled
 }
 
 // newBlockCache creates a new blockCache with the specified maximum number of blocks
 func newBlockCache(ctx context.Context, config *common.Configuration, logger logr.Logger,
-	usageChan *common.Channel[common.MetricInfo]) (*blockCache, error) {
+	usageChan *common.Channel[common.MetricInfo], metrics *metrics.MetricsBus) (*blockCache, error) {
 	if config.IP == "" {
 		return nil, errors.New("IP should be defined in the environment (POD_IP)")
 	}
@@ -106,6 +108,7 @@ func newBlockCache(ctx context.Context, config *common.Configuration, logger log
 		maxBlocks:       config.KVCacheSize,
 		eventChan:       eChan,
 		usageChan:       usageChan,
+		metrics:         metrics,
 		eventSender:     eventSender,
 		logger:          logger,
 	}
@@ -285,11 +288,12 @@ func (bc *blockCache) startRequest(req Request, blockHashes []uint64, blockToken
 		bc.requestToBlocks[req.GetRequestID()][i] = bKey
 	}
 
+	perc := float64(len(bc.usedBlocks)) / float64(bc.maxBlocks)
 	if bc.usageChan != nil {
-		usage := common.MetricInfo{
-			Value: float64(len(bc.usedBlocks)) / float64(bc.maxBlocks),
-		}
-		common.WriteToChannel(*bc.usageChan, usage, bc.logger)
+		common.WriteToChannel(*bc.usageChan, common.MetricInfo{Value: perc}, bc.logger)
+	}
+	if bc.metrics != nil {
+		bc.metrics.EmitKVCacheUsage(perc, true)
 	}
 	return len(blockAlreadyInUse) + len(blockToMoveToUsed), nil
 }
@@ -329,11 +333,12 @@ func (bc *blockCache) finishRequest(requestID string) error {
 		}
 	}
 
+	perc := float64(len(bc.usedBlocks)) / float64(bc.maxBlocks)
 	if bc.usageChan != nil {
-		usage := common.MetricInfo{
-			Value: float64(len(bc.usedBlocks)) / float64(bc.maxBlocks),
-		}
-		common.WriteToChannel(*bc.usageChan, usage, bc.logger)
+		common.WriteToChannel(*bc.usageChan, common.MetricInfo{Value: perc}, bc.logger)
+	}
+	if bc.metrics != nil {
+		bc.metrics.EmitKVCacheUsage(perc, false)
 	}
 
 	// Remove the request mapping

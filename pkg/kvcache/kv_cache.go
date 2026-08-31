@@ -25,6 +25,7 @@ import (
 	"github.com/llm-d/llm-d-inference-sim/pkg/api"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common/logging"
+	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 	"github.com/llm-d/llm-d-inference-sim/pkg/tokenizer"
 	"github.com/llm-d/llm-d-router/pkg/kvcache/kvblock"
 )
@@ -45,10 +46,12 @@ type KVCacheHelper struct {
 	blockCache           *blockCache
 	blockSize            int
 	prefixCacheStatsChan common.Channel[PrefixCacheStats]
+	busPrefixQueryChan   common.Channel[PrefixCacheStats]
+	metrics              *metrics.MetricsBus
 }
 
 func NewKVCacheHelper(ctx context.Context, config *common.Configuration, logger logr.Logger, usageChan common.Channel[common.MetricInfo],
-	prefixCacheStatsChan common.Channel[PrefixCacheStats], tokenizer tokenizer.Tokenizer) (*KVCacheHelper, error) {
+	prefixCacheStatsChan common.Channel[PrefixCacheStats], tokenizer tokenizer.Tokenizer, metrics *metrics.MetricsBus) (*KVCacheHelper, error) {
 	if config.IP == "" {
 		return nil, errors.New("IP should be defined in the environment (POD_IP) for KV cache to work")
 	}
@@ -63,7 +66,7 @@ func NewKVCacheHelper(ctx context.Context, config *common.Configuration, logger 
 		return nil, fmt.Errorf("failed to create tokens processor: %w", err)
 	}
 
-	blockCache, err := newBlockCache(ctx, config, logger, &usageChan)
+	blockCache, err := newBlockCache(ctx, config, logger, &usageChan, metrics)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create block cache: %w", err)
 	}
@@ -75,6 +78,7 @@ func NewKVCacheHelper(ctx context.Context, config *common.Configuration, logger 
 		logger:               logger,
 		blockSize:            config.TokenBlockSize,
 		prefixCacheStatsChan: prefixCacheStatsChan,
+		metrics:              metrics,
 	}, nil
 }
 
@@ -144,6 +148,9 @@ func (h *KVCacheHelper) OnRequestStart(req api.Request) (PrefixCacheStats, error
 		CachedTokens:  cachedTokens,
 	}
 	common.WriteToChannel(h.prefixCacheStatsChan, stats, h.logger)
+	if h.metrics != nil {
+		h.metrics.EmitPrefixCacheQueried(stats.QueriedTokens, stats.CachedTokens)
+	}
 
 	return stats, nil
 }
