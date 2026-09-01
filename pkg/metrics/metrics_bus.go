@@ -61,7 +61,6 @@ type MetricsBus struct {
 	adapter EngineMetricsAdapter
 	logger  logr.Logger
 
-	RequestReceived  common.Channel[RequestReceived]
 	RequestQueued    common.Channel[RequestQueued]
 	RequestDequeued  common.Channel[RequestDequeued]
 	RequestRunning   common.Channel[RequestRunning]
@@ -72,7 +71,6 @@ type MetricsBus struct {
 	DecodeEnded      common.Channel[DecodeEnded]
 	RequestSucceeded common.Channel[RequestSucceeded]
 	RequestFailed    common.Channel[RequestFailed]
-	RequestRejected  common.Channel[RequestRejected]
 	KVCacheUsage     common.Channel[KVCacheUsageChanged]
 	PrefixCacheQuery common.Channel[PrefixCacheQueried]
 }
@@ -259,78 +257,71 @@ func NewMetricsBus(ctx context.Context, config common.Configuration, registry *p
 		return nil, err
 	}
 	done := ctx.Done()
-	// TODO define channel size according to the specific needs for each channel
-	const busChanSize = 100
+
+	maxNumberOfRunningRequests := config.MaxNumSeqs * 2
+	maxNumberOfWaitingRequests := config.MaxWaitingQueueLength * 2
+	maxNumberOfTokens := maxNumberOfRunningRequests * config.MaxModelLen
+
 	return &MetricsBus{
 		adapter: adapter,
 		logger:  logger,
-		RequestReceived: common.Channel[RequestReceived]{
-			Channel: make(chan RequestReceived, busChanSize),
-			Name:    "bus.RequestReceived",
-			Done:    done,
-		},
 		RequestQueued: common.Channel[RequestQueued]{
-			Channel: make(chan RequestQueued, busChanSize),
+			Channel: make(chan RequestQueued, maxNumberOfWaitingRequests),
 			Name:    "bus.RequestQueued",
 			Done:    done,
 		},
 		RequestDequeued: common.Channel[RequestDequeued]{
-			Channel: make(chan RequestDequeued, busChanSize),
+			Channel: make(chan RequestDequeued, maxNumberOfWaitingRequests),
 			Name:    "bus.RequestDequeued",
 			Done:    done,
 		},
 		RequestRunning: common.Channel[RequestRunning]{
-			Channel: make(chan RequestRunning, busChanSize),
+			Channel: make(chan RequestRunning, maxNumberOfRunningRequests),
 			Name:    "bus.RequestRunning",
 			Done:    done,
 		},
 		PrefillStarted: common.Channel[PrefillStarted]{
-			Channel: make(chan PrefillStarted, busChanSize),
+			Channel: make(chan PrefillStarted, maxNumberOfRunningRequests),
 			Name:    "bus.PrefillStarted",
 			Done:    done,
 		},
 		PrefillEnded: common.Channel[PrefillEnded]{
-			Channel: make(chan PrefillEnded, busChanSize),
+			Channel: make(chan PrefillEnded, maxNumberOfRunningRequests),
 			Name:    "bus.PrefillEnded",
 			Done:    done,
 		},
 		DecodeStarted: common.Channel[DecodeStarted]{
-			Channel: make(chan DecodeStarted, busChanSize),
+			Channel: make(chan DecodeStarted, maxNumberOfRunningRequests),
 			Name:    "bus.DecodeStarted",
 			Done:    done,
 		},
 		TokenGenerated: common.Channel[TokenGenerated]{
-			Channel: make(chan TokenGenerated, busChanSize),
+			Channel: make(chan TokenGenerated, maxNumberOfTokens),
 			Name:    "bus.TokenGenerated",
 			Done:    done,
 		},
 		DecodeEnded: common.Channel[DecodeEnded]{
-			Channel: make(chan DecodeEnded, busChanSize),
+			Channel: make(chan DecodeEnded, maxNumberOfRunningRequests),
 			Name:    "bus.DecodeEnded",
 			Done:    done,
 		},
 		RequestSucceeded: common.Channel[RequestSucceeded]{
-			Channel: make(chan RequestSucceeded, busChanSize),
+			Channel: make(chan RequestSucceeded, maxNumberOfRunningRequests),
 			Name:    "bus.RequestSucceeded",
 			Done:    done,
 		},
 		RequestFailed: common.Channel[RequestFailed]{
-			Channel: make(chan RequestFailed, busChanSize),
+			Channel: make(chan RequestFailed, maxNumberOfRunningRequests),
 			Name:    "bus.RequestFailed",
 			Done:    done,
 		},
-		RequestRejected: common.Channel[RequestRejected]{
-			Channel: make(chan RequestRejected, busChanSize),
-			Name:    "bus.RequestRejected",
-			Done:    done,
-		},
 		KVCacheUsage: common.Channel[KVCacheUsageChanged]{
-			Channel: make(chan KVCacheUsageChanged, busChanSize),
+			Channel: make(chan KVCacheUsageChanged, maxNumberOfRunningRequests),
 			Name:    "bus.KVCacheUsage",
 			Done:    done,
 		},
 		PrefixCacheQuery: common.Channel[PrefixCacheQueried]{
-			Channel: make(chan PrefixCacheQueried, busChanSize),
+			Channel: make(chan PrefixCacheQueried, maxNumberOfRunningRequests),
 			Name:    "bus.PrefixCacheQuery",
 			Done:    done,
 		},

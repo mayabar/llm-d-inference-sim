@@ -19,6 +19,7 @@ package simulator
 import (
 	"github.com/llm-d/llm-d-inference-sim/pkg/api"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
+	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/prometheus/client_golang/prometheus"
@@ -130,7 +131,7 @@ var _ = Describe("total tokens", func() {
 					Buckets: test.buckets,
 				}, []string{api.PromLabelModelName},
 			)
-			result := s.initFakeHistogram(hist, test.buckets, test.counts)
+			result := metrics.InitFakeHistogram(hist, s.Config().DisplayModelName, test.buckets, test.counts)
 			if test.shouldBeNil {
 				Expect(result).To(BeNil())
 			} else {

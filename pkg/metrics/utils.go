@@ -15,7 +15,11 @@ limitations under the License.
 */
 package metrics
 
-import "math"
+import (
+	"math"
+
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 // Build125Buckets generates histogram buckets in powers of 10 scaled by [1,2,5].
 // This matches vLLM's build_1_2_5_buckets() in metrics.py.
@@ -44,4 +48,40 @@ func Build125Buckets(maxValue int) []float64 {
 		exponent++
 	}
 	return buckets
+}
+
+// InitFakeHistogram initializes the given histogram values based on the input
+// bucketsBoundaries - upper boundaries of all buckets except the last one. Actual number of buckets is len(bucketsBoundaries)+1.
+// This includes the last bucket (last_boundary, +Inf].
+// bucketsSamplesCount - array containing number of samples per bucket, starting from the first bucket.
+// Trailing empty buckets are not included in this array, so its length can be <= len(bucketsBoundaries)+1
+func InitFakeHistogram(hist *prometheus.HistogramVec, modelName string, bucketsBoundaries []float64, bucketsSamplesCount []int) *int64 {
+	var valueToObserve float64
+	var total int64
+	numOfBoundaries := len(bucketsBoundaries)
+
+	if len(bucketsSamplesCount) == 0 || len(bucketsBoundaries) == 0 {
+		return nil
+	}
+
+	for i, bucketSamplesCount := range bucketsSamplesCount {
+		// for each bucket calculate value to use for Observe function
+		// for all buckets except the last one it will be the upper boundary (which is included in the bucket)
+		// for the last bucket it will be top boundary of the previous bucket + 1
+		if i < numOfBoundaries {
+			valueToObserve = bucketsBoundaries[i]
+		} else {
+			// this is last bucket - use number larger than the upper bound of the previous bucket
+			valueToObserve = bucketsBoundaries[numOfBoundaries-1] + 1
+		}
+
+		for range bucketSamplesCount {
+			// create required number of observations for the calculated sample
+			hist.WithLabelValues(modelName).Observe(valueToObserve)
+		}
+
+		total += int64(bucketSamplesCount) * int64(valueToObserve)
+	}
+
+	return &total
 }

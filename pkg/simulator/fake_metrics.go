@@ -87,42 +87,6 @@ func (s *SimContext) updateGeneratedFakeMetrics() {
 	}
 }
 
-// initFakeHistogram initializes the given histogram values based on the input
-// bucketsBoundaries - upper boundaries of all buckets except the last one. Actual number of buckets is len(bucketsBoundaries)+1.
-// This includes the last bucket (last_boundary, +Inf].
-// bucketsSamplesCount - array containing number of samples per bucket, starting from the first bucket.
-// Trailing empty buckets are not included in this array, so its length can be <= len(bucketsBoundaries)+1
-func (s *SimContext) initFakeHistogram(hist *prometheus.HistogramVec, bucketsBoundaries []float64, bucketsSamplesCount []int) *int64 {
-	var valueToObserve float64
-	var total int64
-	numOfBoundaries := len(bucketsBoundaries)
-
-	if len(bucketsSamplesCount) == 0 || len(bucketsBoundaries) == 0 {
-		return nil
-	}
-
-	for i, bucketSamplesCount := range bucketsSamplesCount {
-		// for each bucket calculate value to use for Observe function
-		// for all buckets except the last one it will be the upper boundary (which is included in the bucket)
-		// for the last bucket it will be top boundary of the previous bucket + 1
-		if i < numOfBoundaries {
-			valueToObserve = bucketsBoundaries[i]
-		} else {
-			// this is last bucket - use number larger than the upper bound of the previous bucket
-			valueToObserve = bucketsBoundaries[numOfBoundaries-1] + 1
-		}
-
-		for range bucketSamplesCount {
-			// create required number of observations for the calculated sample
-			hist.WithLabelValues(s.Config().DisplayModelName).Observe(valueToObserve)
-		}
-
-		total += int64(bucketSamplesCount) * int64(valueToObserve)
-	}
-
-	return &total
-}
-
 // updateFakeMetrics applies a partial update to the simulator's Prometheus
 // metrics. update carries the fields to apply (nil fields are skipped); old
 // is the previous FakeMetrics state used to decide whether a collector
@@ -159,7 +123,7 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 				return err
 			}
 		}
-		s.initFakeHistogram(s.metrics.ttft, common.TTFTBucketsBoundaries, update.TTFTBucketValues)
+		metrics.InitFakeHistogram(s.metrics.ttft, s.Config().DisplayModelName, common.TTFTBucketsBoundaries, update.TTFTBucketValues)
 	}
 
 	if update.TPOTBucketValues != nil {
@@ -170,8 +134,8 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 				return err
 			}
 		}
-		s.initFakeHistogram(s.metrics.tpot, common.TPOTBucketsBoundaries, update.TPOTBucketValues)
-		s.initFakeHistogram(s.metrics.interTokenLatency, common.TPOTBucketsBoundaries, update.TPOTBucketValues)
+		metrics.InitFakeHistogram(s.metrics.tpot, s.Config().DisplayModelName, common.TPOTBucketsBoundaries, update.TPOTBucketValues)
+		metrics.InitFakeHistogram(s.metrics.interTokenLatency, s.Config().DisplayModelName, common.TPOTBucketsBoundaries, update.TPOTBucketValues)
 	}
 
 	if update.E2ERequestLatencyBucketValues != nil {
@@ -181,7 +145,7 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 				return err
 			}
 		}
-		s.initFakeHistogram(s.metrics.e2eReqLatency, common.RequestLatencyBucketsBoundaries, update.E2ERequestLatencyBucketValues)
+		metrics.InitFakeHistogram(s.metrics.e2eReqLatency, s.Config().DisplayModelName, common.RequestLatencyBucketsBoundaries, update.E2ERequestLatencyBucketValues)
 	}
 
 	if update.ReqQueueTimeBucketValues != nil {
@@ -191,7 +155,7 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 				return err
 			}
 		}
-		s.initFakeHistogram(s.metrics.reqQueueTime, common.RequestLatencyBucketsBoundaries, update.ReqQueueTimeBucketValues)
+		metrics.InitFakeHistogram(s.metrics.reqQueueTime, s.Config().DisplayModelName, common.RequestLatencyBucketsBoundaries, update.ReqQueueTimeBucketValues)
 	}
 
 	if update.ReqInfTimeBucketValues != nil {
@@ -201,7 +165,7 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 				return err
 			}
 		}
-		s.initFakeHistogram(s.metrics.reqInferenceTime, common.RequestLatencyBucketsBoundaries, update.ReqInfTimeBucketValues)
+		metrics.InitFakeHistogram(s.metrics.reqInferenceTime, s.Config().DisplayModelName, common.RequestLatencyBucketsBoundaries, update.ReqInfTimeBucketValues)
 	}
 
 	if update.ReqPrefillTimeBucketValues != nil {
@@ -211,7 +175,7 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 				return err
 			}
 		}
-		s.initFakeHistogram(s.metrics.reqPrefillTime, common.RequestLatencyBucketsBoundaries, update.ReqPrefillTimeBucketValues)
+		metrics.InitFakeHistogram(s.metrics.reqPrefillTime, s.Config().DisplayModelName, common.RequestLatencyBucketsBoundaries, update.ReqPrefillTimeBucketValues)
 	}
 
 	if update.ReqDecodeTimeBucketValues != nil {
@@ -221,7 +185,7 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 				return err
 			}
 		}
-		s.initFakeHistogram(s.metrics.reqDecodeTime, common.RequestLatencyBucketsBoundaries, update.ReqDecodeTimeBucketValues)
+		metrics.InitFakeHistogram(s.metrics.reqDecodeTime, s.Config().DisplayModelName, common.RequestLatencyBucketsBoundaries, update.ReqDecodeTimeBucketValues)
 	}
 
 	if update.ReqTPOTBucketValues != nil {
@@ -231,7 +195,7 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 				return err
 			}
 		}
-		s.initFakeHistogram(s.metrics.reqTpot, common.TPOTBucketsBoundaries, update.ReqTPOTBucketValues)
+		metrics.InitFakeHistogram(s.metrics.reqTpot, s.Config().DisplayModelName, common.TPOTBucketsBoundaries, update.ReqTPOTBucketValues)
 	}
 
 	buckets := metrics.Build125Buckets(s.Config().MaxModelLen)
@@ -243,7 +207,7 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 				return err
 			}
 		}
-		s.initFakeHistogram(s.metrics.requestParamsMaxTokens, buckets, update.RequestParamsMaxTokens)
+		metrics.InitFakeHistogram(s.metrics.requestParamsMaxTokens, s.Config().DisplayModelName, buckets, update.RequestParamsMaxTokens)
 	}
 
 	if update.RequestMaxGenerationTokens != nil {
@@ -253,7 +217,7 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 				return err
 			}
 		}
-		s.initFakeHistogram(s.metrics.maxNumGenerationTokens, buckets, update.RequestMaxGenerationTokens)
+		metrics.InitFakeHistogram(s.metrics.maxNumGenerationTokens, s.Config().DisplayModelName, buckets, update.RequestMaxGenerationTokens)
 	}
 
 	var oldRequestPromptTokens, oldRequestGenerationTokens []int
@@ -381,7 +345,7 @@ func (s *SimContext) updateTokenMetrics(
 				return err
 			}
 		}
-		histTotal = s.initFakeHistogram(*hist, buckets, newHistValues)
+		histTotal = metrics.InitFakeHistogram(*hist, modelName, buckets, newHistValues)
 	}
 
 	// The counter can be set from two sources: an explicit total value,
