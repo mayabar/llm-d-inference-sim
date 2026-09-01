@@ -225,6 +225,10 @@ type VLLMMetricsAdapter struct {
 	// onto the num_requests_{waiting,running} gauges.
 	nWaitingReqs int64
 	nRunningReqs int64
+
+	// fakeController drives fake-metrics application when
+	// config.FakeMetrics != nil. Nil otherwise.
+	fakeController *VLLMFakeMetricsController
 }
 
 // NewVLLMMetricsAdapter fully initializes the adapter: registers every
@@ -250,10 +254,17 @@ func NewVLLMMetricsAdapter(ctx context.Context, registry *prometheus.Registry, l
 		return nil, err
 	}
 	m.setInitialValues()
+
+	if m.config.FakeMetrics != nil {
+		m.fakeController = NewVLLMFakeMetricsController(&m.config, m, logger)
+	}
 	return m, nil
 }
 
 func (m *VLLMMetricsAdapter) Close() error {
+	if m.fakeController != nil {
+		m.fakeController.Close()
+	}
 	return nil
 }
 
@@ -281,6 +292,13 @@ func (m *VLLMMetricsAdapter) Start(ctx context.Context, bus *MetricsBus) error {
 	go drain(ctx, bus.RequestFailed, m.OnRequestFailed)
 	go drain(ctx, bus.KVCacheUsage, m.OnKVCacheUsageChanged)
 	go drain(ctx, bus.PrefixCacheQuery, m.OnPrefixCacheQueried)
+
+	if m.fakeController != nil {
+		if err := m.fakeController.SetInitial(m.config.FakeMetrics); err != nil {
+			return err
+		}
+		m.fakeController.Start(ctx)
+	}
 
 	return nil
 }
@@ -455,6 +473,9 @@ func (m *VLLMMetricsAdapter) OnRequestRejected(_ RequestRejected) {
 // - update number of waiting requests
 // - update LoRA state if applicable
 func (m *VLLMMetricsAdapter) OnRequestQueued(ev RequestQueued) {
+	if m.config.FakeMetrics != nil {
+		return
+	}
 	common.WriteToChannel(m.waitingReqChan,
 		common.MetricInfo{Value: 1, IsFake: ev.IsFake}, m.logger)
 
@@ -469,6 +490,9 @@ func (m *VLLMMetricsAdapter) OnRequestQueued(ev RequestQueued) {
 // - update queue time histogram
 // lora will be marked as runnning in OnRequestRunning
 func (m *VLLMMetricsAdapter) OnRequestDequeued(ev RequestDequeued) {
+	if m.config.FakeMetrics != nil {
+		return
+	}
 	common.WriteToChannel(m.waitingReqChan,
 		common.MetricInfo{Value: -1, IsFake: ev.IsFake}, m.logger)
 
@@ -479,6 +503,9 @@ func (m *VLLMMetricsAdapter) OnRequestDequeued(ev RequestDequeued) {
 // - update number of running requests
 // - update LoRA state if applicable
 func (m *VLLMMetricsAdapter) OnRequestRunning(ev RequestRunning) {
+	if m.config.FakeMetrics != nil {
+		return
+	}
 	common.WriteToChannel(m.runReqChan,
 		common.MetricInfo{Value: 1, IsFake: ev.IsFake}, m.logger)
 
@@ -497,6 +524,9 @@ func (m *VLLMMetricsAdapter) OnPrefillStarted(_ PrefillStarted) {
 // - update prefill time histogram
 // - update TTFT histogram
 func (m *VLLMMetricsAdapter) OnPrefillEnded(ev PrefillEnded) {
+	if m.config.FakeMetrics != nil {
+		return
+	}
 	common.WriteToChannel(m.reqPrefillTimeChan, observation(ev.PrefillDuration), m.logger)
 	common.WriteToChannel(m.ttftChan, observation(ev.PrefillDuration), m.logger)
 }
@@ -508,6 +538,9 @@ func (m *VLLMMetricsAdapter) OnDecodeStarted(_ DecodeStarted) {
 // token generated
 // - update tpot and itl latency histograms
 func (m *VLLMMetricsAdapter) OnTokenGenerated(ev TokenGenerated) {
+	if m.config.FakeMetrics != nil {
+		return
+	}
 	obs := observation(ev.InterTokenLatency)
 	common.WriteToChannel(m.tpotChan, obs, m.logger)
 	common.WriteToChannel(m.interTokenLatencyChan, obs, m.logger)
@@ -517,6 +550,9 @@ func (m *VLLMMetricsAdapter) OnTokenGenerated(ev TokenGenerated) {
 // - update decode time histogram
 // - update requests tpot histogram
 func (m *VLLMMetricsAdapter) OnDecodeEnded(ev DecodeEnded) {
+	if m.config.FakeMetrics != nil {
+		return
+	}
 	common.WriteToChannel(m.reqDecodeTimeChan, observation(ev.DecodeDuration), m.logger)
 
 	if ev.GenerationTokens > 0 {
@@ -528,6 +564,9 @@ func (m *VLLMMetricsAdapter) OnDecodeEnded(ev DecodeEnded) {
 // request processing finished successfully
 // - update all relevant metrics
 func (m *VLLMMetricsAdapter) OnRequestSucceeded(ev RequestSucceeded) {
+	if m.config.FakeMetrics != nil {
+		return
+	}
 	common.WriteToChannel(m.requestSuccessChan, RequestSuccessUpdate{Success: &ev}, m.logger)
 
 	common.WriteToChannel(m.e2eReqLatencyChan, observation(ev.E2ELatency), m.logger)
@@ -539,6 +578,9 @@ func (m *VLLMMetricsAdapter) OnRequestSucceeded(ev RequestSucceeded) {
 // request processing failed
 // - update all relevant metrics
 func (m *VLLMMetricsAdapter) OnRequestFailed(ev RequestFailed) {
+	if m.config.FakeMetrics != nil {
+		return
+	}
 	common.WriteToChannel(m.e2eReqLatencyChan, observation(ev.E2ELatency), m.logger)
 	common.WriteToChannel(m.reqInferenceTimeChan, observation(ev.InferenceTime), m.logger)
 
@@ -552,6 +594,9 @@ func (m *VLLMMetricsAdapter) OnRequestFailed(ev RequestFailed) {
 // change in kv cache utilization
 // - update kv cache usage gauge
 func (m *VLLMMetricsAdapter) OnKVCacheUsageChanged(ev KVCacheUsageChanged) {
+	if m.config.FakeMetrics != nil {
+		return
+	}
 	common.WriteToChannel(m.kvCacheUsageChan,
 		common.MetricInfo{Value: ev.KVCacheUsagePerc, IsFake: ev.IsFake}, m.logger)
 }
@@ -559,6 +604,9 @@ func (m *VLLMMetricsAdapter) OnKVCacheUsageChanged(ev KVCacheUsageChanged) {
 // change in prefix cache utilization
 // - update prefix cache hits and queries counters
 func (m *VLLMMetricsAdapter) OnPrefixCacheQueried(ev PrefixCacheQueried) {
+	if m.config.FakeMetrics != nil {
+		return
+	}
 	common.WriteToChannel(m.prefixCacheStatsChan, PrefixCacheStatUpdate{Query: &ev}, m.logger)
 }
 
@@ -1374,12 +1422,10 @@ func (m *VLLMMetricsAdapter) createAndRegisterPrefixCacheQueriesTotalCounter() e
 // setInitialValues zeroes gauges that must appear on the first scrape and
 // stamps the one-shot cache_config_info and lora_requests_info series so
 // output stays consistent with the current metrics.go behavior before any
-// request runs.
+// request runs. In fake mode the controller's SetInitial (invoked from
+// Start) overwrites everything it manages, so the baseline stamped here is
+// harmless.
 func (m *VLLMMetricsAdapter) setInitialValues() error {
-	if m.config.FakeMetrics != nil {
-		return m.setInitialFakeMetrics()
-	}
-
 	m.runningRequests.WithLabelValues(m.config.DisplayModelName).Set(0)
 	m.waitingRequests.WithLabelValues(m.config.DisplayModelName).Set(0)
 	m.kvCacheUsagePercentage.WithLabelValues(m.config.DisplayModelName).Set(0)
@@ -1486,20 +1532,3 @@ func (m *VLLMMetricsAdapter) SetLoRAs(maxLoRAs int, entries []common.LorasMetric
 		LoRAUpdate{Reset: &LoRAReset{MaxLoRAs: maxLoRAs, Entries: entries}}, m.logger)
 }
 
-// -- Initial fake-metrics stub --------------------------------------------
-
-func (m *VLLMMetricsAdapter) setInitialFakeMetrics() error {
-	return nil
-	// m.generatedFakeMetrics = make(map[string]generatedFakeMetrics)
-
-	// initial := m.config.FakeMetrics
-
-	// // Loras always need processing on initial setup so the default empty
-	// // entry (no adapters, current timestamp) gets registered. Parser
-	// // initializes LoraMetrics to a non-nil (possibly empty) slice for the
-	// // configured case; force non-nil here to cover any path that didn't.
-	// if initial.LoraMetrics == nil {
-	// 	initial.LoraMetrics = []common.LorasMetrics{}
-	// }
-	// return m.updateFakeMetrics(initial, nil)
-}
