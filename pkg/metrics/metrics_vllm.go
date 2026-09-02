@@ -268,6 +268,13 @@ func (m *VLLMMetricsAdapter) Close() error {
 	return nil
 }
 
+// FakeController exposes the adapter's fake-metrics controller so external
+// callers (admin API) can push runtime updates. Nil when the adapter is
+// running against real metrics. Implements VLLMFakeCapable.
+func (m *VLLMMetricsAdapter) FakeController() *VLLMFakeMetricsController {
+	return m.fakeController
+}
+
 // Start wires the event bus into the adapter by spawning one drainer
 // goroutine per bus channel. Each drainer calls the matching On<Event>
 // handler, which forwards the event onto the per-metric channel that

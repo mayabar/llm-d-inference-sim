@@ -159,6 +159,9 @@ func (s *SimContext) ApplyConfigUpdate(body []byte) error {
 		if err := s.updateFakeMetrics(update.FakeMetrics, s.Config().FakeMetrics); err != nil {
 			return fmt.Errorf("failed to update fake metrics: %w", err)
 		}
+		if err := s.metricsBus.ApplyFakeMetricsUpdate(update.FakeMetrics); err != nil {
+			return fmt.Errorf("failed to update fake metrics on new pipeline: %w", err)
+		}
 	}
 	s.SetConfig(next)
 	// The calculator caches latency-related fields at construction time, so

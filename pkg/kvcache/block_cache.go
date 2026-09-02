@@ -293,7 +293,7 @@ func (bc *blockCache) startRequest(req Request, blockHashes []uint64, blockToken
 		common.WriteToChannel(*bc.usageChan, common.MetricInfo{Value: perc}, bc.logger)
 	}
 	if bc.metrics != nil {
-		bc.metrics.EmitKVCacheUsage(perc, true)
+		bc.metrics.EmitKVCacheUsage(perc, false)
 	}
 	return len(blockAlreadyInUse) + len(blockToMoveToUsed), nil
 }
