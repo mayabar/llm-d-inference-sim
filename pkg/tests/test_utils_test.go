@@ -57,6 +57,7 @@ const (
 	baseURL              = "http://localhost/v1"
 	testUserMessage      = "This is a test."
 	metricsUrl           = "http://localhost/metrics"
+	metricsOldUrl        = "http://localhost/metrics_old"
 	updateFakeMetricsUrl = "http://localhost/fake_metrics"
 	adminConfigURL       = "http://localhost/admin/config"
 )

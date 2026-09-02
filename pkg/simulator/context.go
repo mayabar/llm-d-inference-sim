@@ -53,13 +53,15 @@ type SimContext struct {
 	// logger is used for information and errors logging
 	logger logr.Logger
 	// metrics contains all Prometheus metrics related data
-	metrics metricsData
+	metrics     metricsData
+	oldRegistry *prometheus.Registry
 	// metricsBus is the event-driven metrics pipeline that runs alongside
 	// the legacy `metrics` path. Producers emit BaseEvents onto its channels;
 	// the wired EngineMetricsAdapter drains them and updates its own private
 	// Prometheus registry. Kept in parallel with `metrics` during the
 	// transition so both surfaces can be validated against each other.
-	metricsBus *metrics.MetricsBus
+	metricsBus         *metrics.MetricsBus
+	prometheusRegistry *prometheus.Registry
 	// config holds the simulator's configuration as an atomic pointer so that
 	// admin updates can swap it under concurrent readers. Access via Config()/SetConfig().
 	config atomic.Pointer[common.Configuration]
@@ -126,6 +128,14 @@ func (s *SimContext) SetConfig(c *common.Configuration) {
 	s.config.Store(c)
 }
 
+func (s *SimContext) MetricsRegistry() *prometheus.Registry {
+	return s.prometheusRegistry
+}
+
+func (s *SimContext) OldMetricsRegistry() *prometheus.Registry {
+	return s.oldRegistry
+}
+
 // ApplyConfigUpdate validates the partial JSON body against the current
 // configuration and atomically swaps in the resulting configuration. Updates
 // are serialized so concurrent callers cannot lose each other's changes.
@@ -175,20 +185,20 @@ func (s *SimContext) initialize(ctx context.Context) error {
 		Done:    ctx.Done(),
 	}
 
+	s.prometheusRegistry = prometheus.NewRegistry()
+	s.oldRegistry = prometheus.NewRegistry()
+
 	// initialize prometheus metrics
 	err := s.createAndRegisterPrometheus(ctx)
 	if err != nil {
 		return err
 	}
 
-	// Parallel event-driven metrics pipeline. Uses its own private registry
-	// so its collectors do not collide with the legacy s.metrics registry;
-	// both pipelines run side-by-side during the transition.
-	s.metricsBus, err = metrics.NewMetricsBus(ctx, *s.Config(), prometheus.NewRegistry(), s.logger)
+	s.metricsBus, err = metrics.NewMetricsBus(ctx, *s.Config(), s.prometheusRegistry, s.logger)
 	if err != nil {
 		return err
 	}
-	if err := s.metricsBus.GetAdapter().Start(ctx, s.metricsBus); err != nil {
+	if err := s.metricsBus.Start(ctx); err != nil {
 		return err
 	}
 

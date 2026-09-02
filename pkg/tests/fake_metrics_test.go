@@ -274,6 +274,72 @@ var _ = Describe("Fake metrics", Ordered, func() {
 		})
 	})
 
+	Context("fake metrics on /metrics_old", func() {
+		It("Should respond with fake fixed-value metrics to /metrics_old", func() {
+			ctx := context.TODO()
+			args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeRandom,
+				"--fake-metrics",
+				`{` +
+					`"running-requests":10,` +
+					`"waiting-requests":30,` +
+					`"kv-cache-usage":0.4,` +
+					`"prefix-cache-hits":750,` +
+					`"prefix-cache-queries":2000` +
+					`}`,
+			}
+
+			client, err := startServerWithArgs(ctx, args)
+			Expect(err).NotTo(HaveOccurred())
+
+			resp, err := client.Get(metricsOldUrl)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+			data, err := io.ReadAll(resp.Body)
+			Expect(err).NotTo(HaveOccurred())
+			metricsData := string(data)
+
+			Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.ReqRunningMetricName, 10)))
+			Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.ReqWaitingMetricName, 30)))
+			Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.KVCacheUsageMetricName, 0.4)))
+			Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.PrefixCacheHitsTotalMetricName, 750)))
+			Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.PrefixCacheQueriesTotalMetricName, 2000)))
+		})
+
+		It("Should drive generator-based fake metrics on /metrics_old", func() {
+			ctx := context.TODO()
+			args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeRandom,
+				"--fake-metrics",
+				`{"kv-cache-usage":"ramp:0:1:700ms"}`,
+			}
+
+			client, err := startServerWithArgs(ctx, args)
+			Expect(err).NotTo(HaveOccurred())
+
+			var prev float64
+			for i := 1; i <= 5; i++ {
+				time.Sleep(200 * time.Millisecond)
+				resp, err := client.Get(metricsOldUrl)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+				data, err := io.ReadAll(resp.Body)
+				Expect(err).NotTo(HaveOccurred())
+				lines := strings.Split(string(data), "\n")
+
+				v := findFloatMetric(lines, getCountMetricPrefix(common.TestModelName, simulator.KVCacheUsageMetricName))
+				Expect(v).ToNot(BeNil())
+				if i < 4 {
+					Expect(*v).To(BeNumerically("<", 1))
+					Expect(*v).To(BeNumerically(">", prev))
+				} else {
+					Expect(*v).To(BeNumerically("==", 1))
+				}
+				prev = *v
+			}
+		})
+	})
+
 	Context("fake prefix cache metrics", func() {
 		It("Should respond with fake prefix cache metrics to /metrics", func() {
 			ctx := context.TODO()

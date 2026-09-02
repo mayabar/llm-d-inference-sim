@@ -125,10 +125,6 @@ type metricsData struct {
 	// it needs atomic access.
 	nRunningReqs atomic.Int64
 
-	// DONE
-	// registry is a Prometheus registry
-	registry *prometheus.Registry
-
 	// DONE (+cache config)
 	// loraInfo is prometheus gauge
 	loraInfo *prometheus.GaugeVec
@@ -180,24 +176,11 @@ type metricsData struct {
 	prefixCacheQueriesTotal *prometheus.CounterVec
 }
 
-func (s *SimContext) MetricsRegistry() *prometheus.Registry {
-	return s.metrics.registry
-}
-
-// BusMetricsRegistry returns the Prometheus registry populated by the
-// parallel event-driven metrics pipeline, or nil if it isn't wired.
-// Served on /metrics_new so both surfaces can be scraped independently.
-func (s *SimContext) BusMetricsRegistry() *prometheus.Registry {
-	return s.metricsBus.Registry()
-}
-
 // createAndRegisterPrometheus creates and registers prometheus metrics used by vLLM simulator
 func (s *SimContext) createAndRegisterPrometheus(ctx context.Context) error {
 	maxNumberOfRequests := (s.Config().MaxNumSeqs + s.Config().MaxWaitingQueueLength) * 2
 	maxNumberOfRunningRequests := s.Config().MaxNumSeqs * 2
 	maxNumberOfWaitingRequests := s.Config().MaxWaitingQueueLength * 2
-
-	s.metrics.registry = prometheus.NewRegistry()
 
 	if err := s.createAndRegisterLoraInfoMetric(); err != nil {
 		return err
@@ -219,7 +202,7 @@ func (s *SimContext) createAndRegisterPrometheus(ctx context.Context) error {
 		[]string{api.PromLabelModelName},
 	)
 
-	if err := s.metrics.registry.Register(s.metrics.runningRequests); err != nil {
+	if err := s.oldRegistry.Register(s.metrics.runningRequests); err != nil {
 		s.logger.Error(err, "prometheus number of running requests gauge register failed")
 		return err
 	}
@@ -240,7 +223,7 @@ func (s *SimContext) createAndRegisterPrometheus(ctx context.Context) error {
 		[]string{api.PromLabelModelName},
 	)
 
-	if err := s.metrics.registry.Register(s.metrics.waitingRequests); err != nil {
+	if err := s.oldRegistry.Register(s.metrics.waitingRequests); err != nil {
 		s.logger.Error(err, "prometheus number of requests in queue gauge register failed")
 		return err
 	}
@@ -349,7 +332,7 @@ func (s *SimContext) createAndRegisterPrometheus(ctx context.Context) error {
 		[]string{api.PromLabelModelName},
 	)
 
-	if err := s.metrics.registry.Register(s.metrics.kvCacheUsagePercentage); err != nil {
+	if err := s.oldRegistry.Register(s.metrics.kvCacheUsagePercentage); err != nil {
 		s.logger.Error(err, "prometheus kv cache usage percentage gauge register failed")
 		return err
 	}
@@ -419,7 +402,7 @@ func (s *SimContext) createAndRegisterPrometheus(ctx context.Context) error {
 		},
 		[]string{api.PromLabelCacheBlockSize, api.PromLabelCacheNumGPUBlocks},
 	)
-	if err := s.metrics.registry.Register(cacheConfig); err != nil {
+	if err := s.oldRegistry.Register(cacheConfig); err != nil {
 		s.logger.Error(err, "prometheus cache config register failed")
 		return err
 	}
@@ -802,7 +785,7 @@ func (s *SimContext) createAndRegisterTTFTMetric() error {
 		[]string{api.PromLabelModelName},
 	)
 
-	if err := s.metrics.registry.Register(s.metrics.ttft); err != nil {
+	if err := s.oldRegistry.Register(s.metrics.ttft); err != nil {
 		s.logger.Error(err, "prometheus time to first token histogram register failed")
 		return err
 	}
@@ -821,7 +804,7 @@ func (s *SimContext) createAndRegisterTPOTAndInterTokenMetrics() error {
 		[]string{api.PromLabelModelName},
 	)
 
-	if err := s.metrics.registry.Register(s.metrics.tpot); err != nil {
+	if err := s.oldRegistry.Register(s.metrics.tpot); err != nil {
 		s.logger.Error(err, "prometheus time per output token histogram register failed")
 		return err
 	}
@@ -837,7 +820,7 @@ func (s *SimContext) createAndRegisterTPOTAndInterTokenMetrics() error {
 		[]string{api.PromLabelModelName},
 	)
 
-	if err := s.metrics.registry.Register(s.metrics.interTokenLatency); err != nil {
+	if err := s.oldRegistry.Register(s.metrics.interTokenLatency); err != nil {
 		s.logger.Error(err, "prometheus inter-token latency histogram register failed")
 		return err
 	}
@@ -854,7 +837,7 @@ func (s *SimContext) createAndRegisterReqPromptTokensMetrics() error {
 		},
 		[]string{api.PromLabelModelName},
 	)
-	if err := s.metrics.registry.Register(s.metrics.requestPromptTokens); err != nil {
+	if err := s.oldRegistry.Register(s.metrics.requestPromptTokens); err != nil {
 		s.logger.Error(err, "prometheus request_prompt_tokens histogram register failed")
 		return err
 	}
@@ -871,7 +854,7 @@ func (s *SimContext) createAndRegisterPromptTokensTotalMetrics() error {
 		[]string{api.PromLabelModelName},
 	)
 
-	if err := s.metrics.registry.Register(s.metrics.promptTokensTotal); err != nil {
+	if err := s.oldRegistry.Register(s.metrics.promptTokensTotal); err != nil {
 		s.logger.Error(err, "prometheus prompt_tokens_total counter register failed")
 		return err
 	}
@@ -889,7 +872,7 @@ func (s *SimContext) createAndRegisterReqGenerationTokensMetrics() error {
 		},
 		[]string{api.PromLabelModelName},
 	)
-	if err := s.metrics.registry.Register(s.metrics.requestGenerationTokens); err != nil {
+	if err := s.oldRegistry.Register(s.metrics.requestGenerationTokens); err != nil {
 		s.logger.Error(err, "prometheus request_generation_tokens histogram register failed")
 		return err
 	}
@@ -905,7 +888,7 @@ func (s *SimContext) createAndRegisterGenerationTokensTotalMetrics() error {
 		},
 		[]string{api.PromLabelModelName},
 	)
-	if err := s.metrics.registry.Register(s.metrics.generationTokensTotal); err != nil {
+	if err := s.oldRegistry.Register(s.metrics.generationTokensTotal); err != nil {
 		s.logger.Error(err, "prometheus generation_tokens_total counter register failed")
 		return err
 	}
@@ -921,7 +904,7 @@ func (s *SimContext) createAndRegisterE2EReqLatencyMetric() error {
 		},
 		[]string{api.PromLabelModelName},
 	)
-	if err := s.metrics.registry.Register(s.metrics.e2eReqLatency); err != nil {
+	if err := s.oldRegistry.Register(s.metrics.e2eReqLatency); err != nil {
 		s.logger.Error(err, "prometheus e2e request latency histogram register failed")
 		return err
 	}
@@ -937,7 +920,7 @@ func (s *SimContext) createAndRegisterReqQueueTimeMetric() error {
 		},
 		[]string{api.PromLabelModelName},
 	)
-	if err := s.metrics.registry.Register(s.metrics.reqQueueTime); err != nil {
+	if err := s.oldRegistry.Register(s.metrics.reqQueueTime); err != nil {
 		s.logger.Error(err, "prometheus request queue time histogram register failed")
 		return err
 	}
@@ -953,7 +936,7 @@ func (s *SimContext) createAndRegisterReqInferenceTimeMetric() error {
 		},
 		[]string{api.PromLabelModelName},
 	)
-	if err := s.metrics.registry.Register(s.metrics.reqInferenceTime); err != nil {
+	if err := s.oldRegistry.Register(s.metrics.reqInferenceTime); err != nil {
 		s.logger.Error(err, "prometheus request inference time histogram register failed")
 		return err
 	}
@@ -969,7 +952,7 @@ func (s *SimContext) createAndRegisterReqPrefillTimeMetric() error {
 		},
 		[]string{api.PromLabelModelName},
 	)
-	if err := s.metrics.registry.Register(s.metrics.reqPrefillTime); err != nil {
+	if err := s.oldRegistry.Register(s.metrics.reqPrefillTime); err != nil {
 		s.logger.Error(err, "prometheus request prefill time histogram register failed")
 		return err
 	}
@@ -985,7 +968,7 @@ func (s *SimContext) createAndRegisterReqDecodeTimeMetric() error {
 		},
 		[]string{api.PromLabelModelName},
 	)
-	if err := s.metrics.registry.Register(s.metrics.reqDecodeTime); err != nil {
+	if err := s.oldRegistry.Register(s.metrics.reqDecodeTime); err != nil {
 		s.logger.Error(err, "prometheus request decode time histogram register failed")
 		return err
 	}
@@ -1002,7 +985,7 @@ func (s *SimContext) createAndRegisterReqTpotMetric() error {
 		},
 		[]string{api.PromLabelModelName},
 	)
-	if err := s.metrics.registry.Register(s.metrics.reqTpot); err != nil {
+	if err := s.oldRegistry.Register(s.metrics.reqTpot); err != nil {
 		s.logger.Error(err, "prometheus time_per_output_token_seconds per request histogram register failed")
 		return err
 	}
@@ -1018,7 +1001,7 @@ func (s *SimContext) createAndRegisterReqParamsMaxTokensMetric() error {
 		},
 		[]string{api.PromLabelModelName},
 	)
-	if err := s.metrics.registry.Register(s.metrics.requestParamsMaxTokens); err != nil {
+	if err := s.oldRegistry.Register(s.metrics.requestParamsMaxTokens); err != nil {
 		s.logger.Error(err, "prometheus request_params_max_tokens histogram register failed")
 		return err
 	}
@@ -1034,7 +1017,7 @@ func (s *SimContext) createAndRegisterMaxNumGenerationTokensMetric() error {
 		},
 		[]string{api.PromLabelModelName},
 	)
-	if err := s.metrics.registry.Register(s.metrics.maxNumGenerationTokens); err != nil {
+	if err := s.oldRegistry.Register(s.metrics.maxNumGenerationTokens); err != nil {
 		s.logger.Error(err, "prometheus max_num_generation_tokens histogram register failed")
 		return err
 	}
@@ -1049,7 +1032,7 @@ func (s *SimContext) createAndRegisterLoraInfoMetric() error {
 		},
 		[]string{api.PromLabelMaxLora, api.PromLabelRunningLoraAdapters, api.PromLabelWaitingLoraAdapters},
 	)
-	if err := s.metrics.registry.Register(s.metrics.loraInfo); err != nil {
+	if err := s.oldRegistry.Register(s.metrics.loraInfo); err != nil {
 		s.logger.Error(err, "prometheus lora info gauge register failed")
 		return err
 	}
@@ -1064,7 +1047,7 @@ func (s *SimContext) createAndRegisterRequestSuccessTotalMetric() error {
 		},
 		[]string{api.PromLabelModelName, api.PromLabelFinishReason},
 	)
-	if err := s.metrics.registry.Register(s.metrics.requestSuccessTotal); err != nil {
+	if err := s.oldRegistry.Register(s.metrics.requestSuccessTotal); err != nil {
 		s.logger.Error(err, "prometheus request_success_total counter register failed")
 		return err
 	}
@@ -1079,7 +1062,7 @@ func (s *SimContext) createAndRegisterPrefixCacheHitsTotalMetric() error {
 		},
 		[]string{api.PromLabelModelName},
 	)
-	if err := s.metrics.registry.Register(s.metrics.prefixCacheHitsTotal); err != nil {
+	if err := s.oldRegistry.Register(s.metrics.prefixCacheHitsTotal); err != nil {
 		s.logger.Error(err, "prometheus prefix_cache_hits counter register failed")
 		return err
 	}
@@ -1094,7 +1077,7 @@ func (s *SimContext) createAndRegisterPrefixCacheQueriesTotalMetric() error {
 		},
 		[]string{api.PromLabelModelName},
 	)
-	if err := s.metrics.registry.Register(s.metrics.prefixCacheQueriesTotal); err != nil {
+	if err := s.oldRegistry.Register(s.metrics.prefixCacheQueriesTotal); err != nil {
 		s.logger.Error(err, "prometheus prefix_cache_queries counter register failed")
 		return err
 	}

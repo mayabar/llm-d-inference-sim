@@ -52,7 +52,8 @@ func newTestAdapter(t *testing.T) (*VLLMMetricsAdapter, context.CancelFunc) {
 		KVCacheSize:           1024,
 		FakeMetrics:           &common.FakeMetrics{},
 	}
-	m, err := NewVLLMMetricsAdapter(ctx, prometheus.NewRegistry(), logr.Discard(), cfg)
+	bus := &MetricsBus{registry: prometheus.NewRegistry(), logger: logr.Discard()}
+	m, err := NewVLLMMetricsAdapter(ctx, bus, logr.Discard(), cfg)
 	if err != nil {
 		cancel()
 		t.Fatalf("NewVLLMMetricsAdapter: %v", err)
@@ -197,7 +198,7 @@ func TestApplier_SetHistogram_AllKinds(t *testing.T) {
 		want := tc.wantCount
 		name := tc.metricName
 		waitFor(t, 2*time.Second, func() bool {
-			h := histogramFor(t, name, m.registry)
+			h := histogramFor(t, name, m.bus.registry)
 			return h != nil && h.GetSampleCount() == want
 		})
 	}
@@ -210,8 +211,8 @@ func TestApplier_SetCounter(t *testing.T) {
 	m.SetCounter(VLLMCounterPrefixCacheHits, 17)
 	labels := map[string]string{"model_name": testModel}
 	waitFor(t, time.Second, func() bool {
-		return counterValue(t, VLLMPrefixCacheQueriesTotalMetricName, m.registry, labels) == 42 &&
-			counterValue(t, VLLMPrefixCacheHitsTotalMetricName, m.registry, labels) == 17
+		return counterValue(t, VLLMPrefixCacheQueriesTotalMetricName, m.bus.registry, labels) == 42 &&
+			counterValue(t, VLLMPrefixCacheHitsTotalMetricName, m.bus.registry, labels) == 17
 	})
 }
 
@@ -222,8 +223,8 @@ func TestApplier_SetSuccessTotalByReason(t *testing.T) {
 	stopLabels := map[string]string{"model_name": testModel, "finish_reason": "stop"}
 	lengthLabels := map[string]string{"model_name": testModel, "finish_reason": "length"}
 	waitFor(t, time.Second, func() bool {
-		return counterValue(t, VLLMSuccessTotalMetricName, m.registry, stopLabels) == 5 &&
-			counterValue(t, VLLMSuccessTotalMetricName, m.registry, lengthLabels) == 2
+		return counterValue(t, VLLMSuccessTotalMetricName, m.bus.registry, stopLabels) == 5 &&
+			counterValue(t, VLLMSuccessTotalMetricName, m.bus.registry, lengthLabels) == 2
 	})
 }
 
@@ -237,9 +238,9 @@ func TestApplier_SetTokenMetric_HistogramOnly(t *testing.T) {
 	m.SetTokenMetric(VLLMTokenMetricPrompt, buckets, samples, nil)
 	labels := map[string]string{"model_name": testModel}
 	waitFor(t, time.Second, func() bool {
-		h := histogramFor(t, VLLMPromptTokensMetricName, m.registry)
+		h := histogramFor(t, VLLMPromptTokensMetricName, m.bus.registry)
 		return h != nil && h.GetSampleCount() == 3 &&
-			counterValue(t, VLLMPromptTokensTotalMetricName, m.registry, labels) == 210
+			counterValue(t, VLLMPromptTokensTotalMetricName, m.bus.registry, labels) == 210
 	})
 }
 
@@ -251,7 +252,7 @@ func TestApplier_SetTokenMetric_ExplicitTotalWins(t *testing.T) {
 	m.SetTokenMetric(VLLMTokenMetricGeneration, []float64{10, 100}, []int{1, 2}, &total)
 	labels := map[string]string{"model_name": testModel}
 	waitFor(t, time.Second, func() bool {
-		return counterValue(t, VLLMGenerationTokensTotalMetricName, m.registry, labels) == 9999
+		return counterValue(t, VLLMGenerationTokensTotalMetricName, m.bus.registry, labels) == 9999
 	})
 }
 
@@ -264,9 +265,9 @@ func TestApplier_SetTokenMetric_ExplicitTotalOnly(t *testing.T) {
 	m.SetTokenMetric(VLLMTokenMetricPrompt, nil, nil, &total)
 	labels := map[string]string{"model_name": testModel}
 	waitFor(t, time.Second, func() bool {
-		return counterValue(t, VLLMPromptTokensTotalMetricName, m.registry, labels) == 500
+		return counterValue(t, VLLMPromptTokensTotalMetricName, m.bus.registry, labels) == 500
 	})
-	if h := histogramFor(t, VLLMPromptTokensMetricName, m.registry); h != nil && h.GetSampleCount() != 0 {
+	if h := histogramFor(t, VLLMPromptTokensMetricName, m.bus.registry); h != nil && h.GetSampleCount() != 0 {
 		t.Errorf("histogram should be untouched, got sample count %d", h.GetSampleCount())
 	}
 }
@@ -280,7 +281,7 @@ func TestApplier_SetLoRAs_Entries(t *testing.T) {
 	}
 	m.SetLoRAs(4, entries)
 	waitFor(t, time.Second, func() bool {
-		mfs, err := m.registry.Gather()
+		mfs, err := m.bus.registry.Gather()
 		if err != nil {
 			return false
 		}
@@ -300,7 +301,7 @@ func TestApplier_SetLoRAs_Empty(t *testing.T) {
 	defer cancel()
 	m.SetLoRAs(2, nil)
 	waitFor(t, time.Second, func() bool {
-		mfs, err := m.registry.Gather()
+		mfs, err := m.bus.registry.Gather()
 		if err != nil {
 			return false
 		}

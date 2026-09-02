@@ -118,7 +118,7 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 
 	if update.TTFTBucketValues != nil {
 		if old != nil && old.TTFTBucketValues != nil {
-			s.metrics.registry.Unregister(s.metrics.ttft)
+			s.oldRegistry.Unregister(s.metrics.ttft)
 			if err := s.createAndRegisterTTFTMetric(); err != nil {
 				return err
 			}
@@ -128,8 +128,8 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 
 	if update.TPOTBucketValues != nil {
 		if old != nil && old.TPOTBucketValues != nil {
-			s.metrics.registry.Unregister(s.metrics.tpot)
-			s.metrics.registry.Unregister(s.metrics.interTokenLatency)
+			s.oldRegistry.Unregister(s.metrics.tpot)
+			s.oldRegistry.Unregister(s.metrics.interTokenLatency)
 			if err := s.createAndRegisterTPOTAndInterTokenMetrics(); err != nil {
 				return err
 			}
@@ -140,7 +140,7 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 
 	if update.E2ERequestLatencyBucketValues != nil {
 		if old != nil && old.E2ERequestLatencyBucketValues != nil {
-			s.metrics.registry.Unregister(s.metrics.e2eReqLatency)
+			s.oldRegistry.Unregister(s.metrics.e2eReqLatency)
 			if err := s.createAndRegisterE2EReqLatencyMetric(); err != nil {
 				return err
 			}
@@ -150,7 +150,7 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 
 	if update.ReqQueueTimeBucketValues != nil {
 		if old != nil && old.ReqQueueTimeBucketValues != nil {
-			s.metrics.registry.Unregister(s.metrics.reqQueueTime)
+			s.oldRegistry.Unregister(s.metrics.reqQueueTime)
 			if err := s.createAndRegisterReqQueueTimeMetric(); err != nil {
 				return err
 			}
@@ -160,7 +160,7 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 
 	if update.ReqInfTimeBucketValues != nil {
 		if old != nil && old.ReqInfTimeBucketValues != nil {
-			s.metrics.registry.Unregister(s.metrics.reqInferenceTime)
+			s.oldRegistry.Unregister(s.metrics.reqInferenceTime)
 			if err := s.createAndRegisterReqInferenceTimeMetric(); err != nil {
 				return err
 			}
@@ -170,7 +170,7 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 
 	if update.ReqPrefillTimeBucketValues != nil {
 		if old != nil && old.ReqPrefillTimeBucketValues != nil {
-			s.metrics.registry.Unregister(s.metrics.reqPrefillTime)
+			s.oldRegistry.Unregister(s.metrics.reqPrefillTime)
 			if err := s.createAndRegisterReqPrefillTimeMetric(); err != nil {
 				return err
 			}
@@ -180,7 +180,7 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 
 	if update.ReqDecodeTimeBucketValues != nil {
 		if old != nil && old.ReqDecodeTimeBucketValues != nil {
-			s.metrics.registry.Unregister(s.metrics.reqDecodeTime)
+			s.oldRegistry.Unregister(s.metrics.reqDecodeTime)
 			if err := s.createAndRegisterReqDecodeTimeMetric(); err != nil {
 				return err
 			}
@@ -190,7 +190,7 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 
 	if update.ReqTPOTBucketValues != nil {
 		if old != nil && old.ReqTPOTBucketValues != nil {
-			s.metrics.registry.Unregister(s.metrics.reqTpot)
+			s.oldRegistry.Unregister(s.metrics.reqTpot)
 			if err := s.createAndRegisterReqTpotMetric(); err != nil {
 				return err
 			}
@@ -202,7 +202,7 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 
 	if update.RequestParamsMaxTokens != nil {
 		if old != nil && old.RequestParamsMaxTokens != nil {
-			s.metrics.registry.Unregister(s.metrics.requestParamsMaxTokens)
+			s.oldRegistry.Unregister(s.metrics.requestParamsMaxTokens)
 			if err := s.createAndRegisterReqParamsMaxTokensMetric(); err != nil {
 				return err
 			}
@@ -212,7 +212,7 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 
 	if update.RequestMaxGenerationTokens != nil {
 		if old != nil && old.RequestMaxGenerationTokens != nil {
-			s.metrics.registry.Unregister(s.metrics.maxNumGenerationTokens)
+			s.oldRegistry.Unregister(s.metrics.maxNumGenerationTokens)
 			if err := s.createAndRegisterMaxNumGenerationTokensMetric(); err != nil {
 				return err
 			}
@@ -256,7 +256,7 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 
 	if update.PrefixCacheQueries != nil {
 		if oldPrefixCacheQueries != nil {
-			s.metrics.registry.Unregister(s.metrics.prefixCacheQueriesTotal)
+			s.oldRegistry.Unregister(s.metrics.prefixCacheQueriesTotal)
 			if err := s.createAndRegisterPrefixCacheQueriesTotalMetric(); err != nil {
 				return err
 			}
@@ -266,7 +266,7 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 
 	if update.PrefixCacheHits != nil {
 		if oldPrefixCacheHits != nil {
-			s.metrics.registry.Unregister(s.metrics.prefixCacheHitsTotal)
+			s.oldRegistry.Unregister(s.metrics.prefixCacheHitsTotal)
 			if err := s.createAndRegisterPrefixCacheHitsTotalMetric(); err != nil {
 				return err
 			}
@@ -276,7 +276,7 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 
 	if update.RequestSuccessTotal != nil {
 		if oldRequestSuccessTotal != nil {
-			s.metrics.registry.Unregister(s.metrics.requestSuccessTotal)
+			s.oldRegistry.Unregister(s.metrics.requestSuccessTotal)
 			if err := s.createAndRegisterRequestSuccessTotalMetric(); err != nil {
 				return err
 			}
@@ -287,7 +287,7 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 	}
 
 	if update.LoraMetrics != nil {
-		s.metrics.registry.Unregister(s.metrics.loraInfo)
+		s.oldRegistry.Unregister(s.metrics.loraInfo)
 		if err := s.createAndRegisterLoraInfoMetric(); err != nil {
 			return err
 		}
@@ -340,7 +340,7 @@ func (s *SimContext) updateTokenMetrics(
 	var histTotal *int64
 	if newHasHist {
 		if oldHistValues != nil {
-			s.metrics.registry.Unregister(*hist)
+			s.oldRegistry.Unregister(*hist)
 			if err := recreateHist(); err != nil {
 				return err
 			}
@@ -356,7 +356,7 @@ func (s *SimContext) updateTokenMetrics(
 
 	// Reset (unregister + re-register) if the counter already had a value.
 	if oldExplicitTotal != nil || oldHistValues != nil {
-		s.metrics.registry.Unregister(*counter)
+		s.oldRegistry.Unregister(*counter)
 		if err := recreateCounter(); err != nil {
 			return err
 		}

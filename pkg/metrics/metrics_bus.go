@@ -32,11 +32,8 @@ import (
 // registry exposed on /metrics; adapters that do not publish Prometheus
 // return nil.
 type EngineMetricsAdapter interface {
-	Start(ctx context.Context, bus *MetricsBus) error
+	Start(ctx context.Context) error
 	Close() error
-	// Registry returns the Prometheus registry the adapter publishes into,
-	// or nil for adapters that do not publish Prometheus.
-	Registry() *prometheus.Registry
 
 	OnRequestReceived(ev RequestReceived)
 	OnRequestQueued(ev RequestQueued)
@@ -58,8 +55,9 @@ type EngineMetricsAdapter interface {
 // metrics adapter. Producers push via common.WriteToChannel; the adapter
 // runs one drainer goroutine per channel.
 type MetricsBus struct {
-	adapter EngineMetricsAdapter
-	logger  logr.Logger
+	adapter  EngineMetricsAdapter
+	logger   logr.Logger
+	registry *prometheus.Registry
 
 	RequestQueued    common.Channel[RequestQueued]
 	RequestDequeued  common.Channel[RequestDequeued]
@@ -75,17 +73,8 @@ type MetricsBus struct {
 	PrefixCacheQuery common.Channel[PrefixCacheQueried]
 }
 
-func (b *MetricsBus) GetAdapter() EngineMetricsAdapter {
-	return b.adapter
-}
-
-// Registry returns the Prometheus registry the wired adapter publishes
-// into. Callers serve it on a dedicated HTTP endpoint (e.g. /metrics_new).
-func (b *MetricsBus) Registry() *prometheus.Registry {
-	if b == nil || b.adapter == nil {
-		return nil
-	}
-	return b.adapter.Registry()
+func (b *MetricsBus) Start(ctx context.Context) error {
+	return b.adapter.Start(ctx)
 }
 
 // EmitKVCacheUsage implements kvcache.MetricsEmitter: forwards a KV-cache
@@ -251,79 +240,85 @@ type loraUsage struct {
 
 // --------------------------------
 func NewMetricsBus(ctx context.Context, config common.Configuration, registry *prometheus.Registry, logger logr.Logger) (*MetricsBus, error) {
+	mBus := &MetricsBus{
+		registry: registry,
+		logger:   logger,
+	}
+
 	// TODO create metrics adapter based on config.EngineType (vllm, sglang, etc.)
-	adapter, err := NewVLLMMetricsAdapter(ctx, registry, logger, config)
+	adapter, err := NewVLLMMetricsAdapter(ctx, mBus, logger, config)
 	if err != nil {
 		return nil, err
 	}
+
+	mBus.adapter = adapter
+
+	// create channels with capacity based on config
 	done := ctx.Done()
 
 	maxNumberOfRunningRequests := config.MaxNumSeqs * 2
 	maxNumberOfWaitingRequests := config.MaxWaitingQueueLength * 2
 	maxNumberOfTokens := maxNumberOfRunningRequests * config.MaxModelLen
 
-	return &MetricsBus{
-		adapter: adapter,
-		logger:  logger,
-		RequestQueued: common.Channel[RequestQueued]{
-			Channel: make(chan RequestQueued, maxNumberOfWaitingRequests),
-			Name:    "bus.RequestQueued",
-			Done:    done,
-		},
-		RequestDequeued: common.Channel[RequestDequeued]{
-			Channel: make(chan RequestDequeued, maxNumberOfWaitingRequests),
-			Name:    "bus.RequestDequeued",
-			Done:    done,
-		},
-		RequestRunning: common.Channel[RequestRunning]{
-			Channel: make(chan RequestRunning, maxNumberOfRunningRequests),
-			Name:    "bus.RequestRunning",
-			Done:    done,
-		},
-		PrefillStarted: common.Channel[PrefillStarted]{
-			Channel: make(chan PrefillStarted, maxNumberOfRunningRequests),
-			Name:    "bus.PrefillStarted",
-			Done:    done,
-		},
-		PrefillEnded: common.Channel[PrefillEnded]{
-			Channel: make(chan PrefillEnded, maxNumberOfRunningRequests),
-			Name:    "bus.PrefillEnded",
-			Done:    done,
-		},
-		DecodeStarted: common.Channel[DecodeStarted]{
-			Channel: make(chan DecodeStarted, maxNumberOfRunningRequests),
-			Name:    "bus.DecodeStarted",
-			Done:    done,
-		},
-		TokenGenerated: common.Channel[TokenGenerated]{
-			Channel: make(chan TokenGenerated, maxNumberOfTokens),
-			Name:    "bus.TokenGenerated",
-			Done:    done,
-		},
-		DecodeEnded: common.Channel[DecodeEnded]{
-			Channel: make(chan DecodeEnded, maxNumberOfRunningRequests),
-			Name:    "bus.DecodeEnded",
-			Done:    done,
-		},
-		RequestSucceeded: common.Channel[RequestSucceeded]{
-			Channel: make(chan RequestSucceeded, maxNumberOfRunningRequests),
-			Name:    "bus.RequestSucceeded",
-			Done:    done,
-		},
-		RequestFailed: common.Channel[RequestFailed]{
-			Channel: make(chan RequestFailed, maxNumberOfRunningRequests),
-			Name:    "bus.RequestFailed",
-			Done:    done,
-		},
-		KVCacheUsage: common.Channel[KVCacheUsageChanged]{
-			Channel: make(chan KVCacheUsageChanged, maxNumberOfRunningRequests),
-			Name:    "bus.KVCacheUsage",
-			Done:    done,
-		},
-		PrefixCacheQuery: common.Channel[PrefixCacheQueried]{
-			Channel: make(chan PrefixCacheQueried, maxNumberOfRunningRequests),
-			Name:    "bus.PrefixCacheQuery",
-			Done:    done,
-		},
-	}, nil
+	mBus.RequestQueued = common.Channel[RequestQueued]{
+		Channel: make(chan RequestQueued, maxNumberOfWaitingRequests),
+		Name:    "bus.RequestQueued",
+		Done:    done,
+	}
+	mBus.RequestDequeued = common.Channel[RequestDequeued]{
+		Channel: make(chan RequestDequeued, maxNumberOfWaitingRequests),
+		Name:    "bus.RequestDequeued",
+		Done:    done,
+	}
+	mBus.RequestRunning = common.Channel[RequestRunning]{
+		Channel: make(chan RequestRunning, maxNumberOfRunningRequests),
+		Name:    "bus.RequestRunning",
+		Done:    done,
+	}
+	mBus.PrefillStarted = common.Channel[PrefillStarted]{
+		Channel: make(chan PrefillStarted, maxNumberOfRunningRequests),
+		Name:    "bus.PrefillStarted",
+		Done:    done,
+	}
+	mBus.PrefillEnded = common.Channel[PrefillEnded]{
+		Channel: make(chan PrefillEnded, maxNumberOfRunningRequests),
+		Name:    "bus.PrefillEnded",
+		Done:    done,
+	}
+	mBus.DecodeStarted = common.Channel[DecodeStarted]{
+		Channel: make(chan DecodeStarted, maxNumberOfRunningRequests),
+		Name:    "bus.DecodeStarted",
+		Done:    done,
+	}
+	mBus.TokenGenerated = common.Channel[TokenGenerated]{
+		Channel: make(chan TokenGenerated, maxNumberOfTokens),
+		Name:    "bus.TokenGenerated",
+		Done:    done,
+	}
+	mBus.DecodeEnded = common.Channel[DecodeEnded]{
+		Channel: make(chan DecodeEnded, maxNumberOfRunningRequests),
+		Name:    "bus.DecodeEnded",
+		Done:    done,
+	}
+	mBus.RequestSucceeded = common.Channel[RequestSucceeded]{
+		Channel: make(chan RequestSucceeded, maxNumberOfRunningRequests),
+		Name:    "bus.RequestSucceeded",
+		Done:    done,
+	}
+	mBus.RequestFailed = common.Channel[RequestFailed]{
+		Channel: make(chan RequestFailed, maxNumberOfRunningRequests),
+		Name:    "bus.RequestFailed",
+		Done:    done,
+	}
+	mBus.KVCacheUsage = common.Channel[KVCacheUsageChanged]{
+		Channel: make(chan KVCacheUsageChanged, maxNumberOfRunningRequests),
+		Name:    "bus.KVCacheUsage",
+		Done:    done,
+	}
+	mBus.PrefixCacheQuery = common.Channel[PrefixCacheQueried]{
+		Channel: make(chan PrefixCacheQueried, maxNumberOfRunningRequests),
+		Name:    "bus.PrefixCacheQuery",
+		Done:    done,
+	}
+	return mBus, nil
 }
