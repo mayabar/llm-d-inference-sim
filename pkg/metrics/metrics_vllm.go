@@ -21,7 +21,6 @@ package metrics
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -286,9 +285,7 @@ func NewVLLMMetricsAdapter(ctx context.Context, bus *MetricsBus, logger logr.Log
 	if err := m.buildMetrics(); err != nil {
 		return nil, err
 	}
-	if err := m.createAndStartPrometheusChannels(ctx); err != nil {
-		return nil, err
-	}
+	m.createAndStartPrometheusChannels(ctx)
 	m.setInitialValues()
 
 	return m, nil
@@ -341,7 +338,7 @@ func (m *VLLMMetricsAdapter) Start(ctx context.Context) error {
 	return nil
 }
 
-func (m *VLLMMetricsAdapter) createAndStartPrometheusChannels(ctx context.Context) error {
+func (m *VLLMMetricsAdapter) createAndStartPrometheusChannels(ctx context.Context) {
 	maxNumberOfRequests := (m.config.MaxNumSeqs + m.config.MaxWaitingQueueLength) * 2
 	maxNumberOfRunningRequests := m.config.MaxNumSeqs * 2
 	maxNumberOfWaitingRequests := m.config.MaxWaitingQueueLength * 2
@@ -450,8 +447,6 @@ func (m *VLLMMetricsAdapter) createAndStartPrometheusChannels(ctx context.Contex
 		Done:    ctx.Done(),
 	}
 	go m.lorasUpdater(ctx)
-
-	return nil
 }
 
 // observation wraps a single Observe value for a histogram-family channel.
@@ -1522,7 +1517,7 @@ func (m *VLLMMetricsAdapter) createAndRegisterPrefixCacheQueriesTotalCounter() e
 // request runs. In fake mode the controller's SetInitial (invoked from
 // Start) overwrites everything it manages, so the baseline stamped here is
 // harmless.
-func (m *VLLMMetricsAdapter) setInitialValues() error {
+func (m *VLLMMetricsAdapter) setInitialValues() {
 	m.runningRequests.WithLabelValues(m.config.DisplayModelName).Set(0)
 	m.waitingRequests.WithLabelValues(m.config.DisplayModelName).Set(0)
 	m.kvCacheUsagePercentage.WithLabelValues(m.config.DisplayModelName).Set(0)
@@ -1535,8 +1530,6 @@ func (m *VLLMMetricsAdapter) setInitialValues() error {
 		"",
 		"",
 	).Set(float64(time.Now().Unix()))
-
-	return nil
 }
 
 // -------- Fake Metrics ------
@@ -1566,7 +1559,6 @@ func (m *VLLMMetricsAdapter) ApplyUpdate(update *common.FakeMetrics) error {
 	generatorsWereEmpty := len(m.generators) == 0
 
 	if update.RunningRequests != nil {
-		fmt.Printf(">> Update running requests\n")
 		m.updateScalarLocked(genKeyRunning, update.RunningRequests, m.writeToRunReq, true)
 	}
 	if update.WaitingRequests != nil {
