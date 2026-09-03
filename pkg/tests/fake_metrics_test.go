@@ -80,9 +80,9 @@ var _ = Describe("Fake metrics", Ordered, func() {
 
 			metricsData := fetchMetrics(client)
 
-			Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.GenKeyRunning, 10)))
-			Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.GenKeyWaiting, 30)))
-			Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.GenKeyKVCache, 0.4)))
+			Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMReqRunningMetricName, 10)))
+			Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMReqWaitingMetricName, 30)))
+			Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMKVCacheUsageMetricName, 0.4)))
 			Expect(metricsData).To(ContainSubstring("vllm:lora_requests_info{max_lora=\"1\",running_lora_adapters=\"lora4,lora2\",waiting_lora_adapters=\"lora3\"} 1.257894567e+09"))
 			Expect(metricsData).To(ContainSubstring("vllm:lora_requests_info{max_lora=\"1\",running_lora_adapters=\"lora4,lora3\",waiting_lora_adapters=\"\"} 1.257894569e+09"))
 
