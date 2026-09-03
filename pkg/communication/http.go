@@ -80,7 +80,6 @@ func (c *Communication) startHTTPServer(ctx context.Context, listener net.Listen
 	r.POST("/v1/load_lora_adapter", c.HandleLoadLora)
 	r.POST("/v1/unload_lora_adapter", c.HandleUnloadLora)
 	// supports /metrics prometheus API
-	r.GET("/metrics_old", fasthttpadaptor.NewFastHTTPHandler(promhttp.HandlerFor(c.simulator.Context.OldMetricsRegistry(), promhttp.HandlerOpts{})))
 	if promRegistry := c.simulator.Context.MetricsRegistry(); promRegistry != nil {
 		r.GET("/metrics", fasthttpadaptor.NewFastHTTPHandler(promhttp.HandlerFor(promRegistry, promhttp.HandlerOpts{})))
 	}

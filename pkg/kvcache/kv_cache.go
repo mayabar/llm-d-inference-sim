@@ -31,17 +31,16 @@ import (
 )
 
 type KVCacheHelper struct {
-	tokenizer            tokenizer.Tokenizer
-	tokensProcessor      kvblock.TokenProcessor // turns tokens to kv block keys
-	logger               logr.Logger
-	blockCache           *blockCache
-	blockSize            int
-	prefixCacheStatsChan common.Channel[metrics.PrefixCacheQueried]
-	metrics              *metrics.MetricsBus
+	tokenizer       tokenizer.Tokenizer
+	tokensProcessor kvblock.TokenProcessor // turns tokens to kv block keys
+	logger          logr.Logger
+	blockCache      *blockCache
+	blockSize       int
+	metrics         *metrics.MetricsBus
 }
 
-func NewKVCacheHelper(ctx context.Context, config *common.Configuration, logger logr.Logger, usageChan common.Channel[common.MetricInfo],
-	prefixCacheStatsChan common.Channel[metrics.PrefixCacheQueried], tokenizer tokenizer.Tokenizer, metrics *metrics.MetricsBus) (*KVCacheHelper, error) {
+func NewKVCacheHelper(ctx context.Context, config *common.Configuration, logger logr.Logger,
+	tokenizer tokenizer.Tokenizer, metrics *metrics.MetricsBus) (*KVCacheHelper, error) {
 	if config.IP == "" {
 		return nil, errors.New("IP should be defined in the environment (POD_IP) for KV cache to work")
 	}
@@ -56,19 +55,18 @@ func NewKVCacheHelper(ctx context.Context, config *common.Configuration, logger 
 		return nil, fmt.Errorf("failed to create tokens processor: %w", err)
 	}
 
-	blockCache, err := newBlockCache(ctx, config, logger, &usageChan, metrics)
+	blockCache, err := newBlockCache(ctx, config, logger, metrics)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create block cache: %w", err)
 	}
 
 	return &KVCacheHelper{
-		tokenizer:            tokenizer,
-		tokensProcessor:      tokensProcessor,
-		blockCache:           blockCache,
-		logger:               logger,
-		blockSize:            config.TokenBlockSize,
-		prefixCacheStatsChan: prefixCacheStatsChan,
-		metrics:              metrics,
+		tokenizer:       tokenizer,
+		tokensProcessor: tokensProcessor,
+		blockCache:      blockCache,
+		logger:          logger,
+		blockSize:       config.TokenBlockSize,
+		metrics:         metrics,
 	}, nil
 }
 
@@ -137,9 +135,8 @@ func (h *KVCacheHelper) OnRequestStart(req api.Request) (metrics.PrefixCacheQuer
 		QueriedTokens:      len(tokens),
 		CachedPromptTokens: cachedTokens,
 	}
-	common.WriteToChannel(h.prefixCacheStatsChan, stats, h.logger)
 	if h.metrics != nil {
-		h.metrics.EmitPrefixCacheQueried(stats.QueriedTokens, stats.CachedPromptTokens)
+		common.WriteToChannel(h.metrics.PrefixCacheQuery, stats, h.logger)
 	}
 
 	return stats, nil

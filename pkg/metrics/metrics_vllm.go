@@ -63,9 +63,9 @@ const (
 // Internal keys for the active-generator map. Kept private so the applier
 // interface has no scalar-gauge enum.
 const (
-	genKeyRunning = "running"
-	genKeyWaiting = "waiting"
-	genKeyKVCache = "kvcache"
+	GenKeyRunning = "running"
+	GenKeyWaiting = "waiting"
+	GenKeyKVCache = "kvcache"
 )
 
 // VLLMTokenMetricKind identifies one leg of the histogram+total counter
@@ -1559,13 +1559,13 @@ func (m *VLLMMetricsAdapter) ApplyUpdate(update *common.FakeMetrics) error {
 	generatorsWereEmpty := len(m.generators) == 0
 
 	if update.RunningRequests != nil {
-		m.updateScalarLocked(genKeyRunning, update.RunningRequests, m.writeToRunReq, true)
+		m.updateScalarLocked(GenKeyRunning, update.RunningRequests, m.writeToRunReq, true)
 	}
 	if update.WaitingRequests != nil {
-		m.updateScalarLocked(genKeyWaiting, update.WaitingRequests, m.writeToWaitingReq, true)
+		m.updateScalarLocked(GenKeyWaiting, update.WaitingRequests, m.writeToWaitingReq, true)
 	}
 	if update.KVCacheUsagePercentage != nil {
-		m.updateScalarLocked(genKeyKVCache, update.KVCacheUsagePercentage, m.writeToKVCacheUsage, false)
+		m.updateScalarLocked(GenKeyKVCache, update.KVCacheUsagePercentage, m.writeToKVCacheUsage, false)
 	}
 
 	if update.TTFTBucketValues != nil {

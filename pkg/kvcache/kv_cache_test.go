@@ -268,7 +268,7 @@ var _ = Describe("KV cache", Ordered, func() {
 		wg := sync.WaitGroup{}
 		wg.Add(1)
 
-		blockCache, err := newBlockCache(ctx, config, GinkgoLogr, nil, nil)
+		blockCache, err := newBlockCache(ctx, config, GinkgoLogr, nil)
 		Expect(err).NotTo(HaveOccurred())
 
 		go func() {
@@ -373,7 +373,7 @@ var _ = Describe("KV cache", Ordered, func() {
 			wg := sync.WaitGroup{}
 			wg.Add(1)
 
-			blockCache, err := newBlockCache(ctx, config, GinkgoLogr, nil, nil)
+			blockCache, err := newBlockCache(ctx, config, GinkgoLogr, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			go func() {
@@ -473,7 +473,7 @@ var _ = Describe("KV cache", Ordered, func() {
 			wg := sync.WaitGroup{}
 			wg.Add(1)
 
-			blockCache, err := newBlockCache(ctx, config, GinkgoLogr, nil, nil)
+			blockCache, err := newBlockCache(ctx, config, GinkgoLogr, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			go func() {
@@ -534,7 +534,7 @@ var _ = Describe("KV cache", Ordered, func() {
 				Model:       "model",
 				KVCacheSize: testCase.cacheSize,
 			}
-			blockCache, err := newBlockCache(ctx, &config, GinkgoLogr, nil, nil)
+			blockCache, err := newBlockCache(ctx, &config, GinkgoLogr, nil)
 			Expect(err).NotTo(HaveOccurred())
 			var wg sync.WaitGroup
 
@@ -615,7 +615,7 @@ var _ = Describe("KV cache", Ordered, func() {
 				KVCacheSize: 10,
 			}
 
-			blockCache, err := newBlockCache(ctx, config, GinkgoLogr, nil, nil)
+			blockCache, err := newBlockCache(ctx, config, GinkgoLogr, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			reqA := testRequest{id: "reqA", model: common.TestModelName, blockHashes: []uint64{1, 2}, tokens: [][]uint32{{1}, {2}}}
@@ -665,7 +665,7 @@ var _ = Describe("KV cache", Ordered, func() {
 				KVCacheSize: 10,
 			}
 
-			blockCache, err := newBlockCache(ctx, config, GinkgoLogr, nil, nil)
+			blockCache, err := newBlockCache(ctx, config, GinkgoLogr, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			reqA := testRequest{id: "reqA", model: common.TestModelName, blockHashes: []uint64{1, 2}, tokens: [][]uint32{{1}, {2}}}
@@ -695,7 +695,7 @@ var _ = Describe("KV cache", Ordered, func() {
 				KVCacheSize: 10,
 			}
 
-			blockCache, err := newBlockCache(ctx, config, GinkgoLogr, nil, nil)
+			blockCache, err := newBlockCache(ctx, config, GinkgoLogr, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			req := testRequest{id: "req1", model: common.TestModelName, blockHashes: []uint64{1, 2, 3}, tokens: [][]uint32{{1}, {2}, {3}}}
@@ -722,7 +722,7 @@ var _ = Describe("KV cache", Ordered, func() {
 				KVCacheSize: 4,
 			}
 
-			bCache, err := newBlockCache(ctx, config, GinkgoLogr, nil, nil)
+			bCache, err := newBlockCache(ctx, config, GinkgoLogr, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			// lora1 is loaded, lora2 is not
@@ -765,7 +765,7 @@ var _ = Describe("KV cache", Ordered, func() {
 				KVCacheSize: 3,
 			}
 
-			blockCache, err := newBlockCache(ctx, config, GinkgoLogr, nil, nil)
+			blockCache, err := newBlockCache(ctx, config, GinkgoLogr, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			blockCache.setModelLoaded(lora1)
@@ -804,7 +804,7 @@ var _ = Describe("KV cache", Ordered, func() {
 				KVCacheSize: 4,
 			}
 
-			blockCache, err := newBlockCache(ctx, config, GinkgoLogr, nil, nil)
+			blockCache, err := newBlockCache(ctx, config, GinkgoLogr, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			// both loras loaded
@@ -862,7 +862,7 @@ var _ = Describe("KV cache", Ordered, func() {
 			wg := sync.WaitGroup{}
 			wg.Add(1)
 
-			blockCache, err := newBlockCache(ctx, config, GinkgoLogr, nil, nil)
+			blockCache, err := newBlockCache(ctx, config, GinkgoLogr, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			go func() {
@@ -953,7 +953,7 @@ var _ = Describe("KV cache", Ordered, func() {
 			wg := sync.WaitGroup{}
 			wg.Add(1)
 
-			blockCache, err := newBlockCache(ctx, config, GinkgoLogr, nil, nil)
+			blockCache, err := newBlockCache(ctx, config, GinkgoLogr, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			go func() {

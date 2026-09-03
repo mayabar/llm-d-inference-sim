@@ -27,7 +27,6 @@ import (
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
-	"github.com/llm-d/llm-d-inference-sim/pkg/simulator"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openai/openai-go/v3"
@@ -99,10 +98,10 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 			}()
 		}
 
-		metrics := fetchMetrics(client)
+		metricsData := fetchMetrics(client)
 
-		Expect(metrics).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.ReqRunningMetricName, 2)))
-		Expect(metrics).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.ReqWaitingMetricName, 1)))
+		Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMReqRunningMetricName, 2)))
+		Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMReqWaitingMetricName, 1)))
 	})
 
 	DescribeTable("should send correct running and waiting requests metrics with failures",
@@ -120,16 +119,16 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 			_, err = openaiclient.Chat.Completions.New(ctx, params)
 			Expect(err).To(HaveOccurred())
 
-			metrics := fetchMetrics(client)
+			metricsData := fetchMetrics(client)
 
 			// There should be no running or waiting requests
-			Expect(metrics).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.ReqRunningMetricName, 0)))
-			Expect(metrics).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.ReqWaitingMetricName, 0)))
+			Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMReqRunningMetricName, 0)))
+			Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMReqWaitingMetricName, 0)))
 
 			// We sent one request (that failed), we expect to see (in this order)
 			// 1. running: lora1, waiting: empty
 			// 2. running: empty, waiting: empty
-			metricsLines := strings.Split(metrics, "\n")
+			metricsLines := strings.Split(metricsData, "\n")
 			Expect(isLoraMetricPresent(metricsLines, lora1Arr, emptyArray)).To(BeTrue())
 			Expect(isLoraMetricPresent(metricsLines, emptyArray, emptyArray)).To(BeTrue())
 
@@ -179,15 +178,15 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 
 		for _, boundary := range buckets {
 			if boundary <= 20 {
-				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(model, simulator.PromptTokensMetricName, boundary, 0)))
-				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(model, simulator.ParamMaxTokensMetricName, boundary, 0)))
+				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(model, metrics.VLLMPromptTokensMetricName, boundary, 0)))
+				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(model, metrics.VLLMParamMaxTokensMetricName, boundary, 0)))
 			} else {
-				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(model, simulator.PromptTokensMetricName, boundary, 1)))
-				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(model, simulator.ParamMaxTokensMetricName, boundary, 1)))
+				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(model, metrics.VLLMPromptTokensMetricName, boundary, 1)))
+				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(model, metrics.VLLMParamMaxTokensMetricName, boundary, 1)))
 			}
 		}
-		Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(model, simulator.PromptTokensMetricName, math.Inf(1), 1)))
-		Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(model, simulator.ParamMaxTokensMetricName, math.Inf(1), 1)))
+		Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(model, metrics.VLLMPromptTokensMetricName, math.Inf(1), 1)))
+		Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(model, metrics.VLLMParamMaxTokensMetricName, math.Inf(1), 1)))
 
 		Expect(metricsData).To(MatchRegexp(fmt.Sprintf(`vllm:prompt_tokens_total{model_name="%s"} %d`, model, expectedPromptTokensCnt)))
 
@@ -196,7 +195,7 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 		// as the number of generated tokens is unpredictable in this test.
 		// Therefore, we only verify the number of requests and the total number of generated tokens,
 		// and skip the bucket distribution.
-		Expect(metricsData).To(ContainSubstring(getCountMetricLine(model, simulator.GenerationTokensMetricName+"_count", 1)))
+		Expect(metricsData).To(ContainSubstring(getCountMetricLine(model, metrics.VLLMGenerationTokensMetricName+"_count", 1)))
 		// request_success_total
 		Expect(metricsData).To(MatchRegexp(fmt.Sprintf(`vllm:request_success_total{finish_reason="(stop|length)",model_name="%s"} 1`, common.TestModelName)))
 	})
@@ -246,37 +245,37 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 
 		// While the sub-requests are running (TTFT hasn't fired), maxNumSeqs should be in
 		// "running" and the rest in "waiting".
-		metrics := fetchMetrics(client)
+		metricsData := fetchMetrics(client)
 
-		Expect(metrics).To(ContainSubstring(
-			getCountMetricLine(common.TestModelName, simulator.ReqRunningMetricName, maxNumSeqs)))
-		Expect(metrics).To(ContainSubstring(
-			getCountMetricLine(common.TestModelName, simulator.ReqWaitingMetricName, numPrompts-maxNumSeqs)))
+		Expect(metricsData).To(ContainSubstring(
+			getCountMetricLine(common.TestModelName, metrics.VLLMReqRunningMetricName, maxNumSeqs)))
+		Expect(metricsData).To(ContainSubstring(
+			getCountMetricLine(common.TestModelName, metrics.VLLMReqWaitingMetricName, numPrompts-maxNumSeqs)))
 
 		<-done
 
-		metrics = fetchMetricsWithDelay(client, 500*time.Millisecond)
+		metricsData = fetchMetricsWithDelay(client, 500*time.Millisecond)
 
 		// No running/waiting after all sub-requests complete.
-		Expect(metrics).To(ContainSubstring(
-			getCountMetricLine(common.TestModelName, simulator.ReqRunningMetricName, 0)))
-		Expect(metrics).To(ContainSubstring(
-			getCountMetricLine(common.TestModelName, simulator.ReqWaitingMetricName, 0)))
+		Expect(metricsData).To(ContainSubstring(
+			getCountMetricLine(common.TestModelName, metrics.VLLMReqRunningMetricName, 0)))
+		Expect(metricsData).To(ContainSubstring(
+			getCountMetricLine(common.TestModelName, metrics.VLLMReqWaitingMetricName, 0)))
 
 		// Each prompt in the array produces its own sub-request, so histograms/counters
 		// should observe numPrompts samples.
-		Expect(metrics).To(ContainSubstring(
-			getCountMetricLine(common.TestModelName, simulator.E2EReqLatencyMetricName+"_count", numPrompts)))
-		Expect(metrics).To(ContainSubstring(
-			getCountMetricLine(common.TestModelName, simulator.MaxNumGenerationTokensMetricName+"_count", numPrompts)))
-		Expect(metrics).To(ContainSubstring(
-			getCountMetricLine(common.TestModelName, simulator.PromptTokensMetricName+"_count", numPrompts)))
-		Expect(metrics).To(ContainSubstring(
-			getCountMetricLine(common.TestModelName, simulator.GenerationTokensMetricName+"_count", numPrompts)))
-		Expect(metrics).To(MatchRegexp(fmt.Sprintf(
+		Expect(metricsData).To(ContainSubstring(
+			getCountMetricLine(common.TestModelName, metrics.VLLME2EReqLatencyMetricName+"_count", numPrompts)))
+		Expect(metricsData).To(ContainSubstring(
+			getCountMetricLine(common.TestModelName, metrics.VLLMMaxNumGenerationTokensMetricName+"_count", numPrompts)))
+		Expect(metricsData).To(ContainSubstring(
+			getCountMetricLine(common.TestModelName, metrics.VLLMPromptTokensMetricName+"_count", numPrompts)))
+		Expect(metricsData).To(ContainSubstring(
+			getCountMetricLine(common.TestModelName, metrics.VLLMGenerationTokensMetricName+"_count", numPrompts)))
+		Expect(metricsData).To(MatchRegexp(fmt.Sprintf(
 			`vllm:request_success_total{finish_reason="(stop|length)",model_name="%s"} %d`,
 			common.TestModelName, numPrompts)))
-		Expect(metrics).To(ContainSubstring(fmt.Sprintf(
+		Expect(metricsData).To(ContainSubstring(fmt.Sprintf(
 			`vllm:prompt_tokens_total{model_name="%s"} %d`, common.TestModelName, expectedPromptTokensTotal)))
 	})
 
@@ -512,27 +511,27 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 
 			reqWg.Wait()
 
-			metrics := fetchMetrics(client)
-			metricsLines := strings.Split(metrics, "\n")
+			metricsData := fetchMetrics(client)
+			metricsLines := strings.Split(metricsData, "\n")
 
 			// ttft
 			for _, boundary := range common.TTFTBucketsBoundaries {
 				if boundary <= 0.1 {
 					// buckets up to 0.1 should be empty
-					Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.TTFTMetricName, boundary, 0)))
+					Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTTFTMetricName, boundary, 0)))
 				} else {
 					// buckets higher than 0.1 should contain a single sample
-					Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.TTFTMetricName, boundary, 1)))
+					Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTTFTMetricName, boundary, 1)))
 				}
 			}
-			Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.TTFTMetricName, math.Inf(1), 1)))
+			Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTTFTMetricName, math.Inf(1), 1)))
 
 			// helper to validate a latency metric (used for both tpot and inter_token_latency)
 			validateLatencyMetric := func(metricName string) {
 				for _, boundary := range common.TPOTBucketsBoundaries {
 					if boundary <= 0.075 {
 						// ensure that values for buckets up to 0.075 have count 0
-						Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metricName, boundary, 0)))
+						Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metricName, boundary, 0)))
 					} else {
 						// buckets higher than 0.075 should be greater than 0, we don't know the exact value since it depends on the random response length
 						count := findIntMetric(metricsLines, getFloatBucketMetricPrefix(common.TestModelName, metricName, boundary))
@@ -546,13 +545,13 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 			}
 
 			// validate legacy tpot metric
-			validateLatencyMetric(simulator.TPOTMetricName)
+			validateLatencyMetric(metrics.VLLMTPOTMetricName)
 
 			// validate new inter_token_latency metric
-			validateLatencyMetric(simulator.InterTokenLatencyMetricName)
+			validateLatencyMetric(metrics.VLLMInterTokenLatencyMetricName)
 
 			// validate request tpot metric
-			validateLatencyMetric(simulator.ReqTPOTMetricName)
+			validateLatencyMetric(metrics.VLLMReqTPOTMetricName)
 		}()
 
 		metricsWg.Wait()
@@ -609,19 +608,19 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 				defer wg.Done()
 				defer GinkgoRecover()
 
-				metrics := fetchMetricsWithDelay(client, 4*time.Second)
+				metricsData := fetchMetricsWithDelay(client, 4*time.Second)
 
 				// Expect three running requests and two blocks in the kv cache - usage 2/16=0.125
-				Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.ReqRunningMetricName, 3)))
-				Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.ReqWaitingMetricName, 0)))
-				Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.KVCacheUsageMetricName, 0.125)))
+				Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.QwenModelName, metrics.VLLMReqRunningMetricName, 3)))
+				Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.QwenModelName, metrics.VLLMReqWaitingMetricName, 0)))
+				Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.QwenModelName, metrics.VLLMKVCacheUsageMetricName, 0.125)))
 
-				metrics = fetchMetricsWithDelay(client, 4*time.Second)
+				metricsData = fetchMetricsWithDelay(client, 4*time.Second)
 
 				// The requests finished running, expect 0 usage
-				Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.ReqRunningMetricName, 0)))
-				Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.ReqWaitingMetricName, 0)))
-				Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.KVCacheUsageMetricName, 0)))
+				Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.QwenModelName, metrics.VLLMReqRunningMetricName, 0)))
+				Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.QwenModelName, metrics.VLLMReqWaitingMetricName, 0)))
+				Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.QwenModelName, metrics.VLLMKVCacheUsageMetricName, 0)))
 			}()
 			wg.Wait()
 		})
@@ -675,14 +674,14 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 				defer wg.Done()
 				defer GinkgoRecover()
 
-				metrics := fetchMetricsWithDelay(client, 3*time.Second)
+				metricsData := fetchMetricsWithDelay(client, 3*time.Second)
 
 				// The requests were sent with 500 millisecond intervals, and the first two should be still running.
 				// The third is waiting, and is still not in the kv-cache.
 				// We expect one block in the kv-cache, usage 1/16=0.0625.
-				Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.ReqRunningMetricName, 2)))
-				Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.ReqWaitingMetricName, 1)))
-				Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.KVCacheUsageMetricName, 0.0625)))
+				Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.QwenModelName, metrics.VLLMReqRunningMetricName, 2)))
+				Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.QwenModelName, metrics.VLLMReqWaitingMetricName, 1)))
+				Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.QwenModelName, metrics.VLLMKVCacheUsageMetricName, 0.0625)))
 			}()
 			wg.Wait()
 		})
@@ -719,12 +718,12 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 			metricsLines := strings.Split(metricsData, "\n")
 
 			// prefix_cache_queries should reflect total prompt tokens across both requests
-			queries := findIntMetric(metricsLines, getCountMetricPrefix(common.QwenModelName, simulator.PrefixCacheQueriesTotalMetricName))
+			queries := findIntMetric(metricsLines, getCountMetricPrefix(common.QwenModelName, metrics.VLLMPrefixCacheQueriesTotalMetricName))
 			Expect(queries).NotTo(BeNil())
 			Expect(*queries).To(BeNumerically(">", 0))
 
 			// The second request shares a prefix with the first, so hits should be non-zero
-			hits := findIntMetric(metricsLines, getCountMetricPrefix(common.QwenModelName, simulator.PrefixCacheHitsTotalMetricName))
+			hits := findIntMetric(metricsLines, getCountMetricPrefix(common.QwenModelName, metrics.VLLMPrefixCacheHitsTotalMetricName))
 			Expect(hits).NotTo(BeNil())
 			Expect(*hits).To(BeNumerically(">", 0))
 
@@ -766,22 +765,22 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 			wg.Go(func() {
 				defer GinkgoRecover()
 
-				metrics := fetchMetricsWithDelay(client, time.Second)
+				metricsData := fetchMetricsWithDelay(client, time.Second)
 
 				// Expect four running requests
-				Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.ReqRunningMetricName, 4)))
+				Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.QwenModelName, metrics.VLLMReqRunningMetricName, 4)))
 				// There should be 2 blocks for the instructions.
 				// The first two requests add 1 block. (The first request is not long enough for two blocks).
 				// The third request adds 1 block, because it has a different parent from the first two requests.
 				// The fourth request adds 1 block.
 				// 5/16 = 0.3125
-				Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.KVCacheUsageMetricName, 0.3125)))
+				Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.QwenModelName, metrics.VLLMKVCacheUsageMetricName, 0.3125)))
 
-				metrics = fetchMetricsWithDelay(client, 2*time.Second)
+				metricsData = fetchMetricsWithDelay(client, 2*time.Second)
 
 				// The requests finished running, expect 0 usage
-				Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.ReqRunningMetricName, 0)))
-				Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.KVCacheUsageMetricName, 0)))
+				Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.QwenModelName, metrics.VLLMReqRunningMetricName, 0)))
+				Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.QwenModelName, metrics.VLLMKVCacheUsageMetricName, 0)))
 			})
 			wg.Wait()
 		})
@@ -809,12 +808,12 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 			metricsData := fetchMetricsWithDelay(client, 500*time.Millisecond)
 			metricsLines := strings.Split(metricsData, "\n")
 
-			queries := findIntMetric(metricsLines, getCountMetricPrefix(common.QwenModelName, simulator.PrefixCacheQueriesTotalMetricName))
+			queries := findIntMetric(metricsLines, getCountMetricPrefix(common.QwenModelName, metrics.VLLMPrefixCacheQueriesTotalMetricName))
 			Expect(queries).NotTo(BeNil())
 			Expect(*queries).To(BeNumerically(">", 0))
 
 			// The second request shares a prefix with the first, so hits should be non-zero
-			hits := findIntMetric(metricsLines, getCountMetricPrefix(common.QwenModelName, simulator.PrefixCacheHitsTotalMetricName))
+			hits := findIntMetric(metricsLines, getCountMetricPrefix(common.QwenModelName, metrics.VLLMPrefixCacheHitsTotalMetricName))
 			Expect(hits).NotTo(BeNil())
 			Expect(*hits).To(BeNumerically(">", 0))
 
@@ -894,19 +893,19 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 
 			reqWg.Wait()
 
-			metrics := fetchMetrics(client)
+			metricsData := fetchMetrics(client)
 
 			for _, boundary := range common.RequestLatencyBucketsBoundaries {
 				if boundary < 1.5 {
-					Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.ReqInferenceTimeMetricName, boundary, 0)))
-					Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.ReqQueueTimeMetricName, boundary, 0)))
+					Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqInferenceTimeMetricName, boundary, 0)))
+					Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqQueueTimeMetricName, boundary, 0)))
 				} else {
-					Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.ReqInferenceTimeMetricName, boundary, 2)))
-					Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.ReqQueueTimeMetricName, boundary, 1)))
+					Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqInferenceTimeMetricName, boundary, 2)))
+					Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqQueueTimeMetricName, boundary, 1)))
 				}
 			}
-			Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.ReqInferenceTimeMetricName, math.Inf(1), 2)))
-			Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.ReqQueueTimeMetricName, math.Inf(1), 1)))
+			Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqInferenceTimeMetricName, math.Inf(1), 2)))
+			Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqQueueTimeMetricName, math.Inf(1), 1)))
 		})
 	})
 })

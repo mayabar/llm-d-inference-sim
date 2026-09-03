@@ -26,13 +26,12 @@ import (
 	"time"
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
+	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 	"github.com/valyala/fasthttp"
-
-	"github.com/llm-d/llm-d-inference-sim/pkg/simulator"
 )
 
 var _ = Describe("Simulator requests scheduling", Ordered, func() {
@@ -291,18 +290,18 @@ var _ = Describe("Simulator requests scheduling", Ordered, func() {
 				}()
 			}
 
-			metrics := fetchMetricsWithDelay(client, 2*time.Second)
+			metricsData := fetchMetricsWithDelay(client, 2*time.Second)
 
 			// max-num-seqs is 12, so number of running requests should be 12
 			// and the number of waiting requests 1000-12=988
-			Expect(metrics).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.ReqRunningMetricName, 12)))
-			Expect(metrics).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.ReqWaitingMetricName, 988)))
+			Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMReqRunningMetricName, 12)))
+			Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMReqWaitingMetricName, 988)))
 
 			// max-loras is 2, so the last lora metric should be:
 			// running: two loras (doesn't matter which two)
 			// waiting: all the five loras
 			// (there can be more than one metric with the same timestamp, therefore we check all of them)
-			lastLoraMetrics, err := getLastLoraMetrics(strings.Split(metrics, "\n"))
+			lastLoraMetrics, err := getLastLoraMetrics(strings.Split(metricsData, "\n"))
 			Expect(err).NotTo(HaveOccurred())
 
 			allLoras := []string{"lora1", "lora2", "lora3", "lora4", "lora0"}
@@ -321,8 +320,8 @@ var _ = Describe("Simulator requests scheduling", Ordered, func() {
 		})
 
 		It("Should work correctly with many simultaneous requests with many workers", func() {
-			runningMetric := getCountMetricPrefix(common.TestModelName, simulator.ReqRunningMetricName)
-			waitingMetric := getCountMetricPrefix(common.TestModelName, simulator.ReqWaitingMetricName)
+			runningMetric := getCountMetricPrefix(common.TestModelName, metrics.VLLMReqRunningMetricName)
+			waitingMetric := getCountMetricPrefix(common.TestModelName, metrics.VLLMReqWaitingMetricName)
 			ctx := context.TODO()
 			args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeRandom,
 				"--time-to-first-token", "2s", "--time-to-first-token-std-dev", "600ms",

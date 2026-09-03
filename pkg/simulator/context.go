@@ -52,14 +52,9 @@ type lorasUsageInfo struct {
 type SimContext struct {
 	// logger is used for information and errors logging
 	logger logr.Logger
-	// metrics contains all Prometheus metrics related data
-	metrics     metricsData
-	oldRegistry *prometheus.Registry
-	// metricsBus is the event-driven metrics pipeline that runs alongside
-	// the legacy `metrics` path. Producers emit BaseEvents onto its channels;
-	// the wired EngineMetricsAdapter drains them and updates its own private
-	// Prometheus registry. Kept in parallel with `metrics` during the
-	// transition so both surfaces can be validated against each other.
+	// metricsBus is the event-driven metrics pipeline. Producers emit
+	// BaseEvents onto its channels; the wired EngineMetricsAdapter drains
+	// them and updates prometheusRegistry.
 	metricsBus         *metrics.MetricsBus
 	prometheusRegistry *prometheus.Registry
 	// config holds the simulator's configuration as an atomic pointer so that
@@ -132,18 +127,25 @@ func (s *SimContext) MetricsRegistry() *prometheus.Registry {
 	return s.prometheusRegistry
 }
 
-func (s *SimContext) OldMetricsRegistry() *prometheus.Registry {
-	return s.oldRegistry
+// UpdateFakeMetricsFromBody applies a partial fake-metrics update parsed from
+// the body of the deprecated /fake_metrics endpoint. The body is the partial
+// itself (not wrapped in {"fake-metrics": ...}); we wrap it and dispatch
+// through ApplyConfigUpdate so it goes through the same validation, atomic
+// config swap, and Prometheus side-effect path as /admin/config.
+// Will be removed in v0.12.
+func (s *SimContext) UpdateFakeMetricsFromBody(body []byte) error {
+	wrapped := append(append([]byte(`{"fake-metrics":`), body...), '}')
+	return s.ApplyConfigUpdate(wrapped)
 }
 
 // ApplyConfigUpdate validates the partial JSON body against the current
 // configuration and atomically swaps in the resulting configuration. Updates
 // are serialized so concurrent callers cannot lose each other's changes.
 //
-// A "fake-metrics" field in the body is applied to Prometheus collectors via
-// updateFakeMetrics; this runs after Configuration.Update has validated the
-// merged result but before the config swap, so a Prometheus side-effect
-// failure aborts the whole update.
+// A "fake-metrics" field in the body is forwarded to the metrics bus'
+// fake-metrics controller; this runs after Configuration.Update has
+// validated the merged result but before the config swap, so a Prometheus
+// side-effect failure aborts the whole update.
 func (s *SimContext) ApplyConfigUpdate(body []byte) error {
 	s.adminMu.Lock()
 	defer s.adminMu.Unlock()
@@ -156,11 +158,8 @@ func (s *SimContext) ApplyConfigUpdate(body []byte) error {
 		if s.Config().FakeMetrics == nil {
 			return errors.New("the simulator is reporting real metrics; fake metrics cannot be updated")
 		}
-		if err := s.updateFakeMetrics(update.FakeMetrics, s.Config().FakeMetrics); err != nil {
-			return fmt.Errorf("failed to update fake metrics: %w", err)
-		}
 		if err := s.metricsBus.ApplyFakeMetricsUpdate(update.FakeMetrics); err != nil {
-			return fmt.Errorf("failed to update fake metrics on new pipeline: %w", err)
+			return fmt.Errorf("failed to update fake metrics: %w", err)
 		}
 	}
 	s.SetConfig(next)
@@ -189,14 +188,8 @@ func (s *SimContext) initialize(ctx context.Context) error {
 	}
 
 	s.prometheusRegistry = prometheus.NewRegistry()
-	s.oldRegistry = prometheus.NewRegistry()
 
-	// initialize prometheus metrics
-	err := s.createAndRegisterPrometheus(ctx)
-	if err != nil {
-		return err
-	}
-
+	var err error
 	s.metricsBus, err = metrics.NewMetricsBus(ctx, *s.Config(), s.prometheusRegistry, s.logger)
 	if err != nil {
 		return err
@@ -209,7 +202,7 @@ func (s *SimContext) initialize(ctx context.Context) error {
 	// we don't start it.
 	if s.Config().EnableKVCache && !s.Config().MMEncoderOnly {
 		s.kvcacheHelper, err = kvcache.NewKVCacheHelper(ctx, s.Config(), s.logger,
-			s.metrics.kvCacheUsageChan, s.metrics.prefixCacheStatsChan, s.Tokenizer, s.metricsBus)
+			s.Tokenizer, s.metricsBus)
 		if err != nil {
 			return err
 		}
@@ -287,20 +280,15 @@ func (s *SimContext) getDisplayedModelName(reqModel string) string {
 }
 
 func (s *SimContext) simulateTTFT(respCtx ResponseContext) {
-	startPrefill := time.Now()
 	// time to first token delay
 	params := TTFTParams{
 		PromptTokens:       respCtx.UsageData().PromptTokens,
 		CachedPromptTokens: respCtx.NumberCachedPromptTokens(),
 		DoRemotePrefill:    respCtx.doRemotePrefill(),
-		RunningReqs:        s.metrics.nRunningReqs.Load(),
+		RunningReqs:        s.nRunningReqs.Load(),
 	}
 	ttft := s.latencyCalc().GetTimeToFirstToken(&params)
 	time.Sleep(ttft)
-	// report ttft in seconds
-	// TODO - why ttft and reqPrefillTime are calculted separately? They are the same value, right?
-	common.WriteToChannel(s.metrics.ttftChan, ttft.Seconds(), s.logger)
-	common.WriteToChannel(s.metrics.reqPrefillTimeChan, time.Since(startPrefill).Seconds(), s.logger)
 	if s.metricsBus != nil {
 		common.WriteToChannel(s.metricsBus.PrefillEnded,
 			metrics.PrefillEnded{PrefillDuration: ttft.Seconds()}, s.logger)
@@ -316,11 +304,9 @@ func (s *SimContext) simulateImageGenerationLatency() {
 
 func (s *SimContext) simulateInterTokenLatency() {
 	perTokenLatency := s.latencyCalc().GetInterTokenLatency(&InterTokenParams{
-		RunningReqs: s.metrics.nRunningReqs.Load()})
+		RunningReqs: s.nRunningReqs.Load()})
 	time.Sleep(perTokenLatency)
 
-	// report tpot in seconds
-	common.WriteToChannel(s.metrics.tpotChan, perTokenLatency.Seconds(), s.logger)
 	if s.metricsBus != nil {
 		common.WriteToChannel(s.metricsBus.TokenGenerated,
 			metrics.TokenGenerated{InterTokenLatency: perTokenLatency.Seconds()}, s.logger)

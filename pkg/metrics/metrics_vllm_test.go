@@ -82,12 +82,8 @@ func counterValue(c *prometheus.CounterVec, labelValues ...string) func() float6
 }
 
 var _ = Describe("MetricsBus", func() {
-	It("has nil-safe emitters", func() {
+	It("has a nil-safe ApplyFakeMetricsUpdate", func() {
 		var b *MetricsBus
-		Expect(func() {
-			b.EmitKVCacheUsage(0.5, false)
-			b.EmitPrefixCacheQueried(1, 2)
-		}).NotTo(Panic())
 		Expect(b.ApplyFakeMetricsUpdate(&common.FakeMetrics{})).To(Succeed())
 	})
 

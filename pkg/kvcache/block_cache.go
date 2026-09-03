@@ -54,23 +54,22 @@ type blockKey struct {
 // blockCache represents a thread-safe cache for blocks with eviction policy
 type blockCache struct {
 	mu              sync.RWMutex
-	requestToBlocks map[string][]blockKey              // request id -> array of it blocks (block hashes)
-	usedBlocks      map[blockKey]int                   // block hash -> reference count
-	unusedBlocks    map[blockKey]time.Time             // block hash -> last usage timestamp
-	blockToTokens   map[blockKey][]uint32              // block hash -> block tokens
-	loadedModels    map[string]struct{}                // models currently loaded (base model + loaded loras)
-	maxBlocks       int                                // maximum number of blocks in the cache
-	eventSender     *KVEventSender                     // emits kv events
-	eventChan       common.Channel[EventData]          // channel for asynchronous event processing
-	usageChan       *common.Channel[common.MetricInfo] // channel for usage reporting
-	metrics         *metrics.MetricsBus                // optional parallel emitter (event bus)
+	requestToBlocks map[string][]blockKey     // request id -> array of it blocks (block hashes)
+	usedBlocks      map[blockKey]int          // block hash -> reference count
+	unusedBlocks    map[blockKey]time.Time    // block hash -> last usage timestamp
+	blockToTokens   map[blockKey][]uint32     // block hash -> block tokens
+	loadedModels    map[string]struct{}       // models currently loaded (base model + loaded loras)
+	maxBlocks       int                       // maximum number of blocks in the cache
+	eventSender     *KVEventSender            // emits kv events
+	eventChan       common.Channel[EventData] // channel for asynchronous event processing
+	metrics         *metrics.MetricsBus       // event-bus emitter for KV-cache-usage / prefix-cache stats
 	logger          logr.Logger
 	disabled        bool // indicated whether the cache is disabled
 }
 
 // newBlockCache creates a new blockCache with the specified maximum number of blocks
 func newBlockCache(ctx context.Context, config *common.Configuration, logger logr.Logger,
-	usageChan *common.Channel[common.MetricInfo], metrics *metrics.MetricsBus) (*blockCache, error) {
+	metrics *metrics.MetricsBus) (*blockCache, error) {
 	if config.IP == "" {
 		return nil, errors.New("IP should be defined in the environment (POD_IP)")
 	}
@@ -107,7 +106,6 @@ func newBlockCache(ctx context.Context, config *common.Configuration, logger log
 		loadedModels:    make(map[string]struct{}),
 		maxBlocks:       config.KVCacheSize,
 		eventChan:       eChan,
-		usageChan:       usageChan,
 		metrics:         metrics,
 		eventSender:     eventSender,
 		logger:          logger,
@@ -289,11 +287,10 @@ func (bc *blockCache) startRequest(req Request, blockHashes []uint64, blockToken
 	}
 
 	perc := float64(len(bc.usedBlocks)) / float64(bc.maxBlocks)
-	if bc.usageChan != nil {
-		common.WriteToChannel(*bc.usageChan, common.MetricInfo{Value: perc}, bc.logger)
-	}
 	if bc.metrics != nil {
-		bc.metrics.EmitKVCacheUsage(perc, false)
+		common.WriteToChannel(bc.metrics.KVCacheUsage, metrics.KVCacheUsageChanged{
+			KVCacheUsagePerc: perc,
+		}, bc.logger)
 	}
 	return len(blockAlreadyInUse) + len(blockToMoveToUsed), nil
 }
@@ -334,11 +331,10 @@ func (bc *blockCache) finishRequest(requestID string) error {
 	}
 
 	perc := float64(len(bc.usedBlocks)) / float64(bc.maxBlocks)
-	if bc.usageChan != nil {
-		common.WriteToChannel(*bc.usageChan, common.MetricInfo{Value: perc}, bc.logger)
-	}
 	if bc.metrics != nil {
-		bc.metrics.EmitKVCacheUsage(perc, false)
+		common.WriteToChannel(bc.metrics.KVCacheUsage, metrics.KVCacheUsageChanged{
+			KVCacheUsagePerc: perc,
+		}, bc.logger)
 	}
 
 	// Remove the request mapping

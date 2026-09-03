@@ -27,7 +27,6 @@ import (
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	"github.com/llm-d/llm-d-inference-sim/pkg/communication/grpc/pb"
 	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
-	"github.com/llm-d/llm-d-inference-sim/pkg/simulator"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -66,10 +65,10 @@ var _ = Describe("gRPC Metrics", Ordered, func() {
 			}()
 		}
 
-		metrics := fetchMetrics(httpClient)
+		metricsData := fetchMetrics(httpClient)
 
-		Expect(metrics).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.ReqRunningMetricName, 2)))
-		Expect(metrics).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.ReqWaitingMetricName, 1)))
+		Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMReqRunningMetricName, 2)))
+		Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMReqWaitingMetricName, 1)))
 	})
 
 	It("should send correct token metrics via gRPC", func() {
@@ -106,22 +105,22 @@ var _ = Describe("gRPC Metrics", Ordered, func() {
 		buckets := metrics.Build125Buckets(1024)
 		for _, boundary := range buckets {
 			if boundary <= 20 {
-				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.PromptTokensMetricName, boundary, 0)))
-				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.ParamMaxTokensMetricName, boundary, 0)))
+				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMPromptTokensMetricName, boundary, 0)))
+				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMParamMaxTokensMetricName, boundary, 0)))
 			} else {
-				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.PromptTokensMetricName, boundary, 1)))
-				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.ParamMaxTokensMetricName, boundary, 1)))
+				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMPromptTokensMetricName, boundary, 1)))
+				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMParamMaxTokensMetricName, boundary, 1)))
 			}
 		}
-		Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.PromptTokensMetricName, math.Inf(1), 1)))
-		Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.ParamMaxTokensMetricName, math.Inf(1), 1)))
+		Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMPromptTokensMetricName, math.Inf(1), 1)))
+		Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMParamMaxTokensMetricName, math.Inf(1), 1)))
 
 		Expect(metricsData).To(MatchRegexp(fmt.Sprintf(`vllm:prompt_tokens_total{model_name="%s"} %d`, common.TestModelName, expectedPromptTokensCnt)))
 
 		// Check generation tokens - in echo mode we get the same number of tokens back
 		// We only check the count since the response length is deterministic in echo mode
 		// and skip the bucket distribution.
-		Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.GenerationTokensMetricName+"_count", 1)))
+		Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMGenerationTokensMetricName+"_count", 1)))
 		// request_success_total
 		Expect(metricsData).To(MatchRegexp(fmt.Sprintf(`vllm:request_success_total{finish_reason="(stop|length)",model_name="%s"} 1`, common.TestModelName)))
 	})
@@ -167,27 +166,27 @@ var _ = Describe("gRPC Metrics", Ordered, func() {
 			// Wait for request to complete
 			reqWg.Wait()
 
-			metrics := fetchMetrics(httpClient)
-			metricsLines := strings.Split(metrics, "\n")
+			metricsData := fetchMetrics(httpClient)
+			metricsLines := strings.Split(metricsData, "\n")
 
 			// Check TTFT buckets
 			for _, boundary := range common.TTFTBucketsBoundaries {
 				if boundary <= 0.1 {
 					// buckets up to 0.1 should be empty
-					Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.TTFTMetricName, boundary, 0)))
+					Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTTFTMetricName, boundary, 0)))
 				} else {
 					// buckets higher than 0.1 should contain a single sample
-					Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.TTFTMetricName, boundary, 1)))
+					Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTTFTMetricName, boundary, 1)))
 				}
 			}
-			Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.TTFTMetricName, math.Inf(1), 1)))
+			Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTTFTMetricName, math.Inf(1), 1)))
 
 			// Check TPOT, inter-token latency and request TPOT buckets
-			for _, metricName := range []string{simulator.TPOTMetricName, simulator.InterTokenLatencyMetricName, simulator.ReqTPOTMetricName} {
+			for _, metricName := range []string{metrics.VLLMTPOTMetricName, metrics.VLLMInterTokenLatencyMetricName, metrics.VLLMReqTPOTMetricName} {
 				for _, boundary := range common.TPOTBucketsBoundaries {
 					if boundary <= 0.075 {
 						// ensure that values for buckets up to 0.075 have count 0
-						Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metricName, boundary, 0)))
+						Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metricName, boundary, 0)))
 					} else {
 						// buckets higher than 0.075 should be greater than 0, we don't know the exact value since it depends on the random response length
 						count := findIntMetric(metricsLines, getFloatBucketMetricPrefix(common.TestModelName, metricName, boundary))
@@ -297,19 +296,19 @@ var _ = Describe("gRPC Metrics", Ordered, func() {
 
 		// Wait 1 sec for requests to start processing and KV cache to be populated
 		// Then wait 3 secs for requests to be running (after TTFT)
-		metrics := fetchMetricsWithDelay(httpClient, 4*time.Second)
+		metricsData := fetchMetricsWithDelay(httpClient, 4*time.Second)
 
 		// Expect three running requests and one block in the kv cache (shared by all 3 requests) - usage 1/16=0.0625
-		Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.ReqRunningMetricName, 3)))
-		Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.ReqWaitingMetricName, 0)))
-		Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.KVCacheUsageMetricName, 0.0625)))
+		Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.QwenModelName, metrics.VLLMReqRunningMetricName, 3)))
+		Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.QwenModelName, metrics.VLLMReqWaitingMetricName, 0)))
+		Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.QwenModelName, metrics.VLLMKVCacheUsageMetricName, 0.0625)))
 
-		metrics = fetchMetricsWithDelay(httpClient, 15*time.Second)
+		metricsData = fetchMetricsWithDelay(httpClient, 15*time.Second)
 
 		// The requests finished running, expect 0 usage
-		Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.ReqRunningMetricName, 0)))
-		Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.ReqWaitingMetricName, 0)))
-		Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.KVCacheUsageMetricName, 0)))
+		Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.QwenModelName, metrics.VLLMReqRunningMetricName, 0)))
+		Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.QwenModelName, metrics.VLLMReqWaitingMetricName, 0)))
+		Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.QwenModelName, metrics.VLLMKVCacheUsageMetricName, 0)))
 	})
 
 	It("should calculate waiting and inference time correctly via gRPC", func() {
@@ -349,19 +348,19 @@ var _ = Describe("gRPC Metrics", Ordered, func() {
 
 		reqWg.Wait()
 
-		metrics := fetchMetrics(httpClient)
+		metricsData := fetchMetrics(httpClient)
 
 		// Check that inference time and queue time buckets are populated correctly
 		for _, boundary := range common.RequestLatencyBucketsBoundaries {
 			if boundary < 1.5 {
-				Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.ReqInferenceTimeMetricName, boundary, 0)))
-				Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.ReqQueueTimeMetricName, boundary, 0)))
+				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqInferenceTimeMetricName, boundary, 0)))
+				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqQueueTimeMetricName, boundary, 0)))
 			} else {
-				Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.ReqInferenceTimeMetricName, boundary, 2)))
-				Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.ReqQueueTimeMetricName, boundary, 1)))
+				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqInferenceTimeMetricName, boundary, 2)))
+				Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqQueueTimeMetricName, boundary, 1)))
 			}
 		}
-		Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.ReqInferenceTimeMetricName, math.Inf(1), 2)))
-		Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.ReqQueueTimeMetricName, math.Inf(1), 1)))
+		Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqInferenceTimeMetricName, math.Inf(1), 2)))
+		Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqQueueTimeMetricName, math.Inf(1), 1)))
 	})
 })

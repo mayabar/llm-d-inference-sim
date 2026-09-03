@@ -40,6 +40,7 @@ import (
 	"github.com/llm-d/llm-d-inference-sim/pkg/api"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	"github.com/llm-d/llm-d-inference-sim/pkg/communication"
+	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 	"github.com/llm-d/llm-d-inference-sim/pkg/simulator"
 	"github.com/llm-d/llm-d-inference-sim/pkg/tokenizer"
 	"github.com/openai/openai-go/v3"
@@ -490,11 +491,11 @@ func getLoraValidTimestamp(metrics []string, running, waiting []string) float64 
 	return *timestamp
 }
 
-func getLastLoraMetrics(metrics []string) ([]string, error) {
+func getLastLoraMetrics(metricsData []string) ([]string, error) {
 	lastTimestamp := float64(0)
 	var lastMetrics []string
-	for _, metric := range metrics {
-		if strings.HasPrefix(metric, simulator.LoRARequestsMetricName) {
+	for _, metric := range metricsData {
+		if strings.HasPrefix(metric, metrics.VLLMLoRARequestsMetricName) {
 			timestamp, err := extractTimestamp(metric)
 			if err != nil {
 				return nil, err
@@ -666,7 +667,7 @@ func checkBucketBoundary(metrics string, modelName string, metricName string, bu
 func checkLatencyMetrics(client *http.Client, modelName string, numOfInputTokens int, numOfOutputTokens int, ttft int,
 	prefillTimePerToken int, interTokenLatency int, kvcacheTransferLatency int, kvCacheTransferTimePerToken int, doRemotePrefill bool) {
 	// wait a little bit and check metrics
-	metrics := fetchMetrics(client)
+	metricsData := fetchMetrics(client)
 
 	expectedPrefillTimeInSecs := 0.0
 	if doRemotePrefill {
@@ -691,17 +692,17 @@ func checkLatencyMetrics(client *http.Client, modelName string, numOfInputTokens
 	prevBoundary := math.Inf(-1)
 
 	for _, bucketBoundary := range common.RequestLatencyBucketsBoundaries {
-		checkBucketBoundary(metrics, modelName, simulator.PrefillTimeMetricName, bucketBoundary, prevBoundary, expectedPrefillTimeInSecs)
-		checkBucketBoundary(metrics, modelName, simulator.DecodeTimeMetricName, bucketBoundary, prevBoundary, expectedDecodeTimeInSecs)
-		checkBucketBoundary(metrics, modelName, simulator.E2EReqLatencyMetricName, bucketBoundary, prevBoundary, expectedE2ELatency)
+		checkBucketBoundary(metricsData, modelName, metrics.VLLMPrefillTimeMetricName, bucketBoundary, prevBoundary, expectedPrefillTimeInSecs)
+		checkBucketBoundary(metricsData, modelName, metrics.VLLMDecodeTimeMetricName, bucketBoundary, prevBoundary, expectedDecodeTimeInSecs)
+		checkBucketBoundary(metricsData, modelName, metrics.VLLME2EReqLatencyMetricName, bucketBoundary, prevBoundary, expectedE2ELatency)
 
 		prevBoundary = bucketBoundary
 	}
 	// check the last bucket
 	lastBoundary := common.RequestLatencyBucketsBoundaries[len(common.RequestLatencyBucketsBoundaries)-1]
-	checkBucketBoundary(metrics, modelName, simulator.PrefillTimeMetricName, math.Inf(1), lastBoundary, expectedPrefillTimeInSecs)
-	checkBucketBoundary(metrics, modelName, simulator.DecodeTimeMetricName, math.Inf(1), lastBoundary, expectedDecodeTimeInSecs)
-	checkBucketBoundary(metrics, modelName, simulator.E2EReqLatencyMetricName, math.Inf(1), lastBoundary, expectedE2ELatency)
+	checkBucketBoundary(metricsData, modelName, metrics.VLLMPrefillTimeMetricName, math.Inf(1), lastBoundary, expectedPrefillTimeInSecs)
+	checkBucketBoundary(metricsData, modelName, metrics.VLLMDecodeTimeMetricName, math.Inf(1), lastBoundary, expectedDecodeTimeInSecs)
+	checkBucketBoundary(metricsData, modelName, metrics.VLLME2EReqLatencyMetricName, math.Inf(1), lastBoundary, expectedE2ELatency)
 }
 
 func ptr[T any](v T) *T {

@@ -90,31 +90,6 @@ func (b *MetricsBus) ApplyFakeMetricsUpdate(update *common.FakeMetrics) error {
 	return b.adapter.ApplyUpdate(update)
 }
 
-// EmitKVCacheUsage implements kvcache.MetricsEmitter: forwards a KV-cache
-// usage change onto the bus. Cache-wide event, so Model is empty; the
-// adapter labels the resulting gauge with its configured display model name.
-func (b *MetricsBus) EmitKVCacheUsage(perc float64, isFake bool) {
-	if b == nil {
-		return
-	}
-	common.WriteToChannel(b.KVCacheUsage, KVCacheUsageChanged{
-		BaseEvent:        BaseEvent{IsFake: isFake},
-		KVCacheUsagePerc: perc,
-	}, b.logger)
-}
-
-// EmitPrefixCacheQueried implements kvcache.MetricsEmitter: forwards a
-// prefix-cache lookup onto the bus. Cache-wide event; Model is empty.
-func (b *MetricsBus) EmitPrefixCacheQueried(queried, cached int) {
-	if b == nil {
-		return
-	}
-	common.WriteToChannel(b.PrefixCacheQuery, PrefixCacheQueried{
-		QueriedTokens:      queried,
-		CachedPromptTokens: cached,
-	}, b.logger)
-}
-
 // -- Events -----------------------------------------------------------------
 //
 // Every duration field is seconds (float64), pre-computed by the producer
