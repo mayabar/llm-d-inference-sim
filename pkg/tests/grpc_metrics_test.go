@@ -19,9 +19,7 @@ package tests
 import (
 	"context"
 	"fmt"
-	"io"
 	"math"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -68,14 +66,8 @@ var _ = Describe("gRPC Metrics", Ordered, func() {
 			}()
 		}
 
-		time.Sleep(300 * time.Millisecond)
-		metricsResp, err := httpClient.Get(metricsUrl)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
+		metrics := fetchMetrics(httpClient)
 
-		data, err := io.ReadAll(metricsResp.Body)
-		Expect(err).NotTo(HaveOccurred())
-		metrics := string(data)
 		Expect(metrics).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.ReqRunningMetricName, 2)))
 		Expect(metrics).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.ReqWaitingMetricName, 1)))
 	})
@@ -108,14 +100,7 @@ var _ = Describe("gRPC Metrics", Ordered, func() {
 		err = comm.Generate(&req, &out)
 		Expect(err).NotTo(HaveOccurred())
 
-		time.Sleep(300 * time.Millisecond)
-		metricsResp, err := httpClient.Get(metricsUrl)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
-
-		data, err := io.ReadAll(metricsResp.Body)
-		Expect(err).NotTo(HaveOccurred())
-		metricsData := string(data)
+		metricsData := fetchMetrics(httpClient)
 
 		// Check prompt tokens and max tokens bucket distributions
 		buckets := metrics.Build125Buckets(1024)
@@ -181,14 +166,8 @@ var _ = Describe("gRPC Metrics", Ordered, func() {
 
 			// Wait for request to complete
 			reqWg.Wait()
-			time.Sleep(300 * time.Millisecond)
-			metricsResp, err := httpClient.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
 
-			data, err := io.ReadAll(metricsResp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metrics := string(data)
+			metrics := fetchMetrics(httpClient)
 			metricsLines := strings.Split(metrics, "\n")
 
 			// Check TTFT buckets
@@ -316,30 +295,17 @@ var _ = Describe("gRPC Metrics", Ordered, func() {
 			}(i)
 		}
 
-		// Wait for requests to start processing and KV cache to be populated
-		time.Sleep(1 * time.Second)
-		// Then wait for requests to be running (after TTFT)
-		time.Sleep(3 * time.Second)
-		metricsResp, err := httpClient.Get(metricsUrl)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
+		// Wait 1 sec for requests to start processing and KV cache to be populated
+		// Then wait 3 secs for requests to be running (after TTFT)
+		metrics := fetchMetricsWithDelay(httpClient, 4*time.Second)
 
-		data, err := io.ReadAll(metricsResp.Body)
-		Expect(err).NotTo(HaveOccurred())
-		metrics := string(data)
 		// Expect three running requests and one block in the kv cache (shared by all 3 requests) - usage 1/16=0.0625
 		Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.ReqRunningMetricName, 3)))
 		Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.ReqWaitingMetricName, 0)))
 		Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.KVCacheUsageMetricName, 0.0625)))
 
-		time.Sleep(15 * time.Second)
-		metricsResp, err = httpClient.Get(metricsUrl)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
+		metrics = fetchMetricsWithDelay(httpClient, 15*time.Second)
 
-		data, err = io.ReadAll(metricsResp.Body)
-		Expect(err).NotTo(HaveOccurred())
-		metrics = string(data)
 		// The requests finished running, expect 0 usage
 		Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.ReqRunningMetricName, 0)))
 		Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.ReqWaitingMetricName, 0)))
@@ -382,14 +348,8 @@ var _ = Describe("gRPC Metrics", Ordered, func() {
 		}
 
 		reqWg.Wait()
-		time.Sleep(300 * time.Millisecond)
-		metricsResp, err := httpClient.Get(metricsUrl)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
 
-		data, err := io.ReadAll(metricsResp.Body)
-		Expect(err).NotTo(HaveOccurred())
-		metrics := string(data)
+		metrics := fetchMetrics(httpClient)
 
 		// Check that inference time and queue time buckets are populated correctly
 		for _, boundary := range common.RequestLatencyBucketsBoundaries {

@@ -49,6 +49,8 @@ type EngineMetricsAdapter interface {
 	OnRequestRejected(ev RequestRejected)
 	OnKVCacheUsageChanged(ev KVCacheUsageChanged)
 	OnPrefixCacheQueried(ev PrefixCacheQueried)
+
+	ApplyUpdate(update *common.FakeMetrics) error
 }
 
 // MetricsBus carries state-change events from producers to the engine
@@ -77,14 +79,6 @@ func (b *MetricsBus) Start(ctx context.Context) error {
 	return b.adapter.Start(ctx)
 }
 
-// VLLMFakeCapable is satisfied by an adapter that exposes a
-// VLLMFakeMetricsController so external callers (admin API) can push
-// runtime fake-metrics updates through the same channel + updater path the
-// applier uses. Adapters that do not support fake metrics return nil.
-type VLLMFakeCapable interface {
-	FakeController() *VLLMFakeMetricsController
-}
-
 // ApplyFakeMetricsUpdate forwards a partial fake-metrics update to the
 // adapter's fake controller when the adapter supports it. Non-vLLM adapters
 // or adapters not in fake mode return nil; the caller is expected to have
@@ -93,15 +87,7 @@ func (b *MetricsBus) ApplyFakeMetricsUpdate(update *common.FakeMetrics) error {
 	if b == nil || update == nil {
 		return nil
 	}
-	capable, ok := b.adapter.(VLLMFakeCapable)
-	if !ok {
-		return nil
-	}
-	controller := capable.FakeController()
-	if controller == nil {
-		return nil
-	}
-	return controller.ApplyUpdate(update)
+	return b.adapter.ApplyUpdate(update)
 }
 
 // EmitKVCacheUsage implements kvcache.MetricsEmitter: forwards a KV-cache

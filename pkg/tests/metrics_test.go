@@ -19,9 +19,7 @@ package tests
 import (
 	"context"
 	"fmt"
-	"io"
 	"math"
-	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -101,14 +99,8 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 			}()
 		}
 
-		time.Sleep(300 * time.Millisecond)
-		metricsResp, err := client.Get(metricsUrl)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
+		metrics := fetchMetrics(client)
 
-		data, err := io.ReadAll(metricsResp.Body)
-		Expect(err).NotTo(HaveOccurred())
-		metrics := string(data)
 		Expect(metrics).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.ReqRunningMetricName, 2)))
 		Expect(metrics).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.ReqWaitingMetricName, 1)))
 	})
@@ -128,14 +120,7 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 			_, err = openaiclient.Chat.Completions.New(ctx, params)
 			Expect(err).To(HaveOccurred())
 
-			time.Sleep(300 * time.Millisecond)
-			metricsResp, err := client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
-
-			data, err := io.ReadAll(metricsResp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metrics := string(data)
+			metrics := fetchMetrics(client)
 
 			// There should be no running or waiting requests
 			Expect(metrics).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.ReqRunningMetricName, 0)))
@@ -187,15 +172,8 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 		_, err = openaiclient.Chat.Completions.New(ctx, params)
 		Expect(err).NotTo(HaveOccurred())
 
-		time.Sleep(500 * time.Millisecond)
+		metricsData := fetchMetricsWithDelay(client, 500*time.Millisecond)
 
-		metricsResp, err := client.Get(metricsUrl)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
-
-		data, err := io.ReadAll(metricsResp.Body)
-		Expect(err).NotTo(HaveOccurred())
-		metricsData := string(data)
 		// request_prompt_tokens_bucket and request_params_max_tokens_bucket
 		buckets := metrics.Build125Buckets(1024)
 
@@ -268,27 +246,16 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 
 		// While the sub-requests are running (TTFT hasn't fired), maxNumSeqs should be in
 		// "running" and the rest in "waiting".
-		time.Sleep(500 * time.Millisecond)
-		metricsResp, err := client.Get(metricsUrl)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
-		data, err := io.ReadAll(metricsResp.Body)
-		Expect(err).NotTo(HaveOccurred())
-		metrics := string(data)
+		metrics := fetchMetrics(client)
+
 		Expect(metrics).To(ContainSubstring(
 			getCountMetricLine(common.TestModelName, simulator.ReqRunningMetricName, maxNumSeqs)))
 		Expect(metrics).To(ContainSubstring(
 			getCountMetricLine(common.TestModelName, simulator.ReqWaitingMetricName, numPrompts-maxNumSeqs)))
 
 		<-done
-		time.Sleep(500 * time.Millisecond)
 
-		metricsResp, err = client.Get(metricsUrl)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
-		data, err = io.ReadAll(metricsResp.Body)
-		Expect(err).NotTo(HaveOccurred())
-		metrics = string(data)
+		metrics = fetchMetricsWithDelay(client, 500*time.Millisecond)
 
 		// No running/waiting after all sub-requests complete.
 		Expect(metrics).To(ContainSubstring(
@@ -346,13 +313,8 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 				Expect(err).NotTo(HaveOccurred())
 			}
 
-			metricsResp, err := client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
-
-			data, err := io.ReadAll(metricsResp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metrics := strings.Split(string(data), "\n")
+			metricsData := fetchMetrics(client)
+			metrics := strings.Split(metricsData, "\n")
 
 			// We sent two sequentual requests to two different LoRAs, we expect to see (in this order)
 			// 1. running: lora1, waiting: empty
@@ -413,13 +375,8 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 
 		wg.Wait()
 
-		metricsResp, err := client.Get(metricsUrl)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
-
-		data, err := io.ReadAll(metricsResp.Body)
-		Expect(err).NotTo(HaveOccurred())
-		metrics := strings.Split(string(data), "\n")
+		metricsData := fetchMetrics(client)
+		metrics := strings.Split(metricsData, "\n")
 
 		// max_loras is 1 by default
 		// We sent 3 requests, we expect to see (in this order)
@@ -479,13 +436,8 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 
 		wg.Wait()
 
-		metricsResp, err := client.Get(metricsUrl)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
-
-		data, err := io.ReadAll(metricsResp.Body)
-		Expect(err).NotTo(HaveOccurred())
-		metrics := strings.Split(string(data), "\n")
+		metricsData := fetchMetrics(client)
+		metrics := strings.Split(metricsData, "\n")
 
 		// We sent two parallel requests: first to lora1 and then to lora2,
 		// we expect to see metrics in this order:
@@ -559,14 +511,8 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 			defer GinkgoRecover()
 
 			reqWg.Wait()
-			time.Sleep(300 * time.Millisecond)
-			metricsResp, err := client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
 
-			data, err := io.ReadAll(metricsResp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metrics := string(data)
+			metrics := fetchMetrics(client)
 			metricsLines := strings.Split(metrics, "\n")
 
 			// ttft
@@ -663,27 +609,15 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 				defer wg.Done()
 				defer GinkgoRecover()
 
-				time.Sleep(4 * time.Second)
-				metricsResp, err := client.Get(metricsUrl)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
+				metrics := fetchMetricsWithDelay(client, 4*time.Second)
 
-				data, err := io.ReadAll(metricsResp.Body)
-				Expect(err).NotTo(HaveOccurred())
-				metrics := string(data)
 				// Expect three running requests and two blocks in the kv cache - usage 2/16=0.125
 				Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.ReqRunningMetricName, 3)))
 				Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.ReqWaitingMetricName, 0)))
 				Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.KVCacheUsageMetricName, 0.125)))
 
-				time.Sleep(4 * time.Second)
-				metricsResp, err = client.Get(metricsUrl)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
+				metrics = fetchMetricsWithDelay(client, 4*time.Second)
 
-				data, err = io.ReadAll(metricsResp.Body)
-				Expect(err).NotTo(HaveOccurred())
-				metrics = string(data)
 				// The requests finished running, expect 0 usage
 				Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.ReqRunningMetricName, 0)))
 				Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.ReqWaitingMetricName, 0)))
@@ -741,14 +675,8 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 				defer wg.Done()
 				defer GinkgoRecover()
 
-				time.Sleep(3 * time.Second)
-				metricsResp, err := client.Get(metricsUrl)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
+				metrics := fetchMetricsWithDelay(client, 3*time.Second)
 
-				data, err := io.ReadAll(metricsResp.Body)
-				Expect(err).NotTo(HaveOccurred())
-				metrics := string(data)
 				// The requests were sent with 500 millisecond intervals, and the first two should be still running.
 				// The third is waiting, and is still not in the kv-cache.
 				// We expect one block in the kv-cache, usage 1/16=0.0625.
@@ -787,14 +715,8 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 				Expect(err).NotTo(HaveOccurred())
 			}
 
-			time.Sleep(500 * time.Millisecond)
-			metricsResp, err := client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
-
-			data, err := io.ReadAll(metricsResp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metricsLines := strings.Split(string(data), "\n")
+			metricsData := fetchMetricsWithDelay(client, 500*time.Millisecond)
+			metricsLines := strings.Split(metricsData, "\n")
 
 			// prefix_cache_queries should reflect total prompt tokens across both requests
 			queries := findIntMetric(metricsLines, getCountMetricPrefix(common.QwenModelName, simulator.PrefixCacheQueriesTotalMetricName))
@@ -844,14 +766,8 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 			wg.Go(func() {
 				defer GinkgoRecover()
 
-				time.Sleep(time.Second)
-				metricsResp, err := client.Get(metricsUrl)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
+				metrics := fetchMetricsWithDelay(client, time.Second)
 
-				data, err := io.ReadAll(metricsResp.Body)
-				Expect(err).NotTo(HaveOccurred())
-				metrics := string(data)
 				// Expect four running requests
 				Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.ReqRunningMetricName, 4)))
 				// There should be 2 blocks for the instructions.
@@ -861,14 +777,8 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 				// 5/16 = 0.3125
 				Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.KVCacheUsageMetricName, 0.3125)))
 
-				time.Sleep(2 * time.Second)
-				metricsResp, err = client.Get(metricsUrl)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
+				metrics = fetchMetricsWithDelay(client, 2*time.Second)
 
-				data, err = io.ReadAll(metricsResp.Body)
-				Expect(err).NotTo(HaveOccurred())
-				metrics = string(data)
 				// The requests finished running, expect 0 usage
 				Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.ReqRunningMetricName, 0)))
 				Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.KVCacheUsageMetricName, 0)))
@@ -896,14 +806,8 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 				Expect(err).NotTo(HaveOccurred())
 			}
 
-			time.Sleep(500 * time.Millisecond)
-			metricsResp, err := client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
-
-			data, err := io.ReadAll(metricsResp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metricsLines := strings.Split(string(data), "\n")
+			metricsData := fetchMetricsWithDelay(client, 500*time.Millisecond)
+			metricsLines := strings.Split(metricsData, "\n")
 
 			queries := findIntMetric(metricsLines, getCountMetricPrefix(common.QwenModelName, simulator.PrefixCacheQueriesTotalMetricName))
 			Expect(queries).NotTo(BeNil())
@@ -925,13 +829,8 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 			client, err := startServerWithArgsAndEnv(ctx, common.ModeRandom, args, map[string]string{"POD_IP": "localhost"})
 			Expect(err).NotTo(HaveOccurred())
 
-			metricsResp, err := client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
+			metrics := fetchMetrics(client)
 
-			data, err := io.ReadAll(metricsResp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metrics := string(data)
 			Expect(metrics).To(ContainSubstring("vllm:cache_config_info{block_size=\"8\",num_gpu_blocks=\"16\"} 1"))
 		})
 	})
@@ -994,14 +893,8 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 			}
 
 			reqWg.Wait()
-			time.Sleep(300 * time.Millisecond)
-			metricsResp, err := client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(metricsResp.StatusCode).To(Equal(http.StatusOK))
 
-			data, err := io.ReadAll(metricsResp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metrics := string(data)
+			metrics := fetchMetrics(client)
 
 			for _, boundary := range common.RequestLatencyBucketsBoundaries {
 				if boundary < 1.5 {

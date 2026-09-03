@@ -65,6 +65,25 @@ const (
 var userMsgTokens int64
 var userMsgChatTokens int64
 
+func fetchMetricsWithDelay(client *http.Client, delay time.Duration) string {
+	time.Sleep(delay)
+
+	resp, err := client.Get(metricsUrl)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	gomega.Expect(resp.StatusCode).To(gomega.Equal(http.StatusOK))
+
+	data, err := io.ReadAll(resp.Body)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	return string(data)
+}
+
+// fetchMetrics sleeps briefly to let async metric updates land, then scrapes
+// /metrics and returns the body as a string. It asserts the HTTP call
+// succeeds via gomega.
+func fetchMetrics(client *http.Client) string {
+	return fetchMetricsWithDelay(client, 200*time.Millisecond)
+}
+
 // Starts server in the given mode, no additional arguments or environment variables
 func startServer(ctx context.Context, mode string) (*http.Client, error) {
 	return startServerWithArgsAndEnv(ctx, mode, nil, nil)
@@ -648,14 +667,7 @@ func checkBucketBoundary(metrics string, modelName string, metricName string, bu
 func checkLatencyMetrics(client *http.Client, modelName string, numOfInputTokens int, numOfOutputTokens int, ttft int,
 	prefillTimePerToken int, interTokenLatency int, kvcacheTransferLatency int, kvCacheTransferTimePerToken int, doRemotePrefill bool) {
 	// wait a little bit and check metrics
-	time.Sleep(300 * time.Millisecond)
-	metricsResp, err := client.Get(metricsUrl)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	gomega.Expect(metricsResp.StatusCode).To(gomega.Equal(http.StatusOK))
-
-	data, err := io.ReadAll(metricsResp.Body)
-	gomega.Expect(err).NotTo(gomega.HaveOccurred())
-	metrics := string(data)
+	metrics := fetchMetrics(client)
 
 	expectedPrefillTimeInSecs := 0.0
 	if doRemotePrefill {

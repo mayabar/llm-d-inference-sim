@@ -28,6 +28,7 @@ import (
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 	"github.com/llm-d/llm-d-inference-sim/pkg/simulator"
+	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openai/openai-go/v3"
@@ -77,13 +78,7 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			client, err := startServerWithArgs(ctx, args)
 			Expect(err).NotTo(HaveOccurred())
 
-			resp, err := client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			data, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metricsData := string(data)
+			metricsData := fetchMetrics(client)
 
 			Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.ReqRunningMetricName, 10)))
 			Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.ReqWaitingMetricName, 30)))
@@ -167,14 +162,7 @@ var _ = Describe("Fake metrics", Ordered, func() {
 
 			var prevKVCacheUsage float64
 			for i := 1; i <= 5; i++ {
-				time.Sleep(200 * time.Millisecond)
-				resp, err := client.Get(metricsUrl)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-				data, err := io.ReadAll(resp.Body)
-				Expect(err).NotTo(HaveOccurred())
-				metrics := string(data)
+				metrics := fetchMetrics(client)
 				metricsLines := strings.Split(metrics, "\n")
 
 				// Running requests: should be various values in [1, 5]
@@ -214,14 +202,7 @@ var _ = Describe("Fake metrics", Ordered, func() {
 
 			prevKVCacheUsage := float64(1)
 			for i := 1; i <= 5; i++ {
-				time.Sleep(200 * time.Millisecond)
-				resp, err := client.Get(metricsUrl)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-				data, err := io.ReadAll(resp.Body)
-				Expect(err).NotTo(HaveOccurred())
-				metrics := string(data)
+				metrics := fetchMetrics(client)
 				metricsLines := strings.Split(metrics, "\n")
 
 				// KV cache usage: should decrease from 1 towards 0, and reset at 550ms (i=3)
@@ -260,13 +241,7 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			client, err := startServerWithArgs(ctx, args)
 			Expect(err).NotTo(HaveOccurred())
 
-			resp, err := client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			data, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metrics := string(data)
+			metrics := fetchMetrics(client)
 
 			// Verify that the explicit totals are used
 			Expect(metrics).To(ContainSubstring(fmt.Sprintf(`vllm:prompt_tokens_total{model_name="%s"} 12345`, common.TestModelName)))
@@ -351,13 +326,8 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			client, err := startServerWithArgs(ctx, args)
 			Expect(err).NotTo(HaveOccurred())
 
-			resp, err := client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+			metrics := fetchMetrics(client)
 
-			data, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metrics := string(data)
 			Expect(metrics).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.PrefixCacheQueriesTotalMetricName, 1000)))
 			Expect(metrics).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.PrefixCacheHitsTotalMetricName, 500)))
 		})
@@ -386,15 +356,8 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			})
 			Expect(err).NotTo(HaveOccurred())
 
-			time.Sleep(500 * time.Millisecond)
+			metrics := fetchMetrics(client)
 
-			resp, err := client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			data, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metrics := string(data)
 			// Fake values should be unchanged — reportPrefixCacheStats returns early when FakeMetrics is set
 			Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.PrefixCacheQueriesTotalMetricName, 200)))
 			Expect(metrics).To(ContainSubstring(getCountMetricLine(common.QwenModelName, simulator.PrefixCacheHitsTotalMetricName, 100)))
@@ -412,13 +375,7 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			client, err := startServerWithArgs(ctx, args)
 			Expect(err).NotTo(HaveOccurred())
 
-			resp, err := client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			data, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metrics := string(data)
+			metrics := fetchMetrics(client)
 
 			for _, boundary := range common.TTFTBucketsBoundaries {
 				Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.TTFTMetricName, boundary, 0)))
@@ -444,13 +401,7 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			client, err := startServerWithArgs(ctx, args)
 			Expect(err).NotTo(HaveOccurred())
 
-			resp, err := client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			data, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metrics := string(data)
+			metrics := fetchMetrics(client)
 
 			// buckets counts should be 0, 1, 3, 3, 3, ...
 			var expectedCount int
@@ -494,15 +445,7 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			client, err := startServerWithArgs(ctx, args)
 			Expect(err).NotTo(HaveOccurred())
 
-			time.Sleep(200 * time.Millisecond)
-
-			resp, err := client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			data, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metrics := string(data)
+			metrics := fetchMetrics(client)
 			metricsLines := strings.Split(metrics, "\n")
 
 			// Running requests: should be various values in [1, 5]
@@ -524,19 +467,11 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			req, err := http.NewRequest("POST", updateFakeMetricsUrl, strings.NewReader(reqBody))
 			Expect(err).NotTo(HaveOccurred())
 			req.Header.Set("Content-Type", "application/json")
-			resp, err = client.Do(req)
+			resp, err := client.Do(req)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(http.StatusNoContent))
 
-			time.Sleep(200 * time.Millisecond)
-
-			resp, err = client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			data, err = io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metrics = string(data)
+			metrics = fetchMetrics(client)
 
 			Expect(metrics).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.ReqRunningMetricName, 15)))
 			Expect(metrics).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.ReqWaitingMetricName, 0)))
@@ -556,15 +491,7 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(http.StatusNoContent))
 
-			time.Sleep(400 * time.Millisecond)
-
-			resp, err = client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			data, err = io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metrics = string(data)
+			metrics = fetchMetrics(client)
 			metricsLines = strings.Split(metrics, "\n")
 
 			// Running requests: should be various values in [10, 50]
@@ -597,13 +524,7 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
 			Expect(resp.Body.Close()).To(Succeed())
 
-			resp, err = client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			data, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metrics := string(data)
+			metrics := fetchMetrics(client)
 
 			Expect(metrics).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.ReqRunningMetricName, 7)))
 			Expect(metrics).To(ContainSubstring(getCountMetricLine(common.TestModelName, simulator.ReqWaitingMetricName, 8)))
@@ -613,7 +534,7 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			resp, err = client.Get("http://localhost/admin/config")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-			data, err = io.ReadAll(resp.Body)
+			data, err := io.ReadAll(resp.Body)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(data)).To(ContainSubstring(`"failure-injection-rate":42`))
 		})
@@ -631,13 +552,7 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			client, err := startServerWithArgs(ctx, args)
 			Expect(err).NotTo(HaveOccurred())
 
-			resp, err := client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			data, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metrics := string(data)
+			metrics := fetchMetrics(client)
 
 			for _, boundary := range common.TTFTBucketsBoundaries {
 				Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.TTFTMetricName, boundary, 0)))
@@ -667,17 +582,11 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			req, err := http.NewRequest("POST", updateFakeMetricsUrl, strings.NewReader(reqBody))
 			Expect(err).NotTo(HaveOccurred())
 			req.Header.Set("Content-Type", "application/json")
-			resp, err = client.Do(req)
+			resp, err := client.Do(req)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(http.StatusNoContent))
 
-			resp, err = client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			data, err = io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metrics = string(data)
+			metrics = fetchMetrics(client)
 			Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.TTFTMetricName, 0.001, 1)))
 			Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.TTFTMetricName, 0.005, 3)))
 			Expect(metrics).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, simulator.TTFTMetricName, 0.01, 6)))
@@ -706,13 +615,7 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify initial state
-			resp, err := client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			data, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metricsData := string(data)
+			metricsData := fetchMetrics(client)
 
 			// Initial latency buckets: counts should be 0, 1, 3, 3, 3, ...
 			var expectedCount int
@@ -761,17 +664,11 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			req, err := http.NewRequest("POST", updateFakeMetricsUrl, strings.NewReader(reqBody))
 			Expect(err).NotTo(HaveOccurred())
 			req.Header.Set("Content-Type", "application/json")
-			resp, err = client.Do(req)
+			resp, err := client.Do(req)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(http.StatusNoContent))
 
-			resp, err = client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			data, err = io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metricsData = string(data)
+			metricsData = fetchMetrics(client)
 
 			// After update: latency buckets [1, 0, 0, 1] → counts: 1, 1, 1, 2, 2, ...
 			for i, boundary := range common.RequestLatencyBucketsBoundaries {
@@ -825,13 +722,7 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify initial state
-			resp, err := client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			data, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metrics := string(data)
+			metrics := fetchMetrics(client)
 
 			Expect(metrics).To(ContainSubstring(fmt.Sprintf(`vllm:request_success_total{finish_reason="stop",model_name="%s"} 20`, common.TestModelName)))
 			Expect(metrics).To(ContainSubstring(fmt.Sprintf(`vllm:request_success_total{finish_reason="length",model_name="%s"} 5`, common.TestModelName)))
@@ -848,17 +739,11 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			req, err := http.NewRequest("POST", updateFakeMetricsUrl, strings.NewReader(reqBody))
 			Expect(err).NotTo(HaveOccurred())
 			req.Header.Set("Content-Type", "application/json")
-			resp, err = client.Do(req)
+			resp, err := client.Do(req)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(http.StatusNoContent))
 
-			resp, err = client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			data, err = io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metrics = string(data)
+			metrics = fetchMetrics(client)
 
 			// After update: values should be replaced, not accumulated
 			Expect(metrics).To(ContainSubstring(fmt.Sprintf(`vllm:request_success_total{finish_reason="stop",model_name="%s"} 100`, common.TestModelName)))
@@ -885,13 +770,7 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			// Verify initial state
-			resp, err := client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			data, err := io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metrics := string(data)
+			metrics := fetchMetrics(client)
 
 			Expect(metrics).To(ContainSubstring(`vllm:lora_requests_info{max_lora="1",running_lora_adapters="lora1,lora2",waiting_lora_adapters="lora3"} 1.000000001e+09`))
 			Expect(metrics).To(ContainSubstring(`vllm:lora_requests_info{max_lora="1",running_lora_adapters="lora1",waiting_lora_adapters=""} 1.000000002e+09`))
@@ -906,17 +785,11 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			req, err := http.NewRequest("POST", updateFakeMetricsUrl, strings.NewReader(reqBody))
 			Expect(err).NotTo(HaveOccurred())
 			req.Header.Set("Content-Type", "application/json")
-			resp, err = client.Do(req)
+			resp, err := client.Do(req)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(http.StatusNoContent))
 
-			resp, err = client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			data, err = io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metrics = string(data)
+			metrics = fetchMetrics(client)
 
 			// Old lora entries should be gone, only new one present
 			Expect(metrics).NotTo(ContainSubstring("lora1"))
@@ -936,13 +809,7 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(resp.StatusCode).To(Equal(http.StatusNoContent))
 
-			resp, err = client.Get(metricsUrl)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-			data, err = io.ReadAll(resp.Body)
-			Expect(err).NotTo(HaveOccurred())
-			metrics = string(data)
+			metrics = fetchMetrics(client)
 
 			// Old lora entries should be gone, only a new empty one present
 			Expect(metrics).NotTo(ContainSubstring("lora4"))
@@ -978,13 +845,7 @@ var _ = Describe("Fake metrics", Ordered, func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				// Verify initial state
-				resp, err := client.Get(metricsUrl)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-				data, err := io.ReadAll(resp.Body)
-				Expect(err).NotTo(HaveOccurred())
-				metrics := string(data)
+				metrics := fetchMetrics(client)
 
 				verifyTokenMetrics(metrics, simulator.PromptTokensMetricName, simulator.PromptTokensTotalMetricName, initialPrompt)
 				verifyTokenMetrics(metrics, simulator.GenerationTokensMetricName, simulator.GenerationTokensTotalMetricName, initialGen)
@@ -993,17 +854,11 @@ var _ = Describe("Fake metrics", Ordered, func() {
 				req, err := http.NewRequest("POST", updateFakeMetricsUrl, strings.NewReader(firstUpdate))
 				Expect(err).NotTo(HaveOccurred())
 				req.Header.Set("Content-Type", "application/json")
-				resp, err = client.Do(req)
+				resp, err := client.Do(req)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(http.StatusNoContent))
 
-				resp, err = client.Get(metricsUrl)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-				data, err = io.ReadAll(resp.Body)
-				Expect(err).NotTo(HaveOccurred())
-				metrics = string(data)
+				metrics = fetchMetrics(client)
 
 				verifyTokenMetrics(metrics, simulator.PromptTokensMetricName, simulator.PromptTokensTotalMetricName, firstPrompt)
 				verifyTokenMetrics(metrics, simulator.GenerationTokensMetricName, simulator.GenerationTokensTotalMetricName, firstGen)
@@ -1016,13 +871,7 @@ var _ = Describe("Fake metrics", Ordered, func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(resp.StatusCode).To(Equal(http.StatusNoContent))
 
-				resp, err = client.Get(metricsUrl)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-				data, err = io.ReadAll(resp.Body)
-				Expect(err).NotTo(HaveOccurred())
-				metrics = string(data)
+				metrics = fetchMetrics(client)
 
 				verifyTokenMetrics(metrics, simulator.PromptTokensMetricName, simulator.PromptTokensTotalMetricName, secondPrompt)
 				verifyTokenMetrics(metrics, simulator.GenerationTokensMetricName, simulator.GenerationTokensTotalMetricName, secondGen)
