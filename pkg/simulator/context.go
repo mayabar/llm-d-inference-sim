@@ -289,10 +289,8 @@ func (s *SimContext) simulateTTFT(respCtx ResponseContext) {
 	}
 	ttft := s.latencyCalc().GetTimeToFirstToken(&params)
 	time.Sleep(ttft)
-	if s.metricsBus != nil {
-		common.WriteToChannel(s.metricsBus.PrefillEnded,
-			metrics.PrefillEnded{PrefillDuration: ttft.Seconds()}, s.logger)
-	}
+	common.WriteToChannel(s.metricsBus.PrefillEnded,
+		metrics.PrefillEnded{PrefillDuration: ttft.Seconds()}, s.logger)
 }
 
 func (s *SimContext) simulateImageGenerationLatency() {
@@ -307,10 +305,8 @@ func (s *SimContext) simulateInterTokenLatency() {
 		RunningReqs: s.nRunningReqs.Load()})
 	time.Sleep(perTokenLatency)
 
-	if s.metricsBus != nil {
-		common.WriteToChannel(s.metricsBus.TokenGenerated,
-			metrics.TokenGenerated{InterTokenLatency: perTokenLatency.Seconds()}, s.logger)
-	}
+	common.WriteToChannel(s.metricsBus.TokenGenerated,
+		metrics.TokenGenerated{InterTokenLatency: perTokenLatency.Seconds()}, s.logger)
 }
 
 // CreateModelsResponse creates and returns ModelResponse for the current state, returned array of models contains the base model + LoRA adapters if exist

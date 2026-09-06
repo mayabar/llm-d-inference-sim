@@ -21,6 +21,8 @@ package metrics
 
 import (
 	"context"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -76,13 +78,6 @@ const (
 	VLLMTokenMetricPrompt VLLMTokenMetricKind = iota
 	VLLMTokenMetricGeneration
 )
-
-type activeGenerator struct {
-	fn         Generator
-	params     *common.FunctionInfo
-	roundToInt bool
-	updateFunc func(upd common.MetricInfo)
-}
 
 var modelLabel = []string{api.PromLabelModelName}
 
@@ -161,10 +156,11 @@ type TokenMetricReset struct {
 }
 
 // LoRAUpdate is the discriminated-union payload for lorasChan. Event-side
-// producers set Usage; the fake-metrics applier sets Reset.
+// producers set Snapshot with the current per-LoRA counts; the fake-metrics
+// applier sets Reset.
 type LoRAUpdate struct {
-	Usage *loraUsage
-	Reset *LoRAReset
+	Snapshot *loraSetsChanged
+	Reset    *LoRAReset
 }
 
 // LoRAReset carries the target state for lora_requests_info: unregister,
@@ -253,11 +249,6 @@ type VLLMMetricsAdapter struct {
 	requestSuccessChan    common.Channel[RequestSuccessUpdate]
 	lorasChan             common.Channel[LoRAUpdate]
 
-	// LoRA ref-counted sets, mutated only by lorasUpdater. sync.Map matches
-	// the shape used by metrics.go so the two implementations stay in sync.
-	runningLoras sync.Map
-	waitingLoras sync.Map
-
 	// nWaitingReqs / nRunningReqs are the adapter-local counters mirrored
 	// onto the num_requests_{waiting,running} gauges.
 	nWaitingReqs int64
@@ -305,25 +296,26 @@ func (m *VLLMMetricsAdapter) Close() error {
 // handler, which forwards the event onto the per-metric channel that
 // NewVLLMMetricsAdapter already stood up.
 func (m *VLLMMetricsAdapter) Start(ctx context.Context) error {
-	go drain(ctx, m.bus.RequestQueued, m.OnRequestQueued)
-	go drain(ctx, m.bus.RequestDequeued, m.OnRequestDequeued)
-	go drain(ctx, m.bus.RequestRunning, m.OnRequestRunning)
-	go drain(ctx, m.bus.PrefillStarted, m.OnPrefillStarted)
-	go drain(ctx, m.bus.PrefillEnded, m.OnPrefillEnded)
-	go drain(ctx, m.bus.DecodeStarted, m.OnDecodeStarted)
-	go drain(ctx, m.bus.TokenGenerated, m.OnTokenGenerated)
-	go drain(ctx, m.bus.DecodeEnded, m.OnDecodeEnded)
-	go drain(ctx, m.bus.RequestSucceeded, m.OnRequestSucceeded)
-	go drain(ctx, m.bus.RequestFailed, m.OnRequestFailed)
-	go drain(ctx, m.bus.KVCacheUsage, m.OnKVCacheUsageChanged)
-	go drain(ctx, m.bus.PrefixCacheQuery, m.OnPrefixCacheQueried)
+	go subscribe(ctx, m.bus.RequestQueued, m.onRequestQueued)
+	go subscribe(ctx, m.bus.RequestDequeued, m.onRequestDequeued)
+	go subscribe(ctx, m.bus.RequestRunning, m.onRequestRunning)
+	go subscribe(ctx, m.bus.PrefillStarted, m.onPrefillStarted)
+	go subscribe(ctx, m.bus.PrefillEnded, m.onPrefillEnded)
+	go subscribe(ctx, m.bus.DecodeStarted, m.onDecodeStarted)
+	go subscribe(ctx, m.bus.TokenGenerated, m.onTokenGenerated)
+	go subscribe(ctx, m.bus.DecodeEnded, m.onDecodeEnded)
+	go subscribe(ctx, m.bus.RequestSucceeded, m.onRequestSucceeded)
+	go subscribe(ctx, m.bus.RequestFailed, m.onRequestFailed)
+	go subscribe(ctx, m.bus.KVCacheUsage, m.onKVCacheUsageChanged)
+	go subscribe(ctx, m.bus.PrefixCacheQuery, m.onPrefixCacheQueried)
+	go subscribe(ctx, m.bus.loraSetsChanged, m.onLoRASetsChanged)
 
 	if m.config.FakeMetrics != nil {
 		fm := *m.config.FakeMetrics
 		if fm.LoraMetrics == nil {
 			fm.LoraMetrics = []common.LorasMetrics{}
 		}
-		if err := m.ApplyUpdate(&fm); err != nil {
+		if err := m.applyUpdate(&fm); err != nil {
 			return err
 		}
 	}
@@ -480,8 +472,8 @@ func (m *VLLMMetricsAdapter) applyHistogramReset(histPP **prometheus.HistogramVe
 	InitFakeHistogram(*histPP, m.config.DisplayModelName, reset.Buckets, reset.Samples)
 }
 
-// drain reads events from ch and dispatches them to fn until ctx is done.
-func drain[E any](ctx context.Context, ch common.Channel[E], fn func(E)) {
+// subscribe reads events from ch and dispatches them to fn until ctx is done.
+func subscribe[E any](ctx context.Context, ch common.Channel[E], fn func(E)) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -560,33 +552,29 @@ func (m *VLLMMetricsAdapter) writeToLoRAs(upd LoRAUpdate) {
 
 // -- Event handlers  -------------------
 
-func (m *VLLMMetricsAdapter) OnRequestReceived(_ RequestReceived) {
+func (m *VLLMMetricsAdapter) onRequestReceived(_ RequestReceived) {
 	// State marker; no exposed metric today.
 }
 
-func (m *VLLMMetricsAdapter) OnRequestRejected(_ RequestRejected) {
+func (m *VLLMMetricsAdapter) onRequestRejected(_ RequestRejected) {
 	// State marker; no exposed metric today.
 }
 
 // request queued
 // - update number of waiting requests
 // - update LoRA state if applicable
-func (m *VLLMMetricsAdapter) OnRequestQueued(ev RequestQueued) {
+func (m *VLLMMetricsAdapter) onRequestQueued(ev RequestQueued) {
 	if m.config.FakeMetrics != nil {
 		return
 	}
 	m.writeToWaitingReq(common.MetricInfo{Value: 1, IsFake: ev.IsFake})
-
-	if ev.IsLoRA {
-		m.writeToLoRAs(LoRAUpdate{Usage: &loraUsage{name: ev.Model, state: waitingUsageState}})
-	}
 }
 
 // request dequeued
 // - update number of waiting requests
 // - update queue time histogram
 // lora will be marked as runnning in OnRequestRunning
-func (m *VLLMMetricsAdapter) OnRequestDequeued(ev RequestDequeued) {
+func (m *VLLMMetricsAdapter) onRequestDequeued(ev RequestDequeued) {
 	if m.config.FakeMetrics != nil {
 		return
 	}
@@ -598,26 +586,22 @@ func (m *VLLMMetricsAdapter) OnRequestDequeued(ev RequestDequeued) {
 // request running
 // - update number of running requests
 // - update LoRA state if applicable
-func (m *VLLMMetricsAdapter) OnRequestRunning(ev RequestRunning) {
+func (m *VLLMMetricsAdapter) onRequestRunning(ev RequestRunning) {
 	if m.config.FakeMetrics != nil {
 		return
 	}
 	m.writeToRunReq(common.MetricInfo{Value: 1, IsFake: ev.IsFake})
-
-	if ev.IsLoRA {
-		m.writeToLoRAs(LoRAUpdate{Usage: &loraUsage{name: ev.Model, state: runningUsageState}})
-	}
 }
 
 // prefill started
-func (m *VLLMMetricsAdapter) OnPrefillStarted(_ PrefillStarted) {
+func (m *VLLMMetricsAdapter) onPrefillStarted(_ PrefillStarted) {
 	// State marker.
 }
 
 // prefill step ended
 // - update prefill time histogram
 // - update TTFT histogram
-func (m *VLLMMetricsAdapter) OnPrefillEnded(ev PrefillEnded) {
+func (m *VLLMMetricsAdapter) onPrefillEnded(ev PrefillEnded) {
 	if m.config.FakeMetrics != nil {
 		return
 	}
@@ -625,13 +609,13 @@ func (m *VLLMMetricsAdapter) OnPrefillEnded(ev PrefillEnded) {
 	m.writeToTTFT(observation(ev.PrefillDuration))
 }
 
-func (m *VLLMMetricsAdapter) OnDecodeStarted(_ DecodeStarted) {
+func (m *VLLMMetricsAdapter) onDecodeStarted(_ DecodeStarted) {
 	// State marker.
 }
 
 // token generated
 // - update tpot and itl latency histograms
-func (m *VLLMMetricsAdapter) OnTokenGenerated(ev TokenGenerated) {
+func (m *VLLMMetricsAdapter) onTokenGenerated(ev TokenGenerated) {
 	if m.config.FakeMetrics != nil {
 		return
 	}
@@ -643,7 +627,7 @@ func (m *VLLMMetricsAdapter) OnTokenGenerated(ev TokenGenerated) {
 // decode ended
 // - update decode time histogram
 // - update requests tpot histogram
-func (m *VLLMMetricsAdapter) OnDecodeEnded(ev DecodeEnded) {
+func (m *VLLMMetricsAdapter) onDecodeEnded(ev DecodeEnded) {
 	if m.config.FakeMetrics != nil {
 		return
 	}
@@ -656,7 +640,7 @@ func (m *VLLMMetricsAdapter) OnDecodeEnded(ev DecodeEnded) {
 
 // request processing finished successfully
 // - update all relevant metrics
-func (m *VLLMMetricsAdapter) OnRequestSucceeded(ev RequestSucceeded) {
+func (m *VLLMMetricsAdapter) onRequestSucceeded(ev RequestSucceeded) {
 	if m.config.FakeMetrics != nil {
 		return
 	}
@@ -665,19 +649,19 @@ func (m *VLLMMetricsAdapter) OnRequestSucceeded(ev RequestSucceeded) {
 	m.writeToE2EReqLatency(observation(ev.E2ELatency))
 	m.writeToReqInferenceTime(observation(ev.InferenceTime))
 
-	m.finishRunning(ev.Model, ev.IsLoRA, ev.IsFake)
+	m.finishRunning(ev.IsFake)
 }
 
 // request processing failed
 // - update all relevant metrics
-func (m *VLLMMetricsAdapter) OnRequestFailed(ev RequestFailed) {
+func (m *VLLMMetricsAdapter) onRequestFailed(ev RequestFailed) {
 	if m.config.FakeMetrics != nil {
 		return
 	}
 	m.writeToE2EReqLatency(observation(ev.E2ELatency))
 	m.writeToReqInferenceTime(observation(ev.InferenceTime))
 
-	m.finishRunning(ev.Model, ev.IsLoRA, ev.IsFake)
+	m.finishRunning(ev.IsFake)
 
 	if ev.Err != nil {
 		m.logger.V(logging.DEBUG).Info("request failed", "model", ev.Model, "err", ev.Err.Error())
@@ -686,7 +670,7 @@ func (m *VLLMMetricsAdapter) OnRequestFailed(ev RequestFailed) {
 
 // change in kv cache utilization
 // - update kv cache usage gauge
-func (m *VLLMMetricsAdapter) OnKVCacheUsageChanged(ev KVCacheUsageChanged) {
+func (m *VLLMMetricsAdapter) onKVCacheUsageChanged(ev KVCacheUsageChanged) {
 	if m.config.FakeMetrics != nil {
 		return
 	}
@@ -695,20 +679,27 @@ func (m *VLLMMetricsAdapter) OnKVCacheUsageChanged(ev KVCacheUsageChanged) {
 
 // change in prefix cache utilization
 // - update prefix cache hits and queries counters
-func (m *VLLMMetricsAdapter) OnPrefixCacheQueried(ev PrefixCacheQueried) {
+func (m *VLLMMetricsAdapter) onPrefixCacheQueried(ev PrefixCacheQueried) {
 	if m.config.FakeMetrics != nil {
 		return
 	}
 	m.writeToPrefixCacheStats(PrefixCacheStatUpdate{Query: &ev})
 }
 
-// finishRunning fans a request-terminal event out to the running-counter
-// channel (as a -1 delta) and, for LoRA requests, to the LoRA state channel.
-func (m *VLLMMetricsAdapter) finishRunning(model string, isLoRA, isFake bool) {
-	m.writeToRunReq(common.MetricInfo{Value: -1, IsFake: isFake})
-	if isLoRA {
-		m.writeToLoRAs(LoRAUpdate{Usage: &loraUsage{name: model, state: doneUsageState}})
+// OnLoRASetsChanged receives the per-LoRA waiting/running snapshot produced
+// by the bus after each LoRAChanged event and forwards it to the LoRA
+// updater goroutine.
+func (m *VLLMMetricsAdapter) onLoRASetsChanged(ev loraSetsChanged) {
+	if m.config.FakeMetrics != nil {
+		return
 	}
+	m.writeToLoRAs(LoRAUpdate{Snapshot: &ev})
+}
+
+// finishRunning decrements the running-request counter for a terminal
+// request. LoRA state transitions are handled separately via LoRAChanged.
+func (m *VLLMMetricsAdapter) finishRunning(isFake bool) {
+	m.writeToRunReq(common.MetricInfo{Value: -1, IsFake: isFake})
 }
 
 // -- Channel updates  -------------------
@@ -897,17 +888,8 @@ func (m *VLLMMetricsAdapter) lorasUpdater(ctx context.Context) {
 			return
 		case upd := <-m.lorasChan.Channel:
 			switch {
-			case upd.Usage != nil:
-				switch upd.Usage.state {
-				case waitingUsageState:
-					m.incrementLoraRefCount(upd.Usage.name, &m.waitingLoras)
-				case runningUsageState:
-					m.decrementLoraRefCount(upd.Usage.name, &m.waitingLoras)
-					m.incrementLoraRefCount(upd.Usage.name, &m.runningLoras)
-				case doneUsageState:
-					m.decrementLoraRefCount(upd.Usage.name, &m.runningLoras)
-				}
-				m.reportLoras()
+			case upd.Snapshot != nil:
+				m.reportLoras(*upd.Snapshot)
 			case upd.Reset != nil:
 				m.applyLoRAReset(upd.Reset)
 			}
@@ -1071,7 +1053,7 @@ func (m *VLLMMetricsAdapter) reportKVCacheUsage(value float64) {
 	}
 }
 
-func (m *VLLMMetricsAdapter) reportLoras() {
+func (m *VLLMMetricsAdapter) reportLoras(snap loraSetsChanged) {
 	if m.config.FakeMetrics != nil {
 		return
 	}
@@ -1079,25 +1061,13 @@ func (m *VLLMMetricsAdapter) reportLoras() {
 		return
 	}
 
-	var running []string
-	m.runningLoras.Range(func(key any, _ any) bool {
-		if lora, ok := key.(string); ok {
-			running = append(running, lora)
-		}
-		return true
-	})
-	var waiting []string
-	m.waitingLoras.Range(func(key any, _ any) bool {
-		if lora, ok := key.(string); ok {
-			waiting = append(waiting, lora)
-		}
-		return true
-	})
+	runningLoras := strings.Join(slices.Collect(maps.Keys(snap.Running)), ",")
+	waitingLoras := strings.Join(slices.Collect(maps.Keys(snap.Waiting)), ",")
 
 	m.loraInfo.WithLabelValues(
 		strconv.Itoa(m.config.MaxLoras),
-		strings.Join(running, ","),
-		strings.Join(waiting, ","),
+		runningLoras,
+		waitingLoras,
 	).Set(float64(time.Now().Unix()))
 }
 
@@ -1124,25 +1094,6 @@ func (m *VLLMMetricsAdapter) recordRequestMetricsOnSuccess(ev RequestSucceeded) 
 	m.requestSuccessTotal.WithLabelValues(m.config.DisplayModelName, ev.FinishReason).Inc()
 	if maxGenTokens, err := common.MaxIntSlice(ev.GenTokensPerChoice); err == nil {
 		m.maxNumGenerationTokens.WithLabelValues(m.config.DisplayModelName).Observe(float64(maxGenTokens))
-	}
-}
-
-func (m *VLLMMetricsAdapter) incrementLoraRefCount(lora string, theMap *sync.Map) {
-	count := 0
-	if value, ok := theMap.Load(lora); ok {
-		count = value.(int)
-	}
-	theMap.Store(lora, count+1)
-}
-
-func (m *VLLMMetricsAdapter) decrementLoraRefCount(lora string, theMap *sync.Map) {
-	if value, ok := theMap.Load(lora); ok {
-		count := value.(int)
-		if count > 1 {
-			theMap.Store(lora, count-1)
-		} else {
-			theMap.Delete(lora)
-		}
 	}
 }
 
@@ -1553,7 +1504,7 @@ func (m *VLLMMetricsAdapter) updateScalarLocked(key string, fm *common.FakeMetri
 	updateFunc(common.MetricInfo{Value: fm.FixedValue, IsFake: true})
 }
 
-func (m *VLLMMetricsAdapter) ApplyUpdate(update *common.FakeMetrics) error {
+func (m *VLLMMetricsAdapter) applyUpdate(update *common.FakeMetrics) error {
 	m.genMu.Lock()
 	defer m.genMu.Unlock()
 	generatorsWereEmpty := len(m.generators) == 0
@@ -1597,6 +1548,7 @@ func (m *VLLMMetricsAdapter) ApplyUpdate(update *common.FakeMetrics) error {
 
 	tokenBuckets := Build125Buckets(m.config.MaxModelLen)
 
+	// TODO change!
 	if update.RequestParamsMaxTokens != nil {
 		m.writeToRequestSuccess(RequestSuccessUpdate{ParamsMaxTokensReset: &HistogramReset{Buckets: tokenBuckets, Samples: update.RequestParamsMaxTokens}})
 	}

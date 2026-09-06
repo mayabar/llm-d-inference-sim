@@ -193,9 +193,12 @@ func (reqCtx *baseRequestContext) handleRequest() (ResponseContext, *api.Error) 
 		// set the lora index now that the lora is confirmed loaded
 		req.SetModelLoraID(reqCtx.sim.GetLoraID(dispModel))
 	}
-	if reqCtx.sim.metricsBus != nil {
-		common.WriteToChannel(reqCtx.sim.metricsBus.RequestRunning,
-			metrics.RequestRunning{BaseEvent: metrics.BaseEvent{Model: dispModel}, IsLoRA: isLoRA},
+	common.WriteToChannel(reqCtx.sim.metricsBus.RequestRunning,
+		metrics.RequestRunning{BaseEvent: metrics.BaseEvent{Model: dispModel}, IsLoRA: isLoRA},
+		reqCtx.sim.logger)
+	if isLoRA {
+		common.WriteToChannel(reqCtx.sim.metricsBus.LoRAChanged,
+			metrics.LoRAChanged{BaseEvent: metrics.BaseEvent{Model: dispModel}, State: metrics.LoRARunning},
 			reqCtx.sim.logger)
 	}
 

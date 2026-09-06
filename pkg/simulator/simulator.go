@@ -332,9 +332,12 @@ func (s *Simulator) addRequestToQueue(reqCtx requestContext) {
 	}
 	dispModel := reqCtx.request().GetDisplayedModel()
 	isLoRA := s.Context.isLora(dispModel)
-	if s.Context.metricsBus != nil {
-		common.WriteToChannel(s.Context.metricsBus.RequestQueued,
-			metrics.RequestQueued{BaseEvent: metrics.BaseEvent{Model: dispModel}, IsLoRA: isLoRA},
+	common.WriteToChannel(s.Context.metricsBus.RequestQueued,
+		metrics.RequestQueued{BaseEvent: metrics.BaseEvent{Model: dispModel}, IsLoRA: isLoRA},
+		s.Context.logger)
+	if isLoRA {
+		common.WriteToChannel(s.Context.metricsBus.LoRAChanged,
+			metrics.LoRAChanged{BaseEvent: metrics.BaseEvent{Model: dispModel}, State: metrics.LoRAWaiting},
 			s.Context.logger)
 	}
 }
@@ -425,14 +428,11 @@ func (s *Simulator) dequeue() requestContext {
 		if ok && item.reqCtx != nil && s.Context.loraIsLoaded(item.reqCtx.request().GetDisplayedModel()) {
 			s.waitingQueue.Remove(elem)
 			s.Context.incrementLora(item.reqCtx.request().GetDisplayedModel())
-			queueTime := time.Since(item.enqueueTime).Seconds()
-			if s.Context.metricsBus != nil {
-				common.WriteToChannel(s.Context.metricsBus.RequestDequeued,
-					metrics.RequestDequeued{
-						BaseEvent: metrics.BaseEvent{Model: item.reqCtx.request().GetDisplayedModel()},
-						QueueTime: queueTime,
-					}, s.Context.logger)
-			}
+			common.WriteToChannel(s.Context.metricsBus.RequestDequeued,
+				metrics.RequestDequeued{
+					BaseEvent: metrics.BaseEvent{Model: item.reqCtx.request().GetDisplayedModel()},
+					QueueTime: time.Since(item.enqueueTime).Seconds(),
+				}, s.Context.logger)
 			return item.reqCtx
 		}
 	}
@@ -442,14 +442,11 @@ func (s *Simulator) dequeue() requestContext {
 		item, ok := elem.Value.(waitingQueueItem)
 		if ok && item.reqCtx != nil && s.Context.loadLora(item.reqCtx.request().GetDisplayedModel()) {
 			s.waitingQueue.Remove(elem)
-			queueTime := time.Since(item.enqueueTime).Seconds()
-			if s.Context.metricsBus != nil {
-				common.WriteToChannel(s.Context.metricsBus.RequestDequeued,
-					metrics.RequestDequeued{
-						BaseEvent: metrics.BaseEvent{Model: item.reqCtx.request().GetDisplayedModel()},
-						QueueTime: queueTime,
-					}, s.Context.logger)
-			}
+			common.WriteToChannel(s.Context.metricsBus.RequestDequeued,
+				metrics.RequestDequeued{
+					BaseEvent: metrics.BaseEvent{Model: item.reqCtx.request().GetDisplayedModel()},
+					QueueTime: time.Since(item.enqueueTime).Seconds(),
+				}, s.Context.logger)
 			return item.reqCtx
 		}
 	}
@@ -523,12 +520,9 @@ func (s *Simulator) simulateResponseProcessing(respCtx ResponseContext) {
 				}
 			}
 		}
-		decodeTime := time.Since(startDecode).Seconds()
-		if s.Context.metricsBus != nil {
-			common.WriteToChannel(s.Context.metricsBus.DecodeEnded,
-				metrics.DecodeEnded{GenerationTokens: nTokens, DecodeDuration: decodeTime},
-				s.Context.logger)
-		}
+		common.WriteToChannel(s.Context.metricsBus.DecodeEnded,
+			metrics.DecodeEnded{GenerationTokens: nTokens, DecodeDuration: time.Since(startDecode).Seconds()},
+			s.Context.logger)
 
 		if reqCtx.request().SendImage() {
 			s.Context.simulateImageGenerationLatency()

@@ -70,15 +70,18 @@ func (s *Simulator) processRequest(reqCtx requestContext) {
 		common.WriteToChannel(reqCtx.responseChannel(),
 			&ResponseInfo{RespCtx: respCtx, Err: err, ChoiceIdx: reqCtx.choiceIndex()},
 			s.Context.logger)
-		if s.Context.metricsBus != nil {
-			// api.Error is a struct wire type (not error interface); drop it here
-			common.WriteToChannel(s.Context.metricsBus.RequestFailed,
-				metrics.RequestFailed{
-					BaseEvent:     metrics.BaseEvent{Model: dispModel},
-					IsLoRA:        isLoRA,
-					E2ELatency:    time.Since(reqCtx.startProcessingTime()).Seconds(),
-					InferenceTime: time.Since(startTime).Seconds(),
-				}, s.Context.logger)
+		// api.Error is a struct wire type (not error interface); drop it here
+		common.WriteToChannel(s.Context.metricsBus.RequestFailed,
+			metrics.RequestFailed{
+				BaseEvent:     metrics.BaseEvent{Model: dispModel},
+				IsLoRA:        isLoRA,
+				E2ELatency:    time.Since(reqCtx.startProcessingTime()).Seconds(),
+				InferenceTime: time.Since(startTime).Seconds(),
+			}, s.Context.logger)
+		if isLoRA {
+			common.WriteToChannel(s.Context.metricsBus.LoRAChanged,
+				metrics.LoRAChanged{BaseEvent: metrics.BaseEvent{Model: dispModel}, State: metrics.LoRADone},
+				s.Context.logger)
 		}
 		return
 	}
@@ -86,19 +89,22 @@ func (s *Simulator) processRequest(reqCtx requestContext) {
 	s.simulateResponseProcessing(respCtx)
 	s.Context.logger.V(logging.DEBUG).Info("Finished processing request", "id", req.GetRequestID())
 
-	if s.Context.metricsBus != nil {
-		common.WriteToChannel(s.Context.metricsBus.RequestSucceeded,
-			metrics.RequestSucceeded{
-				BaseEvent:          metrics.BaseEvent{Model: dispModel},
-				IsLoRA:             isLoRA,
-				PromptTokens:       respCtx.UsageData().PromptTokens,
-				GenerationTokens:   respCtx.UsageData().CompletionTokens,
-				GenTokensPerChoice: []int{respCtx.UsageData().CompletionTokens},
-				MaxTokens:          req.GetMaxCompletionTokens(),
-				FinishReason:       *respCtx.FinishReason(),
-				E2ELatency:         time.Since(reqCtx.startProcessingTime()).Seconds(),
-				InferenceTime:      time.Since(startTime).Seconds(),
-			}, s.Context.logger)
+	common.WriteToChannel(s.Context.metricsBus.RequestSucceeded,
+		metrics.RequestSucceeded{
+			BaseEvent:          metrics.BaseEvent{Model: dispModel},
+			IsLoRA:             isLoRA,
+			PromptTokens:       respCtx.UsageData().PromptTokens,
+			GenerationTokens:   respCtx.UsageData().CompletionTokens,
+			GenTokensPerChoice: []int{respCtx.UsageData().CompletionTokens},
+			MaxTokens:          req.GetMaxCompletionTokens(),
+			FinishReason:       *respCtx.FinishReason(),
+			E2ELatency:         time.Since(reqCtx.startProcessingTime()).Seconds(),
+			InferenceTime:      time.Since(startTime).Seconds(),
+		}, s.Context.logger)
+	if isLoRA {
+		common.WriteToChannel(s.Context.metricsBus.LoRAChanged,
+			metrics.LoRAChanged{BaseEvent: metrics.BaseEvent{Model: dispModel}, State: metrics.LoRADone},
+			s.Context.logger)
 	}
 }
 

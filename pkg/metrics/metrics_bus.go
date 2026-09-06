@@ -18,6 +18,7 @@ package metrics
 
 import (
 	"context"
+	"sync"
 
 	"github.com/go-logr/logr"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
@@ -35,22 +36,23 @@ type EngineMetricsAdapter interface {
 	Start(ctx context.Context) error
 	Close() error
 
-	OnRequestReceived(ev RequestReceived)
-	OnRequestQueued(ev RequestQueued)
-	OnRequestDequeued(ev RequestDequeued)
-	OnRequestRunning(ev RequestRunning)
-	OnPrefillStarted(ev PrefillStarted)
-	OnPrefillEnded(ev PrefillEnded)
-	OnDecodeStarted(ev DecodeStarted)
-	OnTokenGenerated(ev TokenGenerated)
-	OnDecodeEnded(ev DecodeEnded)
-	OnRequestSucceeded(ev RequestSucceeded)
-	OnRequestFailed(ev RequestFailed)
-	OnRequestRejected(ev RequestRejected)
-	OnKVCacheUsageChanged(ev KVCacheUsageChanged)
-	OnPrefixCacheQueried(ev PrefixCacheQueried)
+	onRequestReceived(ev RequestReceived)
+	onRequestQueued(ev RequestQueued)
+	onRequestDequeued(ev RequestDequeued)
+	onRequestRunning(ev RequestRunning)
+	onPrefillStarted(ev PrefillStarted)
+	onPrefillEnded(ev PrefillEnded)
+	onDecodeStarted(ev DecodeStarted)
+	onTokenGenerated(ev TokenGenerated)
+	onDecodeEnded(ev DecodeEnded)
+	onRequestSucceeded(ev RequestSucceeded)
+	onRequestFailed(ev RequestFailed)
+	onRequestRejected(ev RequestRejected)
+	onKVCacheUsageChanged(ev KVCacheUsageChanged)
+	onPrefixCacheQueried(ev PrefixCacheQueried)
+	onLoRASetsChanged(ev loraSetsChanged)
 
-	ApplyUpdate(update *common.FakeMetrics) error
+	applyUpdate(update *common.FakeMetrics) error
 }
 
 // MetricsBus carries state-change events from producers to the engine
@@ -60,6 +62,10 @@ type MetricsBus struct {
 	adapter  EngineMetricsAdapter
 	logger   logr.Logger
 	registry *prometheus.Registry
+
+	// Per-LoRA waiting/running request counts, mutated only by the LoRAChanged subscriber
+	runningLoras sync.Map
+	waitingLoras sync.Map
 
 	RequestQueued    common.Channel[RequestQueued]
 	RequestDequeued  common.Channel[RequestDequeued]
@@ -73,10 +79,81 @@ type MetricsBus struct {
 	RequestFailed    common.Channel[RequestFailed]
 	KVCacheUsage     common.Channel[KVCacheUsageChanged]
 	PrefixCacheQuery common.Channel[PrefixCacheQueried]
+	// LoRAChanged carries all LoRA request transitions on one channel to preserve per-request ordering.
+	LoRAChanged common.Channel[LoRAChanged]
+	// loraSetsChanged is emitted by the bus after each LoRAChanged event with the per-LoRA waiting/running counts.
+	loraSetsChanged common.Channel[loraSetsChanged]
 }
 
 func (b *MetricsBus) Start(ctx context.Context) error {
+	// start LoRA counter loop before starting the adapter,
+	// so that the first LoRAChanged event is processed before the first LoRASetsChanged event.
+	go b.loraCounterLoop(ctx)
+
 	return b.adapter.Start(ctx)
+}
+
+// loraCounterLoop subscribes to LoRAChanged, mutates the per-LoRA waiting/running
+// counters, and forwards a snapshot on LoRASetsChanged.
+func (b *MetricsBus) loraCounterLoop(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case ev := <-b.LoRAChanged.Channel:
+			switch ev.State {
+			case LoRAWaiting:
+				b.incrementLoraRefCount(ev.Model, &b.waitingLoras)
+			case LoRARunning:
+				b.decrementLoraRefCount(ev.Model, &b.waitingLoras)
+				b.incrementLoraRefCount(ev.Model, &b.runningLoras)
+			case LoRADone:
+				b.decrementLoraRefCount(ev.Model, &b.runningLoras)
+			default:
+				// invalid event
+				continue
+			}
+
+			common.WriteToChannel(b.loraSetsChanged, b.snapshotLoraSets(ev.IsFake), b.logger)
+		}
+	}
+}
+
+func (b *MetricsBus) snapshotLoraSets(isFake bool) loraSetsChanged {
+	running := make(map[string]int)
+	b.runningLoras.Range(func(k, v any) bool {
+		running[k.(string)] = v.(int)
+		return true
+	})
+	waiting := make(map[string]int)
+	b.waitingLoras.Range(func(k, v any) bool {
+		waiting[k.(string)] = v.(int)
+		return true
+	})
+	return loraSetsChanged{
+		BaseEvent: BaseEvent{IsFake: isFake},
+		Running:   running,
+		Waiting:   waiting,
+	}
+}
+
+func (b *MetricsBus) incrementLoraRefCount(lora string, theMap *sync.Map) {
+	count := 0
+	if value, ok := theMap.Load(lora); ok {
+		count = value.(int)
+	}
+	theMap.Store(lora, count+1)
+}
+
+func (b *MetricsBus) decrementLoraRefCount(lora string, theMap *sync.Map) {
+	if value, ok := theMap.Load(lora); ok {
+		count := value.(int)
+		if count > 1 {
+			theMap.Store(lora, count-1)
+		} else {
+			theMap.Delete(lora)
+		}
+	}
 }
 
 // ApplyFakeMetricsUpdate forwards a partial fake-metrics update to the
@@ -87,7 +164,7 @@ func (b *MetricsBus) ApplyFakeMetricsUpdate(update *common.FakeMetrics) error {
 	if b == nil || update == nil {
 		return nil
 	}
-	return b.adapter.ApplyUpdate(update)
+	return b.adapter.applyUpdate(update)
 }
 
 // -- Events -----------------------------------------------------------------
@@ -211,19 +288,31 @@ type PrefixCacheQueried struct {
 	CachedPromptTokens int
 }
 
+// LoRAState identifies the transition a LoRA-carrying request has made.
+type LoRAState int
+
 const (
-	waitingUsageState loraUsageState = iota
-	runningUsageState
-	doneUsageState
+	// LoRAWaiting: request has just been enqueued for a LoRA.
+	LoRAWaiting LoRAState = iota
+	// LoRARunning: request for a LoRA has been picked up by a worker.
+	LoRARunning
+	// LoRADone: request for a LoRA has completed (success or failure).
+	LoRADone
 )
 
-type loraUsageState int
+// LoRAChanged signals a waiting/running/done transition for a LoRA request.
+type LoRAChanged struct {
+	BaseEvent
+	State LoRAState
+}
 
-type loraUsage struct {
-	// the lora adapter name
-	name string
-	// state of the lora usage - waiting/running/done
-	state loraUsageState
+// loraSetsChanged is emitted after the bus applies a LoRAChanged event; it
+// carries the current per-LoRA waiting and running request counts. Adapters
+// derive labels (e.g. lora_requests_info) from these maps.
+type loraSetsChanged struct {
+	BaseEvent
+	Running map[string]int
+	Waiting map[string]int
 }
 
 // --------------------------------
@@ -306,6 +395,16 @@ func NewMetricsBus(ctx context.Context, config common.Configuration, registry *p
 	mBus.PrefixCacheQuery = common.Channel[PrefixCacheQueried]{
 		Channel: make(chan PrefixCacheQueried, maxNumberOfRunningRequests),
 		Name:    "bus.PrefixCacheQuery",
+		Done:    done,
+	}
+	mBus.LoRAChanged = common.Channel[LoRAChanged]{
+		Channel: make(chan LoRAChanged, maxNumberOfWaitingRequests+maxNumberOfRunningRequests),
+		Name:    "bus.LoRAChanged",
+		Done:    done,
+	}
+	mBus.loraSetsChanged = common.Channel[loraSetsChanged]{
+		Channel: make(chan loraSetsChanged, maxNumberOfWaitingRequests+maxNumberOfRunningRequests),
+		Name:    "bus.LoRASetsChanged",
 		Done:    done,
 	}
 	return mBus, nil

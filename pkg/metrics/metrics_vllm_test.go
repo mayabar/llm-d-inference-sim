@@ -110,29 +110,29 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 		It("updates the waiting gauge on queue/dequeue", func() {
 			adapter, _, _ := newTestAdapter(newTestConfig())
 
-			adapter.OnRequestQueued(RequestQueued{})
-			adapter.OnRequestQueued(RequestQueued{})
+			adapter.onRequestQueued(RequestQueued{})
+			adapter.onRequestQueued(RequestQueued{})
 			Eventually(gaugeValue(adapter.waitingRequests)).Should(Equal(float64(2)))
 
-			adapter.OnRequestDequeued(RequestDequeued{QueueTime: 0.1})
+			adapter.onRequestDequeued(RequestDequeued{QueueTime: 0.1})
 			Eventually(gaugeValue(adapter.waitingRequests)).Should(Equal(float64(1)))
 		})
 
 		It("updates the running gauge on OnRequestRunning", func() {
 			adapter, _, _ := newTestAdapter(newTestConfig())
 
-			adapter.OnRequestRunning(RequestRunning{})
-			adapter.OnRequestRunning(RequestRunning{})
+			adapter.onRequestRunning(RequestRunning{})
+			adapter.onRequestRunning(RequestRunning{})
 			Eventually(gaugeValue(adapter.runningRequests)).Should(Equal(float64(2)))
 		})
 
 		It("decrements running and records tokens on success", func() {
 			adapter, _, _ := newTestAdapter(newTestConfig())
 
-			adapter.OnRequestRunning(RequestRunning{})
+			adapter.onRequestRunning(RequestRunning{})
 			Eventually(gaugeValue(adapter.runningRequests)).Should(Equal(float64(1)))
 
-			adapter.OnRequestSucceeded(RequestSucceeded{
+			adapter.onRequestSucceeded(RequestSucceeded{
 				PromptTokens:       10,
 				GenerationTokens:   20,
 				GenTokensPerChoice: []int{20},
@@ -149,15 +149,15 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 		It("updates the KV-cache usage gauge", func() {
 			adapter, _, _ := newTestAdapter(newTestConfig())
 
-			adapter.OnKVCacheUsageChanged(KVCacheUsageChanged{KVCacheUsagePerc: 0.75})
+			adapter.onKVCacheUsageChanged(KVCacheUsageChanged{KVCacheUsagePerc: 0.75})
 			Eventually(gaugeValue(adapter.kvCacheUsagePercentage)).Should(Equal(0.75))
 		})
 
 		It("accumulates prefix-cache counters", func() {
 			adapter, _, _ := newTestAdapter(newTestConfig())
 
-			adapter.OnPrefixCacheQueried(PrefixCacheQueried{QueriedTokens: 100, CachedPromptTokens: 40})
-			adapter.OnPrefixCacheQueried(PrefixCacheQueried{QueriedTokens: 50, CachedPromptTokens: 10})
+			adapter.onPrefixCacheQueried(PrefixCacheQueried{QueriedTokens: 100, CachedPromptTokens: 40})
+			adapter.onPrefixCacheQueried(PrefixCacheQueried{QueriedTokens: 50, CachedPromptTokens: 10})
 			Eventually(counterValue(adapter.prefixCacheQueriesTotal, common.TestModelName)).Should(Equal(float64(150)))
 			Eventually(counterValue(adapter.prefixCacheHitsTotal, common.TestModelName)).Should(Equal(float64(50)))
 		})
@@ -169,10 +169,10 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 			cfg.FakeMetrics = &common.FakeMetrics{}
 			adapter, _, _ := newTestAdapter(cfg)
 
-			adapter.OnRequestQueued(RequestQueued{})
-			adapter.OnRequestRunning(RequestRunning{})
-			adapter.OnKVCacheUsageChanged(KVCacheUsageChanged{KVCacheUsagePerc: 0.9})
-			adapter.OnPrefixCacheQueried(PrefixCacheQueried{QueriedTokens: 5, CachedPromptTokens: 3})
+			adapter.onRequestQueued(RequestQueued{})
+			adapter.onRequestRunning(RequestRunning{})
+			adapter.onKVCacheUsageChanged(KVCacheUsageChanged{KVCacheUsagePerc: 0.9})
+			adapter.onPrefixCacheQueried(PrefixCacheQueried{QueriedTokens: 5, CachedPromptTokens: 3})
 
 			// Nothing should change; Consistently gives the updater goroutines a
 			// chance to run and still find zeros.
@@ -193,7 +193,7 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 				WaitingRequests:        &common.FakeMetricWithFunction{FixedValue: 7},
 				KVCacheUsagePercentage: &common.FakeMetricWithFunction{FixedValue: kv},
 			}
-			Expect(adapter.ApplyUpdate(upd)).To(Succeed())
+			Expect(adapter.applyUpdate(upd)).To(Succeed())
 
 			Eventually(gaugeValue(adapter.runningRequests)).Should(Equal(float64(3)))
 			Eventually(gaugeValue(adapter.waitingRequests)).Should(Equal(float64(7)))
@@ -223,7 +223,7 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 					},
 				},
 			}
-			Expect(adapter.ApplyUpdate(upd)).To(Succeed())
+			Expect(adapter.applyUpdate(upd)).To(Succeed())
 
 			adapter.genMu.Lock()
 			running := adapter.tickerRunning
@@ -235,7 +235,7 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 			upd2 := &common.FakeMetrics{
 				RunningRequests: &common.FakeMetricWithFunction{FixedValue: 2},
 			}
-			Expect(adapter.ApplyUpdate(upd2)).To(Succeed())
+			Expect(adapter.applyUpdate(upd2)).To(Succeed())
 
 			adapter.genMu.Lock()
 			running = adapter.tickerRunning
@@ -263,7 +263,7 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 					},
 				},
 			}
-			Expect(adapter.ApplyUpdate(upd)).To(Succeed())
+			Expect(adapter.applyUpdate(upd)).To(Succeed())
 			Expect(adapter.Close()).To(Succeed())
 
 			adapter.genMu.Lock()
@@ -275,25 +275,35 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 		})
 	})
 
-	Describe("LoRA ref counting", func() {
+	Describe("LoRA ref counting on the bus", func() {
 		It("moves adapters through waiting -> running -> done", func() {
-			adapter, _, _ := newTestAdapter(newTestConfig())
+			ctx, cancel := context.WithCancel(context.Background())
+			DeferCleanup(cancel)
 
-			// The lorasUpdater goroutine serializes all state changes, so we poll
-			// for the final state after each phase.
-			adapter.writeToLoRAs(LoRAUpdate{Usage: &loraUsage{name: "a", state: waitingUsageState}})
-			adapter.writeToLoRAs(LoRAUpdate{Usage: &loraUsage{name: "b", state: waitingUsageState}})
-			Eventually(loraKeys(&adapter.waitingLoras)).Should(ConsistOf("a", "b"))
+			registry := prometheus.NewRegistry()
+			bus, err := NewMetricsBus(ctx, newTestConfig(), registry, logr.Discard())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(bus.Start(ctx)).To(Succeed())
 
-			adapter.writeToLoRAs(LoRAUpdate{Usage: &loraUsage{name: "a", state: runningUsageState}})
-			Eventually(loraKeys(&adapter.waitingLoras)).Should(ConsistOf("b"))
-			Eventually(loraKeys(&adapter.runningLoras)).Should(ConsistOf("a"))
+			send := func(name string, state LoRAState) {
+				common.WriteToChannel(bus.LoRAChanged,
+					LoRAChanged{BaseEvent: BaseEvent{Model: name}, State: state},
+					logr.Discard())
+			}
 
-			adapter.writeToLoRAs(LoRAUpdate{Usage: &loraUsage{name: "a", state: doneUsageState}})
-			adapter.writeToLoRAs(LoRAUpdate{Usage: &loraUsage{name: "b", state: runningUsageState}})
-			adapter.writeToLoRAs(LoRAUpdate{Usage: &loraUsage{name: "b", state: doneUsageState}})
-			Eventually(loraKeys(&adapter.waitingLoras)).Should(BeEmpty())
-			Eventually(loraKeys(&adapter.runningLoras)).Should(BeEmpty())
+			send("a", LoRAWaiting)
+			send("b", LoRAWaiting)
+			Eventually(loraKeys(&bus.waitingLoras)).Should(ConsistOf("a", "b"))
+
+			send("a", LoRARunning)
+			Eventually(loraKeys(&bus.waitingLoras)).Should(ConsistOf("b"))
+			Eventually(loraKeys(&bus.runningLoras)).Should(ConsistOf("a"))
+
+			send("a", LoRADone)
+			send("b", LoRARunning)
+			send("b", LoRADone)
+			Eventually(loraKeys(&bus.waitingLoras)).Should(BeEmpty())
+			Eventually(loraKeys(&bus.runningLoras)).Should(BeEmpty())
 		})
 	})
 })
