@@ -21,7 +21,6 @@ package metrics
 
 import (
 	"context"
-	"fmt"
 	"maps"
 	"slices"
 	"strconv"
@@ -1558,21 +1557,13 @@ func (m *VLLMMetricsAdapter) updateScalarLocked(key string, fm *common.FakeMetri
 // resolveTokenTotal returns the target absolute value for a token counter
 // paired with a histogram: explicit wins when set, else the sum of the
 // histogram Samples.
-func resolveTokenTotal(samples []int, explicit *int64) int64 {
-	fmt.Printf(">>> calc total, explicit=%v\n", explicit)
-
+func resolveTokenTotal(buckets []float64, samples []int, explicit *int64) int64 {
 	if explicit != nil {
-		fmt.Printf(">>> return explicit: %d\n", *explicit)
 		return *explicit
 	}
 
-	var total int64
-	for _, s := range samples {
-		total += int64(s)
-	}
-
-	fmt.Printf(">>> return calculated: %d\n", total)
-	return total
+	total := InitFakeHistogram(nil, "", buckets, samples)
+	return *total
 }
 
 func (m *VLLMMetricsAdapter) applyUpdate(update *common.FakeMetrics) error {
@@ -1626,11 +1617,14 @@ func (m *VLLMMetricsAdapter) applyUpdate(update *common.FakeMetrics) error {
 		m.writeToMaxNumGenerationTokens(HistogramUpdate{Reset: &HistogramReset{Buckets: tokenBuckets, Samples: update.RequestMaxGenerationTokens}})
 	}
 
+	// update histogram of the propmpt tokens
 	if update.RequestPromptTokens != nil {
 		m.writeToRequestPromptTokens(HistogramUpdate{Reset: &HistogramReset{Buckets: tokenBuckets, Samples: update.RequestPromptTokens}})
 	}
+	// update the total prompt tokens counter according the histogram (if the total is not provided) or
+	// according to the explicit total (if provided)
 	if update.RequestPromptTokens != nil || update.TotalPromptTokens != nil {
-		total := resolveTokenTotal(update.RequestPromptTokens, update.TotalPromptTokens)
+		total := resolveTokenTotal(tokenBuckets, update.RequestPromptTokens, update.TotalPromptTokens)
 		m.writeToPromptTokensTotal(CounterUpdate{Reset: &CounterReset{Value: float64(total)}})
 	}
 
@@ -1638,7 +1632,7 @@ func (m *VLLMMetricsAdapter) applyUpdate(update *common.FakeMetrics) error {
 		m.writeToRequestGenerationTokens(HistogramUpdate{Reset: &HistogramReset{Buckets: tokenBuckets, Samples: update.RequestGenerationTokens}})
 	}
 	if update.RequestGenerationTokens != nil || update.TotalGenerationTokens != nil {
-		total := resolveTokenTotal(update.RequestGenerationTokens, update.TotalGenerationTokens)
+		total := resolveTokenTotal(tokenBuckets, update.RequestGenerationTokens, update.TotalGenerationTokens)
 		m.writeToGenerationTokensTotal(CounterUpdate{Reset: &CounterReset{Value: float64(total)}})
 	}
 
