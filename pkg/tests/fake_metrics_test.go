@@ -998,7 +998,7 @@ var _ = Describe("total tokens", func() {
 			name        string
 			counts      []int
 			buckets     []float64
-			expected    int64
+			expected    float64
 			shouldBeNil bool
 		}{
 			{

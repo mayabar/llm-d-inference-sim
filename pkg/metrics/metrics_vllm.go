@@ -298,154 +298,154 @@ func (m *VLLMMetricsAdapter) createAndStartPrometheusChannels(ctx context.Contex
 		Name:    "vllm.runReqChan",
 		Done:    ctx.Done(),
 	}
-	go m.runningRequestsUpdater(ctx)
+	go subscribe(ctx, m.runReqChan, m.runningRequestsUpdater)
 
 	m.waitingReqChan = common.Channel[common.MetricInfo]{
 		Channel: make(chan common.MetricInfo, maxNumberOfWaitingRequests),
 		Name:    "vllm.waitingReqChan",
 		Done:    ctx.Done(),
 	}
-	go m.waitingRequestsUpdater(ctx)
+	go subscribe(ctx, m.waitingReqChan, m.waitingRequestsUpdater)
 
 	m.kvCacheUsageChan = common.Channel[common.MetricInfo]{
 		Channel: make(chan common.MetricInfo, maxNumberOfRunningRequests),
 		Name:    "vllm.kvCacheUsageChan",
 		Done:    ctx.Done(),
 	}
-	go m.kvCacheUsageUpdater(ctx)
+	go subscribe(ctx, m.kvCacheUsageChan, m.kvCacheUsageUpdater)
 
 	m.ttftChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.ttftChan",
 		Done:    ctx.Done(),
 	}
-	go m.ttftUpdater(ctx)
+	go subscribe(ctx, m.ttftChan, m.ttftUpdater)
 
 	m.tpotChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests*m.config.MaxModelLen),
 		Name:    "vllm.tpotChan",
 		Done:    ctx.Done(),
 	}
-	go m.tpotUpdater(ctx)
+	go subscribe(ctx, m.tpotChan, m.tpotUpdater)
 
 	m.interTokenLatencyChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests*m.config.MaxModelLen),
 		Name:    "vllm.interTokenLatencyChan",
 		Done:    ctx.Done(),
 	}
-	go m.interTokenLatencyUpdater(ctx)
+	go subscribe(ctx, m.interTokenLatencyChan, m.interTokenLatencyUpdater)
 
 	m.e2eReqLatencyChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.e2eReqLatencyChan",
 		Done:    ctx.Done(),
 	}
-	go m.e2eReqLatencyUpdater(ctx)
+	go subscribe(ctx, m.e2eReqLatencyChan, m.e2eReqLatencyUpdater)
 
 	m.reqQueueTimeChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfWaitingRequests),
 		Name:    "vllm.reqQueueTimeChan",
 		Done:    ctx.Done(),
 	}
-	go m.reqQueueTimeUpdater(ctx)
+	go subscribe(ctx, m.reqQueueTimeChan, m.reqQueueTimeUpdater)
 
 	m.reqInferenceTimeChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.reqInferenceTimeChan",
 		Done:    ctx.Done(),
 	}
-	go m.reqInferenceTimeUpdater(ctx)
+	go subscribe(ctx, m.reqInferenceTimeChan, m.reqInferenceTimeUpdater)
 
 	m.reqPrefillTimeChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.reqPrefillTimeChan",
 		Done:    ctx.Done(),
 	}
-	go m.reqPrefillTimeUpdater(ctx)
+	go subscribe(ctx, m.reqPrefillTimeChan, m.reqPrefillTimeUpdater)
 
 	m.reqDecodeTimeChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.reqDecodeTimeChan",
 		Done:    ctx.Done(),
 	}
-	go m.reqDecodeTimeUpdater(ctx)
+	go subscribe(ctx, m.reqDecodeTimeChan, m.reqDecodeTimeUpdater)
 
 	m.reqTpotChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.reqTpotChan",
 		Done:    ctx.Done(),
 	}
-	go m.reqTpotUpdater(ctx)
+	go subscribe(ctx, m.reqTpotChan, m.reqTpotUpdater)
 
 	m.lorasChan = common.Channel[LoRAUpdate]{
 		Channel: make(chan LoRAUpdate, maxNumberOfRequests),
 		Name:    "vllm.lorasChan",
 		Done:    ctx.Done(),
 	}
-	go m.lorasUpdater(ctx)
+	go subscribe(ctx, m.lorasChan, m.lorasUpdater)
 
 	m.requestPromptTokensChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.requestPromptTokensChan",
 		Done:    ctx.Done(),
 	}
-	go m.requestPromptTokensUpdater(ctx)
+	go subscribe(ctx, m.requestPromptTokensChan, m.requestPromptTokensUpdater)
 
 	m.requestGenerationTokensChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.requestGenerationTokensChan",
 		Done:    ctx.Done(),
 	}
-	go m.requestGenerationTokensUpdater(ctx)
+	go subscribe(ctx, m.requestGenerationTokensChan, m.requestGenerationTokensUpdater)
 
 	m.maxNumGenerationTokensChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.maxNumGenerationTokensChan",
 		Done:    ctx.Done(),
 	}
-	go m.maxNumGenerationTokensUpdater(ctx)
+	go subscribe(ctx, m.maxNumGenerationTokensChan, m.maxNumGenerationTokensUpdater)
 
 	m.requestParamsMaxTokensChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.requestParamsMaxTokensChan",
 		Done:    ctx.Done(),
 	}
-	go m.requestParamsMaxTokensUpdater(ctx)
+	go subscribe(ctx, m.requestParamsMaxTokensChan, m.requestParamsMaxTokensUpdater)
 
 	m.promptTokensTotalChan = common.Channel[CounterUpdate]{
 		Channel: make(chan CounterUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.promptTokensTotalChan",
 		Done:    ctx.Done(),
 	}
-	go m.promptTokensTotalUpdater(ctx)
+	go subscribe(ctx, m.promptTokensTotalChan, m.promptTokensTotalUpdater)
 
 	m.generationTokensTotalChan = common.Channel[CounterUpdate]{
 		Channel: make(chan CounterUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.generationTokensTotalChan",
 		Done:    ctx.Done(),
 	}
-	go m.generationTokensTotalUpdater(ctx)
+	go subscribe(ctx, m.generationTokensTotalChan, m.generationTokensTotalUpdater)
 
 	m.requestSuccessTotalChan = common.Channel[RequestSuccessCounterUpdate]{
 		Channel: make(chan RequestSuccessCounterUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.requestSuccessTotalChan",
 		Done:    ctx.Done(),
 	}
-	go m.requestSuccessTotalUpdater(ctx)
+	go subscribe(ctx, m.requestSuccessTotalChan, m.requestSuccessTotalUpdater)
 
 	m.prefixCacheHitsTotalChan = common.Channel[CounterUpdate]{
 		Channel: make(chan CounterUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.prefixCacheHitsTotalChan",
 		Done:    ctx.Done(),
 	}
-	go m.prefixCacheHitsTotalUpdater(ctx)
+	go subscribe(ctx, m.prefixCacheHitsTotalChan, m.prefixCacheHitsTotalUpdater)
 
 	m.prefixCacheQueriesTotalChan = common.Channel[CounterUpdate]{
 		Channel: make(chan CounterUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.prefixCacheQueriesTotalChan",
 		Done:    ctx.Done(),
 	}
-	go m.prefixCacheQueriesTotalUpdater(ctx)
+	go subscribe(ctx, m.prefixCacheQueriesTotalChan, m.prefixCacheQueriesTotalUpdater)
 }
 
 // -- Per-metric write helpers ---------------------------------------------
@@ -488,131 +488,68 @@ func (m *VLLMMetricsAdapter) writeToPrefixCacheQueriesTotal(upd CounterUpdate) {
 
 // -- Per-metric updaters --------------------------------------------------
 
-func (m *VLLMMetricsAdapter) requestPromptTokensUpdater(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case upd := <-m.requestPromptTokensChan.Channel:
-			m.applyHistogramUpdate(&m.requestPromptTokens, m.createAndRegisterReqPromptTokensHistogram, upd)
-		}
+func (m *VLLMMetricsAdapter) requestPromptTokensUpdater(upd HistogramUpdate) {
+	m.applyHistogramUpdate(&m.requestPromptTokens, m.createAndRegisterReqPromptTokensHistogram, upd)
+}
+
+func (m *VLLMMetricsAdapter) requestGenerationTokensUpdater(upd HistogramUpdate) {
+	m.applyHistogramUpdate(&m.requestGenerationTokens, m.createAndRegisterReqGenerationTokensHistogram, upd)
+}
+
+func (m *VLLMMetricsAdapter) maxNumGenerationTokensUpdater(upd HistogramUpdate) {
+	m.applyHistogramUpdate(&m.maxNumGenerationTokens, m.createAndRegisterMaxNumGenerationTokensHistogram, upd)
+}
+
+func (m *VLLMMetricsAdapter) requestParamsMaxTokensUpdater(upd HistogramUpdate) {
+	m.applyHistogramUpdate(&m.requestParamsMaxTokens, m.createAndRegisterReqParamsMaxTokensHistogram, upd)
+}
+
+func (m *VLLMMetricsAdapter) promptTokensTotalUpdater(upd CounterUpdate) {
+	switch {
+	case upd.Add != nil:
+		m.promptTokensTotal.WithLabelValues(m.config.DisplayModelName).Add(*upd.Add)
+	case upd.Reset != nil:
+		m.applyCounterReset(&m.promptTokensTotal, m.createAndRegisterPromptTokensTotalCounter,
+			m.config.DisplayModelName, upd.Reset.Value)
 	}
 }
 
-func (m *VLLMMetricsAdapter) requestGenerationTokensUpdater(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case upd := <-m.requestGenerationTokensChan.Channel:
-			m.applyHistogramUpdate(&m.requestGenerationTokens, m.createAndRegisterReqGenerationTokensHistogram, upd)
-		}
+func (m *VLLMMetricsAdapter) generationTokensTotalUpdater(upd CounterUpdate) {
+	switch {
+	case upd.Add != nil:
+		m.generationTokensTotal.WithLabelValues(m.config.DisplayModelName).Add(*upd.Add)
+	case upd.Reset != nil:
+		m.applyCounterReset(&m.generationTokensTotal, m.createAndRegisterGenerationTokensTotalCounter,
+			m.config.DisplayModelName, upd.Reset.Value)
 	}
 }
 
-func (m *VLLMMetricsAdapter) maxNumGenerationTokensUpdater(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case upd := <-m.maxNumGenerationTokensChan.Channel:
-			m.applyHistogramUpdate(&m.maxNumGenerationTokens, m.createAndRegisterMaxNumGenerationTokensHistogram, upd)
-		}
+func (m *VLLMMetricsAdapter) requestSuccessTotalUpdater(upd RequestSuccessCounterUpdate) {
+	switch {
+	case upd.Increment != nil:
+		m.requestSuccessTotal.WithLabelValues(m.config.DisplayModelName, *upd.Increment).Inc()
+	case upd.Reset != nil:
+		m.applySuccessTotalReset(upd.Reset.Reasons)
 	}
 }
 
-func (m *VLLMMetricsAdapter) requestParamsMaxTokensUpdater(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case upd := <-m.requestParamsMaxTokensChan.Channel:
-			m.applyHistogramUpdate(&m.requestParamsMaxTokens, m.createAndRegisterReqParamsMaxTokensHistogram, upd)
-		}
+func (m *VLLMMetricsAdapter) prefixCacheHitsTotalUpdater(upd CounterUpdate) {
+	switch {
+	case upd.Add != nil:
+		m.prefixCacheHitsTotal.WithLabelValues(m.config.DisplayModelName).Add(*upd.Add)
+	case upd.Reset != nil:
+		m.applyCounterReset(&m.prefixCacheHitsTotal, m.createAndRegisterPrefixCacheHitsTotalCounter,
+			m.config.DisplayModelName, upd.Reset.Value)
 	}
 }
 
-func (m *VLLMMetricsAdapter) promptTokensTotalUpdater(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case upd := <-m.promptTokensTotalChan.Channel:
-			switch {
-			case upd.Add != nil:
-				m.promptTokensTotal.WithLabelValues(m.config.DisplayModelName).Add(*upd.Add)
-			case upd.Reset != nil:
-				m.applyCounterReset(&m.promptTokensTotal, m.createAndRegisterPromptTokensTotalCounter,
-					m.config.DisplayModelName, upd.Reset.Value)
-			}
-		}
-	}
-}
-
-func (m *VLLMMetricsAdapter) generationTokensTotalUpdater(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case upd := <-m.generationTokensTotalChan.Channel:
-			switch {
-			case upd.Add != nil:
-				m.generationTokensTotal.WithLabelValues(m.config.DisplayModelName).Add(*upd.Add)
-			case upd.Reset != nil:
-				m.applyCounterReset(&m.generationTokensTotal, m.createAndRegisterGenerationTokensTotalCounter,
-					m.config.DisplayModelName, upd.Reset.Value)
-			}
-		}
-	}
-}
-
-func (m *VLLMMetricsAdapter) requestSuccessTotalUpdater(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case upd := <-m.requestSuccessTotalChan.Channel:
-			switch {
-			case upd.Increment != nil:
-				m.requestSuccessTotal.WithLabelValues(m.config.DisplayModelName, *upd.Increment).Inc()
-			case upd.Reset != nil:
-				m.applySuccessTotalReset(upd.Reset.Reasons)
-			}
-		}
-	}
-}
-
-func (m *VLLMMetricsAdapter) prefixCacheHitsTotalUpdater(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case upd := <-m.prefixCacheHitsTotalChan.Channel:
-			switch {
-			case upd.Add != nil:
-				m.prefixCacheHitsTotal.WithLabelValues(m.config.DisplayModelName).Add(*upd.Add)
-			case upd.Reset != nil:
-				m.applyCounterReset(&m.prefixCacheHitsTotal, m.createAndRegisterPrefixCacheHitsTotalCounter,
-					m.config.DisplayModelName, upd.Reset.Value)
-			}
-		}
-	}
-}
-
-func (m *VLLMMetricsAdapter) prefixCacheQueriesTotalUpdater(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case upd := <-m.prefixCacheQueriesTotalChan.Channel:
-			switch {
-			case upd.Add != nil:
-				m.prefixCacheQueriesTotal.WithLabelValues(m.config.DisplayModelName).Add(*upd.Add)
-			case upd.Reset != nil:
-				m.applyCounterReset(&m.prefixCacheQueriesTotal, m.createAndRegisterPrefixCacheQueriesTotalCounter,
-					m.config.DisplayModelName, upd.Reset.Value)
-			}
-		}
+func (m *VLLMMetricsAdapter) prefixCacheQueriesTotalUpdater(upd CounterUpdate) {
+	switch {
+	case upd.Add != nil:
+		m.prefixCacheQueriesTotal.WithLabelValues(m.config.DisplayModelName).Add(*upd.Add)
+	case upd.Reset != nil:
+		m.applyCounterReset(&m.prefixCacheQueriesTotal, m.createAndRegisterPrefixCacheQueriesTotalCounter,
+			m.config.DisplayModelName, upd.Reset.Value)
 	}
 }
 
@@ -890,171 +827,80 @@ func (m *VLLMMetricsAdapter) finishRunning(isFake bool) {
 
 // -- Updaters (per-metric channels -> Prometheus) ------------------
 
-func (m *VLLMMetricsAdapter) waitingRequestsUpdater(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case upd := <-m.waitingReqChan.Channel:
-			if (m.config.FakeMetrics != nil) != upd.IsFake {
-				continue
-			}
-			if upd.IsFake {
-				m.nWaitingReqs = int64(upd.Value)
-			} else {
-				m.nWaitingReqs += int64(upd.Value)
-			}
-			m.reportWaitingRequests()
-		}
+func (m *VLLMMetricsAdapter) waitingRequestsUpdater(upd common.MetricInfo) {
+	if (m.config.FakeMetrics != nil) != upd.IsFake {
+		return
+	}
+	if upd.IsFake {
+		m.nWaitingReqs = int64(upd.Value)
+	} else {
+		m.nWaitingReqs += int64(upd.Value)
+	}
+	m.reportWaitingRequests()
+}
+
+func (m *VLLMMetricsAdapter) runningRequestsUpdater(upd common.MetricInfo) {
+	if (m.config.FakeMetrics != nil) != upd.IsFake {
+		return
+	}
+	if upd.IsFake {
+		m.nRunningReqs = int64(upd.Value)
+	} else {
+		m.nRunningReqs += int64(upd.Value)
+	}
+	m.reportRunningRequests()
+}
+
+func (m *VLLMMetricsAdapter) kvCacheUsageUpdater(value common.MetricInfo) {
+	if (m.config.FakeMetrics != nil) == value.IsFake {
+		m.reportKVCacheUsage(value.Value)
 	}
 }
 
-func (m *VLLMMetricsAdapter) runningRequestsUpdater(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case upd := <-m.runReqChan.Channel:
-			if (m.config.FakeMetrics != nil) != upd.IsFake {
-				continue
-			}
-			if upd.IsFake {
-				m.nRunningReqs = int64(upd.Value)
-			} else {
-				m.nRunningReqs += int64(upd.Value)
-			}
-			m.reportRunningRequests()
-		}
-	}
+func (m *VLLMMetricsAdapter) ttftUpdater(upd HistogramUpdate) {
+	m.applyHistogramUpdate(&m.ttft, m.createAndRegisterTTFTHistogram, upd)
 }
 
-func (m *VLLMMetricsAdapter) kvCacheUsageUpdater(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case value := <-m.kvCacheUsageChan.Channel:
-			if (m.config.FakeMetrics != nil) == value.IsFake {
-				m.reportKVCacheUsage(value.Value)
-			}
-		}
-	}
+func (m *VLLMMetricsAdapter) tpotUpdater(upd HistogramUpdate) {
+	m.applyHistogramUpdate(&m.tpot, m.createAndRegisterTPOTHistogram, upd)
 }
 
-func (m *VLLMMetricsAdapter) ttftUpdater(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case upd := <-m.ttftChan.Channel:
-			m.applyHistogramUpdate(&m.ttft, m.createAndRegisterTTFTHistogram, upd)
-		}
-	}
+func (m *VLLMMetricsAdapter) interTokenLatencyUpdater(upd HistogramUpdate) {
+	m.applyHistogramUpdate(&m.interTokenLatency, m.createAndRegisterInterTokenLatencyHistogram, upd)
 }
 
-func (m *VLLMMetricsAdapter) tpotUpdater(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case upd := <-m.tpotChan.Channel:
-			m.applyHistogramUpdate(&m.tpot, m.createAndRegisterTPOTHistogram, upd)
-		}
-	}
+func (m *VLLMMetricsAdapter) e2eReqLatencyUpdater(upd HistogramUpdate) {
+	m.applyHistogramUpdate(&m.e2eReqLatency, m.createAndRegisterE2EReqLatencyHistogram, upd)
 }
 
-func (m *VLLMMetricsAdapter) interTokenLatencyUpdater(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case upd := <-m.interTokenLatencyChan.Channel:
-			m.applyHistogramUpdate(&m.interTokenLatency, m.createAndRegisterInterTokenLatencyHistogram, upd)
-		}
-	}
+func (m *VLLMMetricsAdapter) reqQueueTimeUpdater(upd HistogramUpdate) {
+	m.applyHistogramUpdate(&m.reqQueueTime, m.createAndRegisterReqQueueTimeHistogram, upd)
 }
 
-func (m *VLLMMetricsAdapter) e2eReqLatencyUpdater(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case upd := <-m.e2eReqLatencyChan.Channel:
-			m.applyHistogramUpdate(&m.e2eReqLatency, m.createAndRegisterE2EReqLatencyHistogram, upd)
-		}
-	}
+func (m *VLLMMetricsAdapter) reqInferenceTimeUpdater(upd HistogramUpdate) {
+	m.applyHistogramUpdate(&m.reqInferenceTime, m.createAndRegisterReqInferenceTimeHistogram, upd)
 }
 
-func (m *VLLMMetricsAdapter) reqQueueTimeUpdater(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case upd := <-m.reqQueueTimeChan.Channel:
-			m.applyHistogramUpdate(&m.reqQueueTime, m.createAndRegisterReqQueueTimeHistogram, upd)
-		}
-	}
+func (m *VLLMMetricsAdapter) reqPrefillTimeUpdater(upd HistogramUpdate) {
+	m.applyHistogramUpdate(&m.reqPrefillTime, m.createAndRegisterReqPrefillTimeHistogram, upd)
 }
 
-func (m *VLLMMetricsAdapter) reqInferenceTimeUpdater(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case upd := <-m.reqInferenceTimeChan.Channel:
-			m.applyHistogramUpdate(&m.reqInferenceTime, m.createAndRegisterReqInferenceTimeHistogram, upd)
-		}
-	}
+func (m *VLLMMetricsAdapter) reqDecodeTimeUpdater(upd HistogramUpdate) {
+	m.applyHistogramUpdate(&m.reqDecodeTime, m.createAndRegisterReqDecodeTimeHistogram, upd)
 }
 
-func (m *VLLMMetricsAdapter) reqPrefillTimeUpdater(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case upd := <-m.reqPrefillTimeChan.Channel:
-			m.applyHistogramUpdate(&m.reqPrefillTime, m.createAndRegisterReqPrefillTimeHistogram, upd)
-		}
-	}
-}
-
-func (m *VLLMMetricsAdapter) reqDecodeTimeUpdater(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case upd := <-m.reqDecodeTimeChan.Channel:
-			m.applyHistogramUpdate(&m.reqDecodeTime, m.createAndRegisterReqDecodeTimeHistogram, upd)
-		}
-	}
-}
-
-func (m *VLLMMetricsAdapter) reqTpotUpdater(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case upd := <-m.reqTpotChan.Channel:
-			m.applyHistogramUpdate(&m.reqTpot, m.createAndRegisterReqTpotHistogram, upd)
-		}
-	}
+func (m *VLLMMetricsAdapter) reqTpotUpdater(upd HistogramUpdate) {
+	m.applyHistogramUpdate(&m.reqTpot, m.createAndRegisterReqTpotHistogram, upd)
 }
 
 // lorasUpdater republishes lora_requests_info from Snapshot events, or on
 // Reset recreates the collector and stamps the supplied entries.
-func (m *VLLMMetricsAdapter) lorasUpdater(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case upd := <-m.lorasChan.Channel:
-			switch {
-			case upd.Snapshot != nil:
-				m.reportLoras(*upd.Snapshot)
-			case upd.Reset != nil:
-				m.applyLoRAReset(upd.Reset)
-			}
-		}
+func (m *VLLMMetricsAdapter) lorasUpdater(upd LoRAUpdate) {
+	switch {
+	case upd.Snapshot != nil:
+		m.reportLoras(*upd.Snapshot)
+	case upd.Reset != nil:
+		m.applyLoRAReset(upd.Reset)
 	}
 }
 
