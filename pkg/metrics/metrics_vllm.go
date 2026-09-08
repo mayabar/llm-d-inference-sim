@@ -1563,6 +1563,9 @@ func resolveTokenTotal(buckets []float64, samples []int, explicit *int64) int64 
 	}
 
 	total := InitFakeHistogram(nil, "", buckets, samples)
+	if total == nil {
+		return 0
+	}
 	return *total
 }
 
