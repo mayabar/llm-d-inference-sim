@@ -36,6 +36,7 @@ import (
 	"github.com/llm-d/llm-d-inference-sim/pkg/common/logging"
 )
 
+// TODO remove this!!!
 const (
 	VLLME2EReqLatencyMetricName           = "vllm:e2e_request_latency_seconds"
 	VLLMReqQueueTimeMetricName            = "vllm:request_queue_time_seconds"
