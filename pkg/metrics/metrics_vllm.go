@@ -706,10 +706,6 @@ func (m *VLLMMetricsAdapter) writeToReqTpot(upd HistogramUpdate) {
 	common.WriteToChannel(m.reqTpotChan, upd, m.logger)
 }
 
-// func (m *VLLMMetricsAdapter) writeToPrefixCacheStats(upd PrefixCacheStatUpdate) {
-// 	common.WriteToChannel(m.prefixCacheStatsChan, upd, m.logger)
-// }
-
 func (m *VLLMMetricsAdapter) writeToLoRAs(upd LoRAUpdate) {
 	common.WriteToChannel(m.lorasChan, upd, m.logger)
 }
