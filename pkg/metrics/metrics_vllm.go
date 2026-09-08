@@ -507,6 +507,9 @@ func (m *VLLMMetricsAdapter) requestParamsMaxTokensUpdater(upd HistogramUpdate) 
 func (m *VLLMMetricsAdapter) promptTokensTotalUpdater(upd CounterUpdate) {
 	switch {
 	case upd.Add != nil:
+		if m.config.FakeMetrics != nil {
+			return
+		}
 		m.promptTokensTotal.WithLabelValues(m.config.DisplayModelName).Add(*upd.Add)
 	case upd.Reset != nil:
 		m.applyCounterReset(&m.promptTokensTotal, m.createAndRegisterPromptTokensTotalCounter,
@@ -517,6 +520,9 @@ func (m *VLLMMetricsAdapter) promptTokensTotalUpdater(upd CounterUpdate) {
 func (m *VLLMMetricsAdapter) generationTokensTotalUpdater(upd CounterUpdate) {
 	switch {
 	case upd.Add != nil:
+		if m.config.FakeMetrics != nil {
+			return
+		}
 		m.generationTokensTotal.WithLabelValues(m.config.DisplayModelName).Add(*upd.Add)
 	case upd.Reset != nil:
 		m.applyCounterReset(&m.generationTokensTotal, m.createAndRegisterGenerationTokensTotalCounter,
@@ -536,6 +542,9 @@ func (m *VLLMMetricsAdapter) requestSuccessTotalUpdater(upd RequestSuccessCounte
 func (m *VLLMMetricsAdapter) prefixCacheHitsTotalUpdater(upd CounterUpdate) {
 	switch {
 	case upd.Add != nil:
+		if m.config.FakeMetrics != nil {
+			return
+		}
 		m.prefixCacheHitsTotal.WithLabelValues(m.config.DisplayModelName).Add(*upd.Add)
 	case upd.Reset != nil:
 		m.applyCounterReset(&m.prefixCacheHitsTotal, m.createAndRegisterPrefixCacheHitsTotalCounter,
@@ -546,6 +555,9 @@ func (m *VLLMMetricsAdapter) prefixCacheHitsTotalUpdater(upd CounterUpdate) {
 func (m *VLLMMetricsAdapter) prefixCacheQueriesTotalUpdater(upd CounterUpdate) {
 	switch {
 	case upd.Add != nil:
+		if m.config.FakeMetrics != nil {
+			return
+		}
 		m.prefixCacheQueriesTotal.WithLabelValues(m.config.DisplayModelName).Add(*upd.Add)
 	case upd.Reset != nil:
 		m.applyCounterReset(&m.prefixCacheQueriesTotal, m.createAndRegisterPrefixCacheQueriesTotalCounter,
