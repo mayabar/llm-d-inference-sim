@@ -58,6 +58,11 @@ type Request interface {
 	GetDisplayedModel() string
 	// SetDisplayedModel sets the displayed model name for the request
 	SetDisplayedModel(model string)
+	// IsLoRA returns whether the displayed model is a LoRA adapter, as determined
+	// once at admission time
+	IsLoRA() bool
+	// SetIsLoRA records whether the displayed model is a LoRA adapter
+	SetIsLoRA(isLoRA bool)
 	// GetLoraName returns the LoRA name or nil if model is the base model
 	GetLoraName() *string
 	GetLoraID() *int
@@ -137,6 +142,8 @@ type baseRequest struct {
 	// in case served model names were defined on the simulator load, and this request contains one of aliases of the base model - the first alias is used as the DisplayedModel name
 	// in all other cases - the Model name is used as is from the request
 	DisplayedModel string
+	// isLoRA records whether DisplayedModel was a LoRA adapter at admission time
+	isLoRA bool
 	// ID of the LoRA adapter if the model is a LoRA, 0 if the model is the base model
 	loraID int
 	// Stream is a boolean value, defines whether response should be sent as a Stream
@@ -260,6 +267,14 @@ func (b *baseRequest) GetDisplayedModel() string {
 
 func (b *baseRequest) SetDisplayedModel(model string) {
 	b.DisplayedModel = model
+}
+
+func (b *baseRequest) IsLoRA() bool {
+	return b.isLoRA
+}
+
+func (b *baseRequest) SetIsLoRA(isLoRA bool) {
+	b.isLoRA = isLoRA
 }
 
 func (b *baseRequest) GetLoraName() *string {

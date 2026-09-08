@@ -188,13 +188,13 @@ func (reqCtx *baseRequestContext) handleRequest() (ResponseContext, *api.Error) 
 	// increment running requests count
 	reqCtx.sim.nRunningReqs.Add(1)
 
-	isLoRA := reqCtx.sim.isLora(dispModel)
+	isLoRA := req.IsLoRA()
 	if isLoRA {
 		// set the lora index now that the lora is confirmed loaded
 		req.SetModelLoraID(reqCtx.sim.GetLoraID(dispModel))
 	}
 	common.WriteToChannel(reqCtx.sim.metricsBus.RequestRunning,
-		metrics.RequestRunning{BaseEvent: metrics.BaseEvent{Model: dispModel}, IsLoRA: isLoRA},
+		metrics.RequestRunning{BaseEvent: metrics.BaseEvent{Model: dispModel}},
 		reqCtx.sim.logger)
 	if isLoRA {
 		common.WriteToChannel(reqCtx.sim.metricsBus.LoRAChanged,

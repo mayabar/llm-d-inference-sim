@@ -195,7 +195,6 @@ type RequestRejected struct {
 // Drives num_requests_waiting (+1) and the LoRA waiting-set add.
 type RequestQueued struct {
 	BaseEvent
-	IsLoRA bool
 }
 
 // RequestDequeued fires when a request is pulled from the waiting queue.
@@ -209,7 +208,6 @@ type RequestDequeued struct {
 // prefill. Drives num_requests_running (+1) and the LoRA waiting->running move.
 type RequestRunning struct {
 	BaseEvent
-	IsLoRA bool
 }
 
 // PrefillStarted fires at the start of simulated prefill. State marker.
@@ -252,7 +250,6 @@ type DecodeEnded struct {
 // histograms, plus num_requests_running (-1) and LoRA running-set removal.
 type RequestSucceeded struct {
 	BaseEvent
-	IsLoRA             bool
 	PromptTokens       int
 	GenerationTokens   int
 	GenTokensPerChoice []int
@@ -267,7 +264,6 @@ type RequestSucceeded struct {
 // no token or success counter increments. Err is logged.
 type RequestFailed struct {
 	BaseEvent
-	IsLoRA        bool
 	Err           error
 	E2ELatency    float64 // seconds
 	InferenceTime float64 // seconds

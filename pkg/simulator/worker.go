@@ -64,7 +64,7 @@ func (s *Simulator) processRequest(reqCtx requestContext) {
 	startTime := time.Now()
 	req := reqCtx.request()
 	dispModel := req.GetDisplayedModel()
-	isLoRA := s.Context.isLora(dispModel)
+	isLoRA := req.IsLoRA()
 	respCtx, err := reqCtx.handleRequest()
 	if err != nil {
 		common.WriteToChannel(reqCtx.responseChannel(),
@@ -74,7 +74,6 @@ func (s *Simulator) processRequest(reqCtx requestContext) {
 		common.WriteToChannel(s.Context.metricsBus.RequestFailed,
 			metrics.RequestFailed{
 				BaseEvent:     metrics.BaseEvent{Model: dispModel},
-				IsLoRA:        isLoRA,
 				E2ELatency:    time.Since(reqCtx.startProcessingTime()).Seconds(),
 				InferenceTime: time.Since(startTime).Seconds(),
 			}, s.Context.logger)
@@ -92,7 +91,6 @@ func (s *Simulator) processRequest(reqCtx requestContext) {
 	common.WriteToChannel(s.Context.metricsBus.RequestSucceeded,
 		metrics.RequestSucceeded{
 			BaseEvent:          metrics.BaseEvent{Model: dispModel},
-			IsLoRA:             isLoRA,
 			PromptTokens:       respCtx.UsageData().PromptTokens,
 			GenerationTokens:   respCtx.UsageData().CompletionTokens,
 			GenTokensPerChoice: []int{respCtx.UsageData().CompletionTokens},

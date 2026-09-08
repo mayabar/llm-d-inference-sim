@@ -331,11 +331,10 @@ func (s *Simulator) addRequestToQueue(reqCtx requestContext) {
 		return
 	}
 	dispModel := reqCtx.request().GetDisplayedModel()
-	isLoRA := s.Context.isLora(dispModel)
 	common.WriteToChannel(s.Context.metricsBus.RequestQueued,
-		metrics.RequestQueued{BaseEvent: metrics.BaseEvent{Model: dispModel}, IsLoRA: isLoRA},
+		metrics.RequestQueued{BaseEvent: metrics.BaseEvent{Model: dispModel}},
 		s.Context.logger)
-	if isLoRA {
+	if reqCtx.request().IsLoRA() {
 		common.WriteToChannel(s.Context.metricsBus.LoRAChanged,
 			metrics.LoRAChanged{BaseEvent: metrics.BaseEvent{Model: dispModel}, State: metrics.LoRAWaiting},
 			s.Context.logger)
@@ -366,6 +365,8 @@ func (s *Simulator) HandleRequest(req Request) (numChoices int, isStream bool,
 	// the model is valid, update the displayed model which will be different from the model mentioned in the request only in case of base model aliases
 	// in this case the first alias is used, in all other cases the model from the request is used as the displayed model
 	req.SetDisplayedModel(s.Context.getDisplayedModelName(req.GetModel()))
+	// fixed once here so every later metrics touchpoint agrees, even if the LoRA is unloaded mid-flight
+	req.SetIsLoRA(s.Context.isLora(req.GetDisplayedModel()))
 
 	if serverErr := req.validate(s.toolsValidator); serverErr != nil {
 		return 0, false, nil, serverErr, false

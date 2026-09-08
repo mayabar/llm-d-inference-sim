@@ -533,6 +533,9 @@ func (m *VLLMMetricsAdapter) generationTokensTotalUpdater(upd CounterUpdate) {
 func (m *VLLMMetricsAdapter) requestSuccessTotalUpdater(upd RequestSuccessCounterUpdate) {
 	switch {
 	case upd.Increment != nil:
+		if m.config.FakeMetrics != nil {
+			return
+		}
 		m.requestSuccessTotal.WithLabelValues(m.config.DisplayModelName, *upd.Increment).Inc()
 	case upd.Reset != nil:
 		m.applySuccessTotalReset(upd.Reset.Reasons)
