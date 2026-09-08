@@ -658,7 +658,7 @@ var _ = Describe("Fake metrics", Ordered, func() {
 
 			metricsData = fetchMetrics(client)
 
-			// After update: latency buckets [1, 0, 0, 1] → counts: 1, 1, 1, 2, 2, ...
+			// After update: latency buckets [1, 0, 0, 1] -> counts: 1, 1, 1, 2, 2, ...
 			for i, boundary := range common.RequestLatencyBucketsBoundaries {
 				switch {
 				case i < 3:
@@ -807,7 +807,7 @@ var _ = Describe("Fake metrics", Ordered, func() {
 		})
 
 		// This table tests the update logic for both prompt and generation token metrics.
-		// Each entry exercises a 3-phase lifecycle: initial load → first POST update → second POST update.
+		// Each entry exercises a 3-phase lifecycle: initial load -> first POST update -> second POST update.
 		// For each phase, the test verifies the histogram buckets and total counter for both
 		// request_prompt_tokens / prompt_tokens_total and request_generation_tokens / generation_tokens_total.
 		//
@@ -864,8 +864,8 @@ var _ = Describe("Fake metrics", Ordered, func() {
 				verifyTokenMetrics(metricsData, metrics.VLLMPromptTokensMetricName, metrics.VLLMPromptTokensTotalMetricName, secondPrompt)
 				verifyTokenMetrics(metricsData, metrics.VLLMGenerationTokensMetricName, metrics.VLLMGenerationTokensTotalMetricName, secondGen)
 			},
-			// Prompt tokens: hist+total → update hist → update total
-			// Generated tokens: only total → add hist → update total
+			// Prompt tokens: hist+total -> update hist -> update total
+			// Generated tokens: only total -> add hist -> update total
 			Entry("#1 Prompt tokens: hist+total, Generated tokens: only total; then update hists, then update totals",
 				`{"request-prompt-tokens":[1,2,3], "total-prompt-tokens":12345, "total-generation-tokens":54321}`,
 				tokenTestPhase{checkBuckets123, intPtr(12345)}, tokenTestPhase{nil, intPtr(54321)},
@@ -873,8 +873,8 @@ var _ = Describe("Fake metrics", Ordered, func() {
 				tokenTestPhase{checkBuckets10_20, intPtr(50)}, tokenTestPhase{checkBuckets10_20, intPtr(50)},
 				`{"total-prompt-tokens":58, "total-generation-tokens":99}`,
 				tokenTestPhase{checkBuckets10_20, intPtr(58)}, tokenTestPhase{checkBuckets10_20, intPtr(99)}),
-			// Prompt tokens: only hist → update hist → update total
-			// Generated tokens:    only hist → update hist → update total
+			// Prompt tokens: only hist -> update hist -> update total
+			// Generated tokens:    only hist -> update hist -> update total
 			Entry("#2 Both: only hist; then update hists, then set totals",
 				`{"request-prompt-tokens":[1,2,3], "request-generation-tokens":[10, 20]}`,
 				tokenTestPhase{checkBuckets123, intPtr(20)}, tokenTestPhase{checkBuckets10_20, intPtr(50)},
@@ -882,8 +882,8 @@ var _ = Describe("Fake metrics", Ordered, func() {
 				tokenTestPhase{checkBuckets10_20, intPtr(50)}, tokenTestPhase{checkBuckets123, intPtr(20)},
 				`{"total-prompt-tokens":58, "total-generation-tokens":99}`,
 				tokenTestPhase{checkBuckets10_20, intPtr(58)}, tokenTestPhase{checkBuckets123, intPtr(99)}),
-			// Prompt tokens: empty → set total → add hist
-			// Generated tokens: empty → set total → add hist
+			// Prompt tokens: empty -> set total -> add hist
+			// Generated tokens: empty -> set total -> add hist
 			Entry("#3 Both: empty; then set totals, then add hists",
 				`{}`,
 				tokenTestPhase{nil, nil}, tokenTestPhase{nil, nil},
@@ -891,8 +891,8 @@ var _ = Describe("Fake metrics", Ordered, func() {
 				tokenTestPhase{nil, intPtr(58)}, tokenTestPhase{nil, intPtr(77)},
 				`{"request-prompt-tokens":[10, 20], "request-generation-tokens":[1,2,3]}`,
 				tokenTestPhase{checkBuckets10_20, intPtr(50)}, tokenTestPhase{checkBuckets123, intPtr(20)}),
-			// Prompt tokens: hist+total → empty (no change) → empty hist (remove)
-			// Generated tokens: hist+total → empty (no change) → empty hist (remove)
+			// Prompt tokens: hist+total -> empty (no change) -> empty hist (remove)
+			// Generated tokens: hist+total -> empty (no change) -> empty hist (remove)
 			Entry("#4 Both: hist+total; then empty, then empty hists",
 				`{"request-prompt-tokens":[1,2,3], "total-prompt-tokens":12345, "request-generation-tokens":[10,20], "total-generation-tokens":54321}`,
 				tokenTestPhase{checkBuckets123, intPtr(12345)}, tokenTestPhase{checkBuckets10_20, intPtr(54321)},
@@ -900,8 +900,8 @@ var _ = Describe("Fake metrics", Ordered, func() {
 				tokenTestPhase{checkBuckets123, intPtr(12345)}, tokenTestPhase{checkBuckets10_20, intPtr(54321)},
 				`{"request-prompt-tokens":[], "request-generation-tokens":[]}`,
 				tokenTestPhase{nil, nil}, tokenTestPhase{nil, nil}),
-			// Prompt tokens: only hist → empty hist → update hist
-			// Generated tokens: only hist → field absent (no-op) → update hist
+			// Prompt tokens: only hist -> empty hist -> update hist
+			// Generated tokens: only hist -> field absent (no-op) -> update hist
 			Entry("#5 Both: only hist; then empty clears prompt, then re-add hists",
 				`{"request-prompt-tokens":[1,2,3], "request-generation-tokens":[10,20]}`,
 				tokenTestPhase{checkBuckets123, intPtr(20)}, tokenTestPhase{checkBuckets10_20, intPtr(50)},
@@ -909,8 +909,8 @@ var _ = Describe("Fake metrics", Ordered, func() {
 				tokenTestPhase{nil, nil}, tokenTestPhase{checkBuckets10_20, intPtr(50)},
 				`{"request-prompt-tokens":[10, 20], "request-generation-tokens":[1,2,3]}`,
 				tokenTestPhase{checkBuckets10_20, intPtr(50)}, tokenTestPhase{checkBuckets123, intPtr(20)}),
-			// Prompt tokens: empty → add hist only → update with hist+total simultaneously
-			// Generated tokens: empty → add hist only → update with hist+total simultaneously
+			// Prompt tokens: empty -> add hist only -> update with hist+total simultaneously
+			// Generated tokens: empty -> add hist only -> update with hist+total simultaneously
 			Entry("#6 Both: empty; then add hists, then update with hist+total simultaneously",
 				`{}`,
 				tokenTestPhase{nil, nil}, tokenTestPhase{nil, nil},
@@ -918,8 +918,8 @@ var _ = Describe("Fake metrics", Ordered, func() {
 				tokenTestPhase{checkBuckets123, intPtr(20)}, tokenTestPhase{checkBuckets10_20, intPtr(50)},
 				`{"request-prompt-tokens":[10,20], "total-prompt-tokens":999, "request-generation-tokens":[1,2,3], "total-generation-tokens":888}`,
 				tokenTestPhase{checkBuckets10_20, intPtr(999)}, tokenTestPhase{checkBuckets123, intPtr(888)}),
-			// Prompt tokens: only total → update total → add hist+total simultaneously
-			// Generated tokens: only total → update total → add hist+total simultaneously
+			// Prompt tokens: only total -> update total -> add hist+total simultaneously
+			// Generated tokens: only total -> update total -> add hist+total simultaneously
 			Entry("#7 Both: only total; then update totals, then add hist+total simultaneously",
 				`{"total-prompt-tokens":100, "total-generation-tokens":200}`,
 				tokenTestPhase{nil, intPtr(100)}, tokenTestPhase{nil, intPtr(200)},
@@ -1020,7 +1020,7 @@ var _ = Describe("total tokens", func() {
 				counts:   []int{1},
 				buckets:  []float64{10},
 				expected: 10,
-				// bucket0: [0,10] → 1*10 = 10
+				// bucket0: [0,10] -> 1*10 = 10
 				// total = 10
 			},
 			{
@@ -1028,8 +1028,8 @@ var _ = Describe("total tokens", func() {
 				counts:   []int{2, 3},
 				buckets:  []float64{10, 20},
 				expected: 80,
-				// bucket0: [0,10] →  2*10 = 20
-				// bucket1: (10,20] → 3*20 = 60
+				// bucket0: [0,10] ->  2*10 = 20
+				// bucket1: (10,20] -> 3*20 = 60
 				// total = 80
 			},
 			{
@@ -1037,10 +1037,10 @@ var _ = Describe("total tokens", func() {
 				counts:   []int{1, 1, 1, 1},
 				buckets:  []float64{10, 20, 50},
 				expected: 131,
-				// bucket0: [0,10] → 1*10 = 10
-				// bucket1: (10,20] → 1*20 = 20
-				// bucket2: (20,50] → 1*50 = 50
-				// bucket3: (50,+Inf) → 1*(50+1)=51
+				// bucket0: [0,10] -> 1*10 = 10
+				// bucket1: (10,20] -> 1*20 = 20
+				// bucket2: (20,50] -> 1*50 = 50
+				// bucket3: (50,+Inf) -> 1*(50+1)=51
 				// total = 131
 			},
 			{
@@ -1048,8 +1048,8 @@ var _ = Describe("total tokens", func() {
 				counts:   []int{0, 5, 0, 2},
 				buckets:  []float64{1, 10, 100},
 				expected: 252,
-				// bucket1: (1,10] →  5*10 = 50
-				// bucket3: (100,+Inf) → 2*(100+1) = 202
+				// bucket1: (1,10] ->  5*10 = 50
+				// bucket3: (100,+Inf) -> 2*(100+1) = 202
 				// total = 252
 			},
 			{
@@ -1057,16 +1057,16 @@ var _ = Describe("total tokens", func() {
 				counts:   []int{0, 0, 0, 4},
 				buckets:  []float64{10, 100, 1000},
 				expected: 4004,
-				// bucket3: (1000,+Inf) → 4*(1000+1) = 4004
+				// bucket3: (1000,+Inf) -> 4*(1000+1) = 4004
 			},
 			{
 				name:     "collaborator example: [10,20,30] with long buckets",
 				counts:   []int{10, 20, 30},
 				buckets:  []float64{1, 2, 5, 10, 20, 50, 100, 200, 500, 1000},
 				expected: 200,
-				// bucket0: [0,1] → 10*1 = 10
-				// bucket1: (1,2] → 20*2 = 40
-				// bucket2: (2,5] → 30*5 = 150
+				// bucket0: [0,1] -> 10*1 = 10
+				// bucket1: (1,2] -> 20*2 = 40
+				// bucket2: (2,5] -> 30*5 = 150
 				// total = 200
 			},
 			{
@@ -1074,8 +1074,8 @@ var _ = Describe("total tokens", func() {
 				counts:   []int{1, 1},
 				buckets:  []float64{10, 100, 1000, 10000},
 				expected: 110,
-				// bucket0: [0,10] → 1*10 = 10
-				// bucket1: (10,100] → 1*100 = 100
+				// bucket0: [0,10] -> 1*10 = 10
+				// bucket1: (10,100] -> 1*100 = 100
 				// total = 110
 			},
 			{

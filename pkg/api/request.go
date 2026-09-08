@@ -1350,12 +1350,12 @@ func (m *MessagesRequest) GetLogprobs() *int {
 // equivalent ChatCompletionsRequest for processing by the existing pipeline.
 //
 // Mapping rules:
-//   - system prompt → leading Message{Role: "system"}
-//   - "text" block  → ChatComplContentBlock{Type: "text"}
-//   - "image" block → ChatComplContentBlock{Type: "image_url"} (base64 sources become data URLs)
-//   - "tool_use" block (assistant) → Message.ToolCalls entry
-//   - "tool_result" block (user) → separate Message{Role: "tool", ToolCallID: …}
-//   - AnthropicTool → Tool with function.parameters = input_schema
+//   - system prompt -> leading Message{Role: "system"}
+//   - "text" block  -> ChatComplContentBlock{Type: "text"}
+//   - "image" block -> ChatComplContentBlock{Type: "image_url"} (base64 sources become data URLs)
+//   - "tool_use" block (assistant) -> Message.ToolCalls entry
+//   - "tool_result" block (user) -> separate Message{Role: "tool", ToolCallID: …}
+//   - AnthropicTool -> Tool with function.parameters = input_schema
 func (m *MessagesRequest) ToChatCompletionsRequest() *ChatCompletionsRequest {
 	msgs := make([]Message, 0, len(m.Messages)+1)
 	if m.System != "" {
@@ -1447,7 +1447,7 @@ func (m *MessagesRequest) ToChatCompletionsRequest() *ChatCompletionsRequest {
 		}
 	}
 
-	// Convert Anthropic tools to OpenAI format (input_schema → parameters).
+	// Convert Anthropic tools to OpenAI format (input_schema -> parameters).
 	var tools []Tool
 	if len(m.Tools) > 0 {
 		tools = make([]Tool, 0, len(m.Tools))

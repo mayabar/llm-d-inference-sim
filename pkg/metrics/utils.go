@@ -55,9 +55,9 @@ func Build125Buckets(maxValue int) []float64 {
 // This includes the last bucket (last_boundary, +Inf].
 // bucketsSamplesCount - array containing number of samples per bucket, starting from the first bucket.
 // Trailing empty buckets are not included in this array, so its length can be <= len(bucketsBoundaries)+1
-func InitFakeHistogram(hist *prometheus.HistogramVec, modelName string, bucketsBoundaries []float64, bucketsSamplesCount []int) *int64 {
+func InitFakeHistogram(hist *prometheus.HistogramVec, modelName string, bucketsBoundaries []float64, bucketsSamplesCount []int) *float64 {
 	var valueToObserve float64
-	var total int64
+	var total float64
 	numOfBoundaries := len(bucketsBoundaries)
 
 	if len(bucketsSamplesCount) == 0 || len(bucketsBoundaries) == 0 {
@@ -84,8 +84,16 @@ func InitFakeHistogram(hist *prometheus.HistogramVec, modelName string, bucketsB
 			}
 		}
 
-		total += int64(bucketSamplesCount) * int64(valueToObserve)
+		total += float64(bucketSamplesCount) * valueToObserve
 	}
 
 	return &total
+}
+
+func float64Ptr(v *int64) *float64 {
+	if v == nil {
+		return nil
+	}
+	f := float64(*v)
+	return &f
 }

@@ -95,9 +95,11 @@ type CounterUpdate struct {
 }
 
 // CounterReset carries the target state for a reset-shaped counter update:
-// unregister the current collector, recreate it, then Add Value.
+// unregister the current collector, recreate it, then Add Value. A nil
+// Value leaves the recreated counter with no series stamped, so it is
+// absent from /metrics rather than reporting an explicit zero.
 type CounterReset struct {
-	Value float64
+	Value *float64
 }
 
 // SuccessTotalReset is the target state for request_success_total: one
@@ -1057,15 +1059,18 @@ func (m *VLLMMetricsAdapter) lorasUpdater(ctx context.Context) {
 }
 
 // applyCounterReset unregisters counterPP, recreates it via recreate, then
-// records the target value via a single Add. Called only from updater
-// goroutines.
-func (m *VLLMMetricsAdapter) applyCounterReset(counterPP **prometheus.CounterVec, recreate func() error, modelName string, value float64) {
+// records the target value via a single Add. A nil value leaves the
+// recreated counter with no series stamped, so it reads as absent from
+// /metrics. Called only from updater goroutines.
+func (m *VLLMMetricsAdapter) applyCounterReset(counterPP **prometheus.CounterVec, recreate func() error, modelName string, value *float64) {
 	m.bus.registry.Unregister(*counterPP)
 	if err := recreate(); err != nil {
 		m.logger.Error(err, "failed to recreate counter during fake-metrics reset")
 		return
 	}
-	(*counterPP).WithLabelValues(modelName).Add(value)
+	if value != nil {
+		(*counterPP).WithLabelValues(modelName).Add(*value)
+	}
 }
 
 // applySuccessTotalReset unregisters requestSuccessTotal, recreates it,
@@ -1553,16 +1558,12 @@ func (m *VLLMMetricsAdapter) updateScalarLocked(key string, fm *common.FakeMetri
 // resolveTokenTotal returns the target absolute value for a token counter
 // paired with a histogram: explicit wins when set, else the sum of the
 // histogram Samples.
-func resolveTokenTotal(buckets []float64, samples []int, explicit *int64) int64 {
+func resolveTokenTotal(buckets []float64, samples []int, explicit *float64) *float64 {
 	if explicit != nil {
-		return *explicit
+		return explicit
 	}
 
-	total := InitFakeHistogram(nil, "", buckets, samples)
-	if total == nil {
-		return 0
-	}
-	return *total
+	return InitFakeHistogram(nil, "", buckets, samples)
 }
 
 func (m *VLLMMetricsAdapter) applyUpdate(update *common.FakeMetrics) error {
@@ -1623,23 +1624,23 @@ func (m *VLLMMetricsAdapter) applyUpdate(update *common.FakeMetrics) error {
 	// update the total prompt tokens counter according the histogram (if the total is not provided) or
 	// according to the explicit total (if provided)
 	if update.RequestPromptTokens != nil || update.TotalPromptTokens != nil {
-		total := resolveTokenTotal(tokenBuckets, update.RequestPromptTokens, update.TotalPromptTokens)
-		m.writeToPromptTokensTotal(CounterUpdate{Reset: &CounterReset{Value: float64(total)}})
+		total := resolveTokenTotal(tokenBuckets, update.RequestPromptTokens, float64Ptr(update.TotalPromptTokens))
+		m.writeToPromptTokensTotal(CounterUpdate{Reset: &CounterReset{Value: total}})
 	}
 
 	if update.RequestGenerationTokens != nil {
 		m.writeToRequestGenerationTokens(HistogramUpdate{Reset: &HistogramReset{Buckets: tokenBuckets, Samples: update.RequestGenerationTokens}})
 	}
 	if update.RequestGenerationTokens != nil || update.TotalGenerationTokens != nil {
-		total := resolveTokenTotal(tokenBuckets, update.RequestGenerationTokens, update.TotalGenerationTokens)
-		m.writeToGenerationTokensTotal(CounterUpdate{Reset: &CounterReset{Value: float64(total)}})
+		total := resolveTokenTotal(tokenBuckets, update.RequestGenerationTokens, float64Ptr(update.TotalGenerationTokens))
+		m.writeToGenerationTokensTotal(CounterUpdate{Reset: &CounterReset{Value: total}})
 	}
 
 	if update.PrefixCacheQueries != nil {
-		m.writeToPrefixCacheQueriesTotal(CounterUpdate{Reset: &CounterReset{Value: float64(*update.PrefixCacheQueries)}})
+		m.writeToPrefixCacheQueriesTotal(CounterUpdate{Reset: &CounterReset{Value: float64Ptr(update.PrefixCacheQueries)}})
 	}
 	if update.PrefixCacheHits != nil {
-		m.writeToPrefixCacheHitsTotal(CounterUpdate{Reset: &CounterReset{Value: float64(*update.PrefixCacheHits)}})
+		m.writeToPrefixCacheHitsTotal(CounterUpdate{Reset: &CounterReset{Value: float64Ptr(update.PrefixCacheHits)}})
 	}
 
 	if update.RequestSuccessTotal != nil {
