@@ -111,12 +111,12 @@ func (b *MetricsBus) loraCounterLoop(ctx context.Context) {
 				continue
 			}
 
-			common.WriteToChannel(b.loraSetsChanged, b.snapshotLoraSets(ev.IsFake), b.logger)
+			common.WriteToChannel(b.loraSetsChanged, b.snapshotLoraSets(), b.logger)
 		}
 	}
 }
 
-func (b *MetricsBus) snapshotLoraSets(isFake bool) loraSetsChanged {
+func (b *MetricsBus) snapshotLoraSets() loraSetsChanged {
 	running := make(map[string]int)
 	b.runningLoras.Range(func(k, v any) bool {
 		running[k.(string)] = v.(int)
@@ -128,9 +128,8 @@ func (b *MetricsBus) snapshotLoraSets(isFake bool) loraSetsChanged {
 		return true
 	})
 	return loraSetsChanged{
-		BaseEvent: BaseEvent{IsFake: isFake},
-		Running:   running,
-		Waiting:   waiting,
+		Running: running,
+		Waiting: waiting,
 	}
 }
 
@@ -166,62 +165,48 @@ func (b *MetricsBus) ApplyFakeMetricsUpdate(update *common.FakeMetrics) error {
 
 // -- Events -----------------------------------------------------------------
 //
-// Every duration field is seconds (float64), pre-computed by the producer
-// at the current time.Since(...) call site. Adapters never store timestamps
-// and never compute diffs.
-type BaseEvent struct {
-	IsFake bool
-}
 
 // RequestReceived fires when a request enters HandleRequest, before queue admission.
 // State marker: not consumed by any exposed metric today.
 type RequestReceived struct {
-	BaseEvent
 }
 
 // RequestRejected fires when a request is refused before it can be queued
 // (queue full, invalid model, injected failure).
 // State marker: not consumed by any exposed metric today.
 type RequestRejected struct {
-	BaseEvent
 	Err error
 }
 
 // RequestQueued fires when a request is admitted to the waiting queue.
 // Drives num_requests_waiting (+1) and the LoRA waiting-set add.
 type RequestQueued struct {
-	BaseEvent
 }
 
 // RequestDequeued fires when a request is pulled from the waiting queue.
 // Drives num_requests_waiting (-1) and request_queue_time_seconds.
 type RequestDequeued struct {
-	BaseEvent
 	QueueTime float64 // seconds
 }
 
 // RequestRunning fires when a worker begins processing a request, before
 // prefill. Drives num_requests_running (+1) and the LoRA waiting->running move.
 type RequestRunning struct {
-	BaseEvent
 }
 
 // PrefillStarted fires at the start of simulated prefill. State marker.
 type PrefillStarted struct {
-	BaseEvent
 }
 
 // PrefillEnded fires after the simulated prefill delay. Drives
 // request_prefill_time_seconds and time_to_first_token_seconds (same
 // value observed on both histograms).
 type PrefillEnded struct {
-	BaseEvent
 	PrefillDuration float64 // seconds
 }
 
 // DecodeStarted fires before the per-token generation loop. State marker.
 type DecodeStarted struct {
-	BaseEvent
 }
 
 // TokenGenerated fires once per generated token (from the second token
@@ -235,7 +220,6 @@ type TokenGenerated struct {
 // (Observe DecodeDuration) and request_time_per_output_token_seconds
 // (Observe DecodeDuration/GenerationTokens when GenerationTokens > 0).
 type DecodeEnded struct {
-	BaseEvent
 	GenerationTokens int
 	DecodeDuration   float64 // seconds
 }
@@ -244,7 +228,6 @@ type DecodeEnded struct {
 // response. Drives all token, success, and both request-level latency
 // histograms, plus num_requests_running (-1) and LoRA running-set removal.
 type RequestSucceeded struct {
-	BaseEvent
 	PromptTokens       int
 	GenerationTokens   int
 	GenTokensPerChoice []int
@@ -258,7 +241,6 @@ type RequestSucceeded struct {
 // running-counter, LoRA, and latency bookkeeping as RequestSucceeded, but
 // no token or success counter increments.
 type RequestFailed struct {
-	BaseEvent
 	E2ELatency    float64 // seconds
 	InferenceTime float64 // seconds
 }
@@ -266,14 +248,12 @@ type RequestFailed struct {
 // KVCacheUsageChanged fires when block-cache utilization changes.
 // Cache-wide (not per-request); Model is empty.
 type KVCacheUsageChanged struct {
-	BaseEvent
 	KVCacheUsagePerc float64
 }
 
 // PrefixCacheQueried fires on prefix-cache lookup at request start.
 // Cache-wide; Model is empty.
 type PrefixCacheQueried struct {
-	BaseEvent
 	QueriedTokens      int
 	CachedPromptTokens int
 }
@@ -292,7 +272,6 @@ const (
 
 // LoRAChanged signals a waiting/running/done transition for a LoRA request.
 type LoRAChanged struct {
-	BaseEvent
 	Model string
 	State LoRAState
 }
@@ -301,7 +280,6 @@ type LoRAChanged struct {
 // carries the current per-LoRA waiting and running request counts. Adapters
 // derive labels (e.g. lora_requests_info) from these maps.
 type loraSetsChanged struct {
-	BaseEvent
 	Running map[string]int
 	Waiting map[string]int
 }
@@ -309,10 +287,14 @@ type loraSetsChanged struct {
 // channelCapacities returns the buffered-channel sizes derived from config,
 // shared by the bus and every EngineMetricsAdapter so buffer sizing stays
 // consistent across both.
-func channelCapacities(config common.Configuration) (running, waiting, requests int) {
+// The per-token stream is buffered on the bus and again on the adapter channel
+// behind it; both must use tokens, or the narrower one decides when
+// observations are dropped and the wider one is reserved for nothing.
+func channelCapacities(config common.Configuration) (running, waiting, requests, tokens int) {
 	running = config.MaxNumSeqs * 2
 	waiting = config.MaxWaitingQueueLength * 2
 	requests = (config.MaxNumSeqs + config.MaxWaitingQueueLength) * 2
+	tokens = config.MaxNumSeqs * config.MaxModelLen
 	return
 }
 
@@ -334,8 +316,7 @@ func NewMetricsBus(ctx context.Context, config common.Configuration, registry *p
 	// create channels with capacity based on config
 	done := ctx.Done()
 
-	maxNumberOfRunningRequests, maxNumberOfWaitingRequests, _ := channelCapacities(config)
-	maxNumberOfTokens := maxNumberOfRunningRequests * config.MaxModelLen
+	maxNumberOfRunningRequests, maxNumberOfWaitingRequests, _, maxNumberOfTokens := channelCapacities(config)
 
 	mBus.RequestQueued = common.Channel[RequestQueued]{
 		Channel: make(chan RequestQueued, maxNumberOfWaitingRequests),

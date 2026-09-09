@@ -35,7 +35,7 @@ type activeGenerator struct {
 	fn         Generator
 	params     *common.FunctionInfo
 	roundToInt bool
-	updateFunc func(upd common.MetricInfo)
+	updateFunc func(upd GaugeUpdate)
 }
 
 // Dispatch returns the Generator registered for name, or nil for an unknown

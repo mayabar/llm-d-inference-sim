@@ -60,15 +60,15 @@ const (
 	VLLMPrefixCacheQueriesTotalMetricName = "vllm:prefix_cache_queries_total"
 )
 
-// Internal keys for the active-generator map. Kept private so the applier
-// interface has no scalar-gauge enum.
-const (
-	GenKeyRunning = "running"
-	GenKeyWaiting = "waiting"
-	GenKeyKVCache = "kvcache"
-)
-
 var modelLabel = []string{api.PromLabelModelName}
+
+// GaugeUpdate is a gauge-channel payload: either an Add delta from a real
+// event or a Reset to an absolute fake-metrics value. Exactly one variant
+// must be non-nil.
+type GaugeUpdate struct {
+	Add   *float64
+	Reset *float64
+}
 
 // HistogramUpdate is a histogram-channel payload: either a single Observe
 // or a Reset to a target bucket state. Exactly one variant must be non-nil.
@@ -184,9 +184,9 @@ type VLLMMetricsAdapter struct {
 	// Channels: one per Prometheus metric family. Handlers push
 	// here; the updater goroutines below drain each and perform the actual
 	// Prometheus mutation. Created in Start once ctx.Done() is available.
-	runReqChan       common.Channel[common.MetricInfo]
-	waitingReqChan   common.Channel[common.MetricInfo]
-	kvCacheUsageChan common.Channel[common.MetricInfo]
+	runReqChan       common.Channel[GaugeUpdate]
+	waitingReqChan   common.Channel[GaugeUpdate]
+	kvCacheUsageChan common.Channel[GaugeUpdate]
 
 	ttftChan                    common.Channel[HistogramUpdate]
 	perTokenLatencyChan         common.Channel[HistogramUpdate]
@@ -286,24 +286,24 @@ func (m *VLLMMetricsAdapter) Start(ctx context.Context) error {
 }
 
 func (m *VLLMMetricsAdapter) createAndStartPrometheusChannels(ctx context.Context) {
-	maxNumberOfRunningRequests, maxNumberOfWaitingRequests, maxNumberOfRequests := channelCapacities(m.config)
+	maxNumberOfRunningRequests, maxNumberOfWaitingRequests, maxNumberOfRequests, maxNumberOfTokens := channelCapacities(m.config)
 
-	m.runReqChan = common.Channel[common.MetricInfo]{
-		Channel: make(chan common.MetricInfo, maxNumberOfRunningRequests),
+	m.runReqChan = common.Channel[GaugeUpdate]{
+		Channel: make(chan GaugeUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.runReqChan",
 		Done:    ctx.Done(),
 	}
 	go subscribe(ctx, m.runReqChan, m.runningRequestsUpdater)
 
-	m.waitingReqChan = common.Channel[common.MetricInfo]{
-		Channel: make(chan common.MetricInfo, maxNumberOfWaitingRequests),
+	m.waitingReqChan = common.Channel[GaugeUpdate]{
+		Channel: make(chan GaugeUpdate, maxNumberOfWaitingRequests),
 		Name:    "vllm.waitingReqChan",
 		Done:    ctx.Done(),
 	}
 	go subscribe(ctx, m.waitingReqChan, m.waitingRequestsUpdater)
 
-	m.kvCacheUsageChan = common.Channel[common.MetricInfo]{
-		Channel: make(chan common.MetricInfo, maxNumberOfRunningRequests),
+	m.kvCacheUsageChan = common.Channel[GaugeUpdate]{
+		Channel: make(chan GaugeUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.kvCacheUsageChan",
 		Done:    ctx.Done(),
 	}
@@ -317,7 +317,7 @@ func (m *VLLMMetricsAdapter) createAndStartPrometheusChannels(ctx context.Contex
 	go subscribe(ctx, m.ttftChan, m.ttftUpdater)
 
 	m.perTokenLatencyChan = common.Channel[HistogramUpdate]{
-		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests*m.config.MaxModelLen),
+		Channel: make(chan HistogramUpdate, maxNumberOfTokens),
 		Name:    "vllm.perTokenLatencyChan",
 		Done:    ctx.Done(),
 	}
@@ -561,6 +561,16 @@ func observation(v float64) HistogramUpdate {
 	return HistogramUpdate{Observe: &v}
 }
 
+// gaugeAdd wraps a real-event delta for a gauge channel.
+func gaugeAdd(v float64) GaugeUpdate {
+	return GaugeUpdate{Add: &v}
+}
+
+// gaugeReset wraps an absolute fake-metrics value for a gauge channel.
+func gaugeReset(v float64) GaugeUpdate {
+	return GaugeUpdate{Reset: &v}
+}
+
 // applyHistogramUpdate records an Observe, or on Reset unregisters the
 // collector, recreates it, and replays the target bucket state.
 func (m *VLLMMetricsAdapter) applyHistogramUpdate(histPP **prometheus.HistogramVec, recreate func() error, upd HistogramUpdate) {
@@ -600,15 +610,15 @@ func subscribe[E any](ctx context.Context, ch common.Channel[E], fn func(E)) {
 // fake-metrics applier alike - go through these wrappers so a channel is
 // named in one place.
 
-func (m *VLLMMetricsAdapter) writeToRunReq(upd common.MetricInfo) {
+func (m *VLLMMetricsAdapter) writeToRunReq(upd GaugeUpdate) {
 	common.WriteToChannel(m.runReqChan, upd, m.logger)
 }
 
-func (m *VLLMMetricsAdapter) writeToWaitingReq(upd common.MetricInfo) {
+func (m *VLLMMetricsAdapter) writeToWaitingReq(upd GaugeUpdate) {
 	common.WriteToChannel(m.waitingReqChan, upd, m.logger)
 }
 
-func (m *VLLMMetricsAdapter) writeToKVCacheUsage(upd common.MetricInfo) {
+func (m *VLLMMetricsAdapter) writeToKVCacheUsage(upd GaugeUpdate) {
 	common.WriteToChannel(m.kvCacheUsageChan, upd, m.logger)
 }
 
@@ -665,7 +675,7 @@ func (m *VLLMMetricsAdapter) onRequestQueued(ev RequestQueued) {
 	if m.config.FakeMetrics != nil {
 		return
 	}
-	m.writeToWaitingReq(common.MetricInfo{Value: 1, IsFake: ev.IsFake})
+	m.writeToWaitingReq(gaugeAdd(1))
 }
 
 // request dequeued
@@ -676,7 +686,7 @@ func (m *VLLMMetricsAdapter) onRequestDequeued(ev RequestDequeued) {
 	if m.config.FakeMetrics != nil {
 		return
 	}
-	m.writeToWaitingReq(common.MetricInfo{Value: -1, IsFake: ev.IsFake})
+	m.writeToWaitingReq(gaugeAdd(-1))
 
 	m.writeToReqQueueTime(observation(ev.QueueTime))
 }
@@ -688,7 +698,7 @@ func (m *VLLMMetricsAdapter) onRequestRunning(ev RequestRunning) {
 	if m.config.FakeMetrics != nil {
 		return
 	}
-	m.writeToRunReq(common.MetricInfo{Value: 1, IsFake: ev.IsFake})
+	m.writeToRunReq(gaugeAdd(1))
 }
 
 // prefill started
@@ -763,7 +773,7 @@ func (m *VLLMMetricsAdapter) onRequestSucceeded(ev RequestSucceeded) {
 	m.writeToE2EReqLatency(observation(ev.E2ELatency))
 	m.writeToReqInferenceTime(observation(ev.InferenceTime))
 
-	m.finishRunning(ev.IsFake)
+	m.finishRunning()
 }
 
 // request processing failed
@@ -775,7 +785,7 @@ func (m *VLLMMetricsAdapter) onRequestFailed(ev RequestFailed) {
 	m.writeToE2EReqLatency(observation(ev.E2ELatency))
 	m.writeToReqInferenceTime(observation(ev.InferenceTime))
 
-	m.finishRunning(ev.IsFake)
+	m.finishRunning()
 }
 
 // change in kv cache utilization
@@ -784,7 +794,7 @@ func (m *VLLMMetricsAdapter) onKVCacheUsageChanged(ev KVCacheUsageChanged) {
 	if m.config.FakeMetrics != nil {
 		return
 	}
-	m.writeToKVCacheUsage(common.MetricInfo{Value: ev.KVCacheUsagePerc, IsFake: ev.IsFake})
+	m.writeToKVCacheUsage(gaugeAdd(ev.KVCacheUsagePerc))
 }
 
 // change in prefix cache utilization
@@ -812,41 +822,44 @@ func (m *VLLMMetricsAdapter) onLoRASetsChanged(ev loraSetsChanged) {
 
 // finishRunning decrements the running-request counter for a terminal
 // request. LoRA state transitions are handled separately via LoRAChanged.
-func (m *VLLMMetricsAdapter) finishRunning(isFake bool) {
-	m.writeToRunReq(common.MetricInfo{Value: -1, IsFake: isFake})
+func (m *VLLMMetricsAdapter) finishRunning() {
+	m.writeToRunReq(gaugeAdd(-1))
 }
 
 // -- Channel updates  -------------------
 
 // -- Updaters (per-metric channels -> Prometheus) ------------------
 
-func (m *VLLMMetricsAdapter) waitingRequestsUpdater(upd common.MetricInfo) {
-	if (m.config.FakeMetrics != nil) != upd.IsFake {
+func (m *VLLMMetricsAdapter) waitingRequestsUpdater(upd GaugeUpdate) {
+	switch {
+	case upd.Add != nil && m.config.FakeMetrics == nil:
+		m.nWaitingReqs += int64(*upd.Add)
+	case upd.Reset != nil && m.config.FakeMetrics != nil:
+		m.nWaitingReqs = int64(*upd.Reset)
+	default:
 		return
-	}
-	if upd.IsFake {
-		m.nWaitingReqs = int64(upd.Value)
-	} else {
-		m.nWaitingReqs += int64(upd.Value)
 	}
 	m.reportWaitingRequests()
 }
 
-func (m *VLLMMetricsAdapter) runningRequestsUpdater(upd common.MetricInfo) {
-	if (m.config.FakeMetrics != nil) != upd.IsFake {
+func (m *VLLMMetricsAdapter) runningRequestsUpdater(upd GaugeUpdate) {
+	switch {
+	case upd.Add != nil && m.config.FakeMetrics == nil:
+		m.nRunningReqs += int64(*upd.Add)
+	case upd.Reset != nil && m.config.FakeMetrics != nil:
+		m.nRunningReqs = int64(*upd.Reset)
+	default:
 		return
-	}
-	if upd.IsFake {
-		m.nRunningReqs = int64(upd.Value)
-	} else {
-		m.nRunningReqs += int64(upd.Value)
 	}
 	m.reportRunningRequests()
 }
 
-func (m *VLLMMetricsAdapter) kvCacheUsageUpdater(value common.MetricInfo) {
-	if (m.config.FakeMetrics != nil) == value.IsFake {
-		m.reportKVCacheUsage(value.Value)
+func (m *VLLMMetricsAdapter) kvCacheUsageUpdater(upd GaugeUpdate) {
+	switch {
+	case upd.Add != nil && m.config.FakeMetrics == nil:
+		m.reportKVCacheUsage(*upd.Add)
+	case upd.Reset != nil && m.config.FakeMetrics != nil:
+		m.reportKVCacheUsage(*upd.Reset)
 	}
 }
 
@@ -1276,9 +1289,11 @@ func (m *VLLMMetricsAdapter) createAndRegisterPrefixCacheQueriesTotalCounter() e
 // one-shot cache_config_info and lora_requests_info series so the first
 // scrape has a consistent baseline.
 func (m *VLLMMetricsAdapter) setInitialValues() {
-	m.runningRequests.WithLabelValues(m.config.DisplayModelName).Set(0)
-	m.waitingRequests.WithLabelValues(m.config.DisplayModelName).Set(0)
-	m.kvCacheUsagePercentage.WithLabelValues(m.config.DisplayModelName).Set(0)
+	if m.config.FakeMetrics == nil {
+		m.runningRequests.WithLabelValues(m.config.DisplayModelName).Set(0)
+		m.waitingRequests.WithLabelValues(m.config.DisplayModelName).Set(0)
+		m.kvCacheUsagePercentage.WithLabelValues(m.config.DisplayModelName).Set(0)
+	}
 	m.cacheConfig.WithLabelValues(
 		strconv.Itoa(m.config.TokenBlockSize),
 		strconv.Itoa(m.config.KVCacheSize),
@@ -1291,7 +1306,7 @@ func (m *VLLMMetricsAdapter) setInitialValues() {
 }
 
 // -------- Fake Metrics ------
-func (m *VLLMMetricsAdapter) updateScalarLocked(key string, fm *common.FakeMetricWithFunction, updateFunc func(upd common.MetricInfo), roundToInt bool) {
+func (m *VLLMMetricsAdapter) updateScalarLocked(key string, fm *common.FakeMetricWithFunction, updateFunc func(upd GaugeUpdate), roundToInt bool) {
 	if fm.IsFunction {
 		gen := activeGenerator{
 			fn:         Dispatch(fm.Function.Name),
@@ -1304,11 +1319,11 @@ func (m *VLLMMetricsAdapter) updateScalarLocked(key string, fm *common.FakeMetri
 		if roundToInt {
 			value = float64(int64(value))
 		}
-		updateFunc(common.MetricInfo{Value: value, IsFake: true})
+		updateFunc(gaugeReset(value))
 		return
 	}
 	delete(m.generators, key)
-	updateFunc(common.MetricInfo{Value: fm.FixedValue, IsFake: true})
+	updateFunc(gaugeReset(fm.FixedValue))
 }
 
 // resolveTokenTotal returns the target absolute value for a token counter
@@ -1328,13 +1343,13 @@ func (m *VLLMMetricsAdapter) applyUpdate(update *common.FakeMetrics) error {
 	generatorsWereEmpty := len(m.generators) == 0
 
 	if update.RunningRequests != nil {
-		m.updateScalarLocked(GenKeyRunning, update.RunningRequests, m.writeToRunReq, true)
+		m.updateScalarLocked(VLLMReqRunningMetricName, update.RunningRequests, m.writeToRunReq, true)
 	}
 	if update.WaitingRequests != nil {
-		m.updateScalarLocked(GenKeyWaiting, update.WaitingRequests, m.writeToWaitingReq, true)
+		m.updateScalarLocked(VLLMReqWaitingMetricName, update.WaitingRequests, m.writeToWaitingReq, true)
 	}
 	if update.KVCacheUsagePercentage != nil {
-		m.updateScalarLocked(GenKeyKVCache, update.KVCacheUsagePercentage, m.writeToKVCacheUsage, false)
+		m.updateScalarLocked(VLLMKVCacheUsageMetricName, update.KVCacheUsagePercentage, m.writeToKVCacheUsage, false)
 	}
 
 	if update.TTFTBucketValues != nil {
@@ -1463,6 +1478,6 @@ func (m *VLLMMetricsAdapter) tick(t time.Duration) {
 		if gen.roundToInt {
 			value = float64(int64(value))
 		}
-		gen.updateFunc(common.MetricInfo{Value: value, IsFake: true})
+		gen.updateFunc(gaugeReset(value))
 	}
 }
