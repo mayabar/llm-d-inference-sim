@@ -311,6 +311,16 @@ type loraSetsChanged struct {
 	Waiting map[string]int
 }
 
+// channelCapacities returns the buffered-channel sizes derived from config,
+// shared by the bus and every EngineMetricsAdapter so buffer sizing stays
+// consistent across both.
+func channelCapacities(config common.Configuration) (running, waiting, requests int) {
+	running = config.MaxNumSeqs * 2
+	waiting = config.MaxWaitingQueueLength * 2
+	requests = (config.MaxNumSeqs + config.MaxWaitingQueueLength) * 2
+	return
+}
+
 // --------------------------------
 func NewMetricsBus(ctx context.Context, config common.Configuration, registry *prometheus.Registry, logger logr.Logger) (*MetricsBus, error) {
 	mBus := &MetricsBus{
@@ -329,8 +339,7 @@ func NewMetricsBus(ctx context.Context, config common.Configuration, registry *p
 	// create channels with capacity based on config
 	done := ctx.Done()
 
-	maxNumberOfRunningRequests := config.MaxNumSeqs * 2
-	maxNumberOfWaitingRequests := config.MaxWaitingQueueLength * 2
+	maxNumberOfRunningRequests, maxNumberOfWaitingRequests, _ := channelCapacities(config)
 	maxNumberOfTokens := maxNumberOfRunningRequests * config.MaxModelLen
 
 	mBus.RequestQueued = common.Channel[RequestQueued]{

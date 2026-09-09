@@ -289,9 +289,7 @@ func (m *VLLMMetricsAdapter) Start(ctx context.Context) error {
 }
 
 func (m *VLLMMetricsAdapter) createAndStartPrometheusChannels(ctx context.Context) {
-	maxNumberOfRequests := (m.config.MaxNumSeqs + m.config.MaxWaitingQueueLength) * 2
-	maxNumberOfRunningRequests := m.config.MaxNumSeqs * 2
-	maxNumberOfWaitingRequests := m.config.MaxWaitingQueueLength * 2
+	maxNumberOfRunningRequests, maxNumberOfWaitingRequests, maxNumberOfRequests := channelCapacities(m.config)
 
 	m.runReqChan = common.Channel[common.MetricInfo]{
 		Channel: make(chan common.MetricInfo, maxNumberOfRunningRequests),
