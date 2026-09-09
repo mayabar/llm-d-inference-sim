@@ -33,7 +33,6 @@ import (
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/api"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
-	"github.com/llm-d/llm-d-inference-sim/pkg/common/logging"
 )
 
 const (
@@ -792,10 +791,6 @@ func (m *VLLMMetricsAdapter) onRequestFailed(ev RequestFailed) {
 	m.writeToReqInferenceTime(observation(ev.InferenceTime))
 
 	m.finishRunning(ev.IsFake)
-
-	if ev.Err != nil {
-		m.logger.V(logging.DEBUG).Info("request failed", "model", ev.Model, "err", ev.Err.Error())
-	}
 }
 
 // change in kv cache utilization

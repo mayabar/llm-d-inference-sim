@@ -205,7 +205,7 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 			cfg.FakeMetrics = &common.FakeMetrics{}
 			adapter, _, _ := newTestAdapter(cfg)
 
-			// Simulate that Start() has already run — the ticker only auto-starts
+			// Simulate that Start() has already run, the ticker only auto-starts
 			// once the adapter is marked started.
 			adapter.genMu.Lock()
 			adapter.started = true

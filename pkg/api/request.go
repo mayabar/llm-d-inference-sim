@@ -537,7 +537,7 @@ type baseTextCompletionsRequest struct {
 
 // TextCompletionsParsedRequest is the wire form of a /completions request.
 // On the wire `prompt` may be a single string or an array of strings; the
-// custom UnmarshalJSON below normalizes both forms into Prompt — a plain
+// custom UnmarshalJSON below normalizes both forms into Prompt, a plain
 // string becomes a one-element slice. Used only between JSON unmarshalling
 // and the simulator's split step; workers never see this type.
 type TextCompletionsParsedRequest struct {
@@ -555,8 +555,8 @@ type TextCompletionsRequest struct {
 }
 
 // UnmarshalJSON accepts any of the four wire forms allowed for the `prompt`
-// field — a string, an array of strings, an array of token ids, or an array
-// of token-id arrays — and normalizes them into a []PromptInput.
+// field: a string, an array of strings, an array of token ids, or an array
+// of token-id arrays, and normalizes them into a []PromptInput.
 func (t *TextCompletionsParsedRequest) UnmarshalJSON(data []byte) error {
 	type alias struct {
 		baseTextCompletionsRequest
@@ -629,7 +629,7 @@ func (t *TextCompletionsParsedRequest) MarshalJSON() ([]byte, error) {
 			a.Prompt = t.Prompt[0].Text
 		}
 	default:
-		// vLLM only accepts homogeneous prompt arrays — all strings or all
+		// vLLM only accepts homogeneous prompt arrays: all strings or all
 		// token-id arrays. Reject mixed inputs rather than silently dropping
 		// the minority shape.
 		firstIsTokens := t.Prompt[0].IsTokens()
@@ -656,11 +656,11 @@ func (t *TextCompletionsParsedRequest) MarshalJSON() ([]byte, error) {
 }
 
 // AsSingle returns a single-prompt TextCompletionsRequest for t.Prompt[index],
-// sharing this request's envelope (model, lora, max_tokens, KV params, …). The
+// sharing this request's envelope (model, lora, max_tokens, KV params, ...). The
 // sub-request's RequestID is stamped as "<requestID>-<index>" so each sub
 // carries a unique, deterministic id derived from the parent.
 //
-// This helper exists so the splitting logic — which lives in another package —
+// This helper exists so the splitting logic, which lives in another package,
 // can produce sub-requests without needing access to the unexported
 // baseTextCompletionsRequest field.
 func (t *TextCompletionsParsedRequest) AsSingle(index int) TextCompletionsRequest {
@@ -1369,7 +1369,7 @@ func (m *MessagesRequest) GetLogprobs() *int {
 //   - "text" block  -> ChatComplContentBlock{Type: "text"}
 //   - "image" block -> ChatComplContentBlock{Type: "image_url"} (base64 sources become data URLs)
 //   - "tool_use" block (assistant) -> Message.ToolCalls entry
-//   - "tool_result" block (user) -> separate Message{Role: "tool", ToolCallID: …}
+//   - "tool_result" block (user) -> separate Message{Role: "tool", ToolCallID: ...}
 //   - AnthropicTool -> Tool with function.parameters = input_schema
 func (m *MessagesRequest) ToChatCompletionsRequest() *ChatCompletionsRequest {
 	msgs := make([]Message, 0, len(m.Messages)+1)

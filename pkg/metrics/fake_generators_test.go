@@ -109,7 +109,7 @@ var _ = Describe("Fake metric generators", func() {
 				got := Dispatch(name)
 				Expect(got).NotTo(BeNil())
 				// Compare by evaluated output at a sampling point rather than function
-				// pointer identity — Go does not guarantee identity for named functions.
+				// pointer identity, Go does not guarantee identity for named functions.
 				Expect(got(p, at)).To(Equal(want(p, at)))
 			},
 			Entry("oscillate", common.OscillateFuncName, Generator(Oscillate)),

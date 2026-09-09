@@ -261,10 +261,9 @@ type RequestSucceeded struct {
 
 // RequestFailed is the terminal event for a request that errored out. Same
 // running-counter, LoRA, and latency bookkeeping as RequestSucceeded, but
-// no token or success counter increments. Err is logged.
+// no token or success counter increments.
 type RequestFailed struct {
 	BaseEvent
-	Err           error
 	E2ELatency    float64 // seconds
 	InferenceTime float64 // seconds
 }
