@@ -15,7 +15,6 @@ limitations under the License.
 */
 
 // vLLM Prometheus implementation of EngineMetricsAdapter.
-// See docs/metrics-refactor-design.md for the event-to-metric mapping.
 
 package metrics
 
@@ -190,8 +189,7 @@ type VLLMMetricsAdapter struct {
 	kvCacheUsageChan common.Channel[common.MetricInfo]
 
 	ttftChan                    common.Channel[HistogramUpdate]
-	tpotChan                    common.Channel[HistogramUpdate]
-	interTokenLatencyChan       common.Channel[HistogramUpdate]
+	perTokenLatencyChan         common.Channel[HistogramUpdate]
 	e2eReqLatencyChan           common.Channel[HistogramUpdate]
 	reqQueueTimeChan            common.Channel[HistogramUpdate]
 	reqInferenceTimeChan        common.Channel[HistogramUpdate]
@@ -318,19 +316,12 @@ func (m *VLLMMetricsAdapter) createAndStartPrometheusChannels(ctx context.Contex
 	}
 	go subscribe(ctx, m.ttftChan, m.ttftUpdater)
 
-	m.tpotChan = common.Channel[HistogramUpdate]{
+	m.perTokenLatencyChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests*m.config.MaxModelLen),
-		Name:    "vllm.tpotChan",
+		Name:    "vllm.perTokenLatencyChan",
 		Done:    ctx.Done(),
 	}
-	go subscribe(ctx, m.tpotChan, m.tpotUpdater)
-
-	m.interTokenLatencyChan = common.Channel[HistogramUpdate]{
-		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests*m.config.MaxModelLen),
-		Name:    "vllm.interTokenLatencyChan",
-		Done:    ctx.Done(),
-	}
-	go subscribe(ctx, m.interTokenLatencyChan, m.interTokenLatencyUpdater)
+	go subscribe(ctx, m.perTokenLatencyChan, m.perTokenLatencyUpdater)
 
 	m.e2eReqLatencyChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
@@ -625,12 +616,8 @@ func (m *VLLMMetricsAdapter) writeToTTFT(upd HistogramUpdate) {
 	common.WriteToChannel(m.ttftChan, upd, m.logger)
 }
 
-func (m *VLLMMetricsAdapter) writeToTPOT(upd HistogramUpdate) {
-	common.WriteToChannel(m.tpotChan, upd, m.logger)
-}
-
-func (m *VLLMMetricsAdapter) writeToInterTokenLatency(upd HistogramUpdate) {
-	common.WriteToChannel(m.interTokenLatencyChan, upd, m.logger)
+func (m *VLLMMetricsAdapter) writeToPerTokenLatency(upd HistogramUpdate) {
+	common.WriteToChannel(m.perTokenLatencyChan, upd, m.logger)
 }
 
 func (m *VLLMMetricsAdapter) writeToE2EReqLatency(upd HistogramUpdate) {
@@ -730,9 +717,7 @@ func (m *VLLMMetricsAdapter) onTokenGenerated(ev TokenGenerated) {
 	if m.config.FakeMetrics != nil {
 		return
 	}
-	obs := observation(ev.InterTokenLatency)
-	m.writeToTPOT(obs)
-	m.writeToInterTokenLatency(obs)
+	m.writeToPerTokenLatency(observation(ev.InterTokenLatency))
 }
 
 // decode ended
@@ -869,11 +854,8 @@ func (m *VLLMMetricsAdapter) ttftUpdater(upd HistogramUpdate) {
 	m.applyHistogramUpdate(&m.ttft, m.createAndRegisterTTFTHistogram, upd)
 }
 
-func (m *VLLMMetricsAdapter) tpotUpdater(upd HistogramUpdate) {
+func (m *VLLMMetricsAdapter) perTokenLatencyUpdater(upd HistogramUpdate) {
 	m.applyHistogramUpdate(&m.tpot, m.createAndRegisterTPOTHistogram, upd)
-}
-
-func (m *VLLMMetricsAdapter) interTokenLatencyUpdater(upd HistogramUpdate) {
 	m.applyHistogramUpdate(&m.interTokenLatency, m.createAndRegisterInterTokenLatencyHistogram, upd)
 }
 
@@ -1359,9 +1341,7 @@ func (m *VLLMMetricsAdapter) applyUpdate(update *common.FakeMetrics) error {
 		m.writeToTTFT(HistogramUpdate{Reset: &HistogramReset{Buckets: common.TTFTBucketsBoundaries, Samples: update.TTFTBucketValues}})
 	}
 	if update.TPOTBucketValues != nil {
-		reset := &HistogramReset{Buckets: common.TPOTBucketsBoundaries, Samples: update.TPOTBucketValues}
-		m.writeToTPOT(HistogramUpdate{Reset: reset})
-		m.writeToInterTokenLatency(HistogramUpdate{Reset: reset})
+		m.writeToPerTokenLatency(HistogramUpdate{Reset: &HistogramReset{Buckets: common.TPOTBucketsBoundaries, Samples: update.TPOTBucketValues}})
 	}
 	if update.E2ERequestLatencyBucketValues != nil {
 		m.writeToE2EReqLatency(HistogramUpdate{Reset: &HistogramReset{Buckets: common.RequestLatencyBucketsBoundaries, Samples: update.E2ERequestLatencyBucketValues}})

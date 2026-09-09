@@ -73,13 +73,12 @@ func (s *Simulator) processRequest(reqCtx requestContext) {
 		// api.Error is a struct wire type (not error interface); drop it here
 		common.WriteToChannel(s.Context.metricsBus.RequestFailed,
 			metrics.RequestFailed{
-				BaseEvent:     metrics.BaseEvent{Model: dispModel},
 				E2ELatency:    time.Since(reqCtx.startProcessingTime()).Seconds(),
 				InferenceTime: time.Since(startTime).Seconds(),
 			}, s.Context.logger)
 		if isLoRA {
 			common.WriteToChannel(s.Context.metricsBus.LoRAChanged,
-				metrics.LoRAChanged{BaseEvent: metrics.BaseEvent{Model: dispModel}, State: metrics.LoRADone},
+				metrics.LoRAChanged{Model: dispModel, State: metrics.LoRADone},
 				s.Context.logger)
 		}
 		return
@@ -90,7 +89,6 @@ func (s *Simulator) processRequest(reqCtx requestContext) {
 
 	common.WriteToChannel(s.Context.metricsBus.RequestSucceeded,
 		metrics.RequestSucceeded{
-			BaseEvent:          metrics.BaseEvent{Model: dispModel},
 			PromptTokens:       respCtx.UsageData().PromptTokens,
 			GenerationTokens:   respCtx.UsageData().CompletionTokens,
 			GenTokensPerChoice: []int{respCtx.UsageData().CompletionTokens},
@@ -101,7 +99,7 @@ func (s *Simulator) processRequest(reqCtx requestContext) {
 		}, s.Context.logger)
 	if isLoRA {
 		common.WriteToChannel(s.Context.metricsBus.LoRAChanged,
-			metrics.LoRAChanged{BaseEvent: metrics.BaseEvent{Model: dispModel}, State: metrics.LoRADone},
+			metrics.LoRAChanged{Model: dispModel, State: metrics.LoRADone},
 			s.Context.logger)
 	}
 }

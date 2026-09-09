@@ -287,7 +287,7 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 
 			send := func(name string, state LoRAState) {
 				common.WriteToChannel(bus.LoRAChanged,
-					LoRAChanged{BaseEvent: BaseEvent{Model: name}, State: state},
+					LoRAChanged{Model: name, State: state},
 					logr.Discard())
 			}
 

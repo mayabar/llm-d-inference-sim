@@ -25,13 +25,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// EngineMetricsAdapter consumes state-change events from a MetricsBus and
-// turns them into engine-specific metric observations. Start spawns one
-// goroutine per bus channel; each drainer dispatches events to the matching
-// On<Event> method. Handlers run serially per channel, so a slow handler
-// for one event kind cannot block another. Registry returns the Prometheus
-// registry exposed on /metrics; adapters that do not publish Prometheus
-// return nil.
+// EngineMetricsAdapter turns MetricsBus events into engine-specific metric
+// observations. Start spawns one drainer goroutine per bus channel, each
+// dispatching to the matching on<Event> handler. Handlers run serially per
+// channel, so a slow handler cannot block other event kinds.
 type EngineMetricsAdapter interface {
 	Start(ctx context.Context) error
 	Close() error
@@ -174,7 +171,6 @@ func (b *MetricsBus) ApplyFakeMetricsUpdate(update *common.FakeMetrics) error {
 // and never compute diffs.
 type BaseEvent struct {
 	IsFake bool
-	Model  string
 }
 
 // RequestReceived fires when a request enters HandleRequest, before queue admission.
@@ -232,7 +228,6 @@ type DecodeStarted struct {
 // onward). InterTokenLatency is the elapsed time since the previous
 // token, computed by the producer.
 type TokenGenerated struct {
-	BaseEvent
 	InterTokenLatency float64 // seconds
 }
 
@@ -298,6 +293,7 @@ const (
 // LoRAChanged signals a waiting/running/done transition for a LoRA request.
 type LoRAChanged struct {
 	BaseEvent
+	Model string
 	State LoRAState
 }
 

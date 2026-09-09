@@ -194,11 +194,11 @@ func (reqCtx *baseRequestContext) handleRequest() (ResponseContext, *api.Error) 
 		req.SetModelLoraID(reqCtx.sim.GetLoraID(dispModel))
 	}
 	common.WriteToChannel(reqCtx.sim.metricsBus.RequestRunning,
-		metrics.RequestRunning{BaseEvent: metrics.BaseEvent{Model: dispModel}},
+		metrics.RequestRunning{},
 		reqCtx.sim.logger)
 	if isLoRA {
 		common.WriteToChannel(reqCtx.sim.metricsBus.LoRAChanged,
-			metrics.LoRAChanged{BaseEvent: metrics.BaseEvent{Model: dispModel}, State: metrics.LoRARunning},
+			metrics.LoRAChanged{Model: dispModel, State: metrics.LoRARunning},
 			reqCtx.sim.logger)
 	}
 

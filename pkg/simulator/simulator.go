@@ -332,11 +332,11 @@ func (s *Simulator) addRequestToQueue(reqCtx requestContext) {
 	}
 	dispModel := reqCtx.request().GetDisplayedModel()
 	common.WriteToChannel(s.Context.metricsBus.RequestQueued,
-		metrics.RequestQueued{BaseEvent: metrics.BaseEvent{Model: dispModel}},
+		metrics.RequestQueued{},
 		s.Context.logger)
 	if reqCtx.request().IsLoRA() {
 		common.WriteToChannel(s.Context.metricsBus.LoRAChanged,
-			metrics.LoRAChanged{BaseEvent: metrics.BaseEvent{Model: dispModel}, State: metrics.LoRAWaiting},
+			metrics.LoRAChanged{Model: dispModel, State: metrics.LoRAWaiting},
 			s.Context.logger)
 	}
 }
@@ -431,7 +431,6 @@ func (s *Simulator) dequeue() requestContext {
 			s.Context.incrementLora(item.reqCtx.request().GetDisplayedModel())
 			common.WriteToChannel(s.Context.metricsBus.RequestDequeued,
 				metrics.RequestDequeued{
-					BaseEvent: metrics.BaseEvent{Model: item.reqCtx.request().GetDisplayedModel()},
 					QueueTime: time.Since(item.enqueueTime).Seconds(),
 				}, s.Context.logger)
 			return item.reqCtx
@@ -445,7 +444,6 @@ func (s *Simulator) dequeue() requestContext {
 			s.waitingQueue.Remove(elem)
 			common.WriteToChannel(s.Context.metricsBus.RequestDequeued,
 				metrics.RequestDequeued{
-					BaseEvent: metrics.BaseEvent{Model: item.reqCtx.request().GetDisplayedModel()},
 					QueueTime: time.Since(item.enqueueTime).Seconds(),
 				}, s.Context.logger)
 			return item.reqCtx
