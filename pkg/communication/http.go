@@ -110,7 +110,7 @@ func (c *Communication) startHTTPServer(ctx context.Context, listener net.Listen
 
 	errCh := make(chan error, 1)
 	go func() {
-		if c.runtime.Config().SSLEnabled() {
+		if c.runtime.Config().SSL.Enabled() {
 			c.logger.V(logging.INFO).Info("Server starting", "protocol", "HTTPS", "port", c.runtime.Config().Port)
 			errCh <- server.ServeTLS(listener, "", "")
 		} else {

@@ -17,9 +17,6 @@ Some environment variables (for example `POD_NAME`, `POD_NAMESPACE`) are not ove
 - `max-request-body-size-mb`: maximum allowed size of an HTTP request body in megabytes, optional, default is 4 (matching the fasthttp built-in default). Must be between 1 and 512.
 - `model`: the currently 'loaded' model, mandatory. If you omit `--model` on the command line, a non-empty `SIM_MODEL` environment variable can supply the model; see [Configuration precedence](#configuration-precedence) and [Environment variables](#environment-variables).
 - `served-model-name`: model names exposed by the API (a list of space-separated strings)
-- `lora-modules`: a list of LoRA adapters (a list of space-separated JSON strings): '{"name": "name", "path": "lora_path", "base_model_name": "id"}', optional, empty by default
-- `max-loras`: maximum number of LoRAs in a single batch, optional, default is one
-- `max-cpu-loras`: maximum number of LoRAs to store in CPU memory, optional, must be >= than max-loras, default is max-loras
 - `max-model-len`: model's context window, maximum number of tokens in a single request including input and output, optional, default is 1024
 - `max-num-seqs`: maximum number of sequences per iteration (maximum number of inference requests that could be processed at the same time), default is 5
 - `max-waiting-queue-length`: maximum length of inference requests waiting queue, default is 1000
@@ -33,6 +30,13 @@ Some environment variables (for example `POD_NAME`, `POD_NAMESPACE`) are not ove
 - `mm-encoder-only`, `no-mm-encoder-only`: Skip  (or don't skip) the language component of the model.
 - `omni`, `no-omni`: Enable or disable omni mode. When enabled, the simulator appends a synthetic image (a 1×1 transparent PNG, `data:image/png;base64,…`) to `/v1/chat/completions` responses in two cases: the `X-Send-Image: true` request header is present, or a random roll succeeds against `--image-emission-rate`. In non-streaming responses the assistant message `content` becomes a structured array — a `text` block carrying the generated tokens followed by an `image_url` block. In streaming responses an extra SSE chunk with `"modality":"image"` is emitted after the token stream, carrying the same image in its delta `content`. When `--omni` is not set (the default), both mechanisms are disabled and the response is a normal text response.
 - `image-emission-rate`: probability (0–100) of emitting a synthetic image chunk per `/v1/chat/completions` request when omni mode is enabled. 0 (the default) means the rate mechanism never fires; 100 means every request gets an image. The `X-Send-Image: true` header triggers emission independently of this rate. Updatable at runtime via `POST /admin/config`.
+
+## LoRA
+Command-line flag names are as listed below. In a YAML config file, these settings may be nested under a top-level `lora:` key using the same key names; the old flat top-level keys are still accepted for backward compatibility.
+
+- `lora-modules`: a list of LoRA adapters (a list of space-separated JSON strings): '{"name": "name", "path": "lora_path", "base_model_name": "id"}', optional, empty by default
+- `max-loras`: maximum number of LoRAs in a single batch, optional, default is one
+- `max-cpu-loras`: maximum number of LoRAs to store in CPU memory, optional, must be >= than max-loras, default is max-loras
 
 ## Latency 
 All latency-related parameters are defined in duration format, e.g., 100ms. Integer format is deprecated.
@@ -68,6 +72,8 @@ For a detailed explanation of how the simulator models inference time and what e
 - `time-factor-under-load`: a multiplicative factor that affects the overall time taken for requests when parallel requests are being processed. The value of this factor must be >= 1.0, with a default of 1.0. If this factor is 1.0, no extra time is added.  When the factor is x (where x > 1.0) and there are `max-num-seqs` requests, the total time will be multiplied by x. The extra time then decreases multiplicatively to 1.0 when the number of requests is less than `max-num-seqs`.
 
 ## Tools 
+Command-line flag names are as listed below. In a YAML config file, these settings may be nested under a top-level `tool-calls:` key using the same key names; the old flat top-level keys are still accepted for backward compatibility.
+
 - `max-tool-call-integer-param`: the maximum possible value of integer parameters in a tool call, optional, defaults to 100
 - `min-tool-call-integer-param`: the minimum possible value of integer parameters in a tool call, optional, defaults to 0
 - `max-tool-call-number-param`: the maximum possible value of number (float) parameters in a tool call, optional, defaults to 100
@@ -106,6 +112,8 @@ Command-line flag names are as listed below. In a YAML config file, these settin
 - `data-parallel-rank`: the rank of this instance, used only when running Data Parallel ranks as separate processes. If set, `data-parallel-size` is ignored and a single simulator starts with this rank index embedded in its ZMQ event batches.
 
 ## Datasets
+Command-line flag names are as listed below. In a YAML config file, these settings may be nested under a top-level `dataset:` key using the same key names; the old flat top-level keys are still accepted for backward compatibility.
+
 - `dataset-path`: Optional local file path to the SQLite database file used for generating responses from a dataset.
   - If not set, hardcoded preset responses will be used.
   - If set but the file does not exist the `dataset-url` will be used to download the database to the path specified by `dataset-path`.
@@ -129,6 +137,8 @@ Command-line flag names are as listed below. In a YAML config file, these settin
 - `default-embedding-dimensions`: default size of embedding vectors returned by `/v1/embeddings` when the request does not specify a `dimensions` field, optional, defaults to 384.
 
 ## SSL
+Command-line flag names are as listed below. In a YAML config file, these settings may be nested under a top-level `ssl:` key using the same key names; the old flat top-level keys are still accepted for backward compatibility.
+
 - `ssl-certfile`: Path to SSL certificate file for HTTPS (optional)
 - `ssl-keyfile`: Path to SSL private key file for HTTPS (optional)
 - `self-signed-certs`: Enable automatic generation of self-signed certificates for HTTPS

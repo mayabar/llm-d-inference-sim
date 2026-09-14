@@ -60,13 +60,13 @@ func createDefaultConfig(model string, servedModelNames []string) *common.Config
 	c := createConfigWithModel(model, servedModelNames)
 
 	c.MaxNumSeqs = 5
-	c.MaxLoras = 2
-	c.MaxCPULoras = 5
+	c.Lora.MaxLoras = 2
+	c.Lora.MaxCPULoras = 5
 	c.Latencies.TimeToFirstToken = 2000 * time.Millisecond
 	c.Latencies.InterTokenLatency = 1000 * time.Millisecond
 	c.Latencies.KVCacheTransferLatency = 100 * time.Millisecond
 	c.Seed = 100100100
-	c.LoraModules = []common.LoraModule{}
+	c.Lora.LoraModules = []common.LoraModule{}
 	return c
 }
 
@@ -83,7 +83,7 @@ var _ = Describe("Simulator configuration", func() {
 
 	// Simple config with a few parameters
 	c := createConfigWithModel(common.TestModelName, nil)
-	c.MaxCPULoras = 1
+	c.Lora.MaxCPULoras = 1
 	c.Seed = 100
 	test := testCase{
 		name:           "simple",
@@ -95,13 +95,13 @@ var _ = Describe("Simulator configuration", func() {
 	// Config from config.yaml file
 	c = createDefaultConfig(common.QwenModelName, []string{"model1", "model2"})
 	c.Port = 8001
-	c.LoraModules = []common.LoraModule{{Name: "lora1", Path: "/path/to/lora1"}, {Name: "lora2", Path: "/path/to/lora2"}}
+	c.Lora.LoraModules = []common.LoraModule{{Name: "lora1", Path: "/path/to/lora1"}, {Name: "lora2", Path: "/path/to/lora2"}}
 	test = testCase{
 		name:           "config file",
 		args:           []string{"cmd", "--config", "../../../manifests/config.yaml"},
 		expectedConfig: c,
 	}
-	c.LoraModulesString = []string{
+	c.Lora.LoraModulesString = []string{
 		"{\"name\":\"lora1\",\"path\":\"/path/to/lora1\"}",
 		"{\"name\":\"lora2\",\"path\":\"/path/to/lora2\"}",
 	}
@@ -111,8 +111,8 @@ var _ = Describe("Simulator configuration", func() {
 	c = createDefaultConfig(common.TestModelName, []string{"alias1", "alias2"})
 	c.Port = 8002
 	c.Seed = 100
-	c.LoraModules = []common.LoraModule{{Name: "lora3", Path: "/path/to/lora3"}, {Name: "lora4", Path: "/path/to/lora4"}}
-	c.LoraModulesString = []string{
+	c.Lora.LoraModules = []common.LoraModule{{Name: "lora3", Path: "/path/to/lora3"}, {Name: "lora4", Path: "/path/to/lora4"}}
+	c.Lora.LoraModulesString = []string{
 		"{\"name\":\"lora3\",\"path\":\"/path/to/lora3\"}",
 		"{\"name\":\"lora4\",\"path\":\"/path/to/lora4\"}",
 	}
@@ -133,8 +133,8 @@ var _ = Describe("Simulator configuration", func() {
 	// Config from config.yaml file plus command line args with different format
 	c = createDefaultConfig(common.TestModelName, nil)
 	c.Port = 8002
-	c.LoraModules = []common.LoraModule{{Name: "lora3", Path: "/path/to/lora3"}}
-	c.LoraModulesString = []string{
+	c.Lora.LoraModules = []common.LoraModule{{Name: "lora3", Path: "/path/to/lora3"}}
+	c.Lora.LoraModulesString = []string{
 		"{\"name\":\"lora3\",\"path\":\"/path/to/lora3\"}",
 	}
 	test = testCase{
@@ -150,8 +150,8 @@ var _ = Describe("Simulator configuration", func() {
 	// Config from config.yaml file plus command line args with empty string
 	c = createDefaultConfig(common.TestModelName, nil)
 	c.Port = 8002
-	c.LoraModules = []common.LoraModule{{Name: "lora3", Path: "/path/to/lora3"}}
-	c.LoraModulesString = []string{
+	c.Lora.LoraModules = []common.LoraModule{{Name: "lora3", Path: "/path/to/lora3"}}
+	c.Lora.LoraModulesString = []string{
 		"{\"name\":\"lora3\",\"path\":\"/path/to/lora3\"}",
 	}
 	test = testCase{
@@ -167,7 +167,7 @@ var _ = Describe("Simulator configuration", func() {
 	// Config from config.yaml file plus command line args with empty string for loras
 	c = createDefaultConfig(common.QwenModelName, []string{"model1", "model2"})
 	c.Port = 8001
-	c.LoraModulesString = []string{}
+	c.Lora.LoraModulesString = []string{}
 	test = testCase{
 		name:           "config file with command line args with empty string for loras",
 		args:           []string{"cmd", "--config", "../../../manifests/config.yaml", "--lora-modules", ""},
@@ -178,7 +178,7 @@ var _ = Describe("Simulator configuration", func() {
 	// Config from config.yaml file plus command line args with empty parameter for loras
 	c = createDefaultConfig(common.QwenModelName, []string{"model1", "model2"})
 	c.Port = 8001
-	c.LoraModulesString = []string{}
+	c.Lora.LoraModulesString = []string{}
 	test = testCase{
 		name:           "config file with command line args with empty parameter for loras",
 		args:           []string{"cmd", "--config", "../../../manifests/config.yaml", "--lora-modules"},
@@ -189,7 +189,7 @@ var _ = Describe("Simulator configuration", func() {
 	// Config from config_with_duration_latency.yaml file plus command line args with empty parameter for loras
 	c = createDefaultConfig(common.QwenModelName, []string{"model1", "model2"})
 	c.Port = 8001
-	c.LoraModulesString = []string{}
+	c.Lora.LoraModulesString = []string{}
 	c.Latencies.TimeToFirstToken = 4 * time.Second
 	c.Latencies.InterTokenLatency = 2 * time.Second
 	c.Latencies.KVCacheTransferLatency = time.Second
@@ -204,8 +204,8 @@ var _ = Describe("Simulator configuration", func() {
 	c = createDefaultConfig(common.QwenModelName, nil)
 	c.Port = 8001
 	// basic config file does not contain properties related to lora
-	c.MaxLoras = 1
-	c.MaxCPULoras = 1
+	c.Lora.MaxLoras = 1
+	c.Lora.MaxCPULoras = 1
 	c.Latencies.KVCacheTransferLatency = 50 * time.Millisecond
 	test = testCase{
 		name:           "basic config file with command line args with time to transfer kv-cache",
@@ -217,8 +217,8 @@ var _ = Describe("Simulator configuration", func() {
 	// Config with image generation latencies
 	c = createDefaultConfig(common.QwenModelName, nil)
 	c.Port = 8001
-	c.MaxLoras = 1
-	c.MaxCPULoras = 1
+	c.Lora.MaxLoras = 1
+	c.Lora.MaxCPULoras = 1
 	c.Latencies.TimeToGenerateImage = 500 * time.Millisecond
 	c.Latencies.TimeToGenerateImageStdDev = 50 * time.Millisecond
 	test = testCase{
@@ -277,7 +277,7 @@ var _ = Describe("Simulator configuration", func() {
 
 	// Fake metrics from command line
 	c = createConfigWithModel(common.TestModelName, nil)
-	c.MaxCPULoras = 1
+	c.Lora.MaxCPULoras = 1
 	c.Seed = 100
 	c.FakeMetrics = &common.FakeMetrics{
 		RunningRequests: &common.FakeMetricWithFunction{
@@ -332,7 +332,7 @@ var _ = Describe("Simulator configuration", func() {
 
 	// max-request-body-size-mb set to exactly 1 MB (lower boundary)
 	c = createConfigWithModel(common.TestModelName, nil)
-	c.MaxCPULoras = 1
+	c.Lora.MaxCPULoras = 1
 	c.Seed = 100
 	c.MaxRequestBodySizeMB = 1
 	test = testCase{
@@ -344,7 +344,7 @@ var _ = Describe("Simulator configuration", func() {
 
 	// kv-events-replay-endpoint set via CLI flag
 	c = createConfigWithModel(common.TestModelName, nil)
-	c.MaxCPULoras = 1
+	c.Lora.MaxCPULoras = 1
 	c.Seed = 100
 	c.KVCache = common.NewConfig().KVCache
 	c.KVCache.EnableKVCache = true
@@ -359,7 +359,7 @@ var _ = Describe("Simulator configuration", func() {
 
 	// kv-events-replay-endpoint not set — defaults to empty (disabled)
 	c = createConfigWithModel(common.TestModelName, nil)
-	c.MaxCPULoras = 1
+	c.Lora.MaxCPULoras = 1
 	c.Seed = 100
 	test = testCase{
 		name:           "kv-events-replay-endpoint disabled by default",
@@ -371,7 +371,7 @@ var _ = Describe("Simulator configuration", func() {
 	// kv-cache-only flags without --enable-kvcache are inert: the whole
 	// KVCache block reports all-zero rather than the flag values.
 	c = createConfigWithModel(common.TestModelName, nil)
-	c.MaxCPULoras = 1
+	c.Lora.MaxCPULoras = 1
 	c.Seed = 100
 	test = testCase{
 		name: "kv-cache flags without --enable-kvcache report an all-zero KVCache block",
@@ -384,7 +384,7 @@ var _ = Describe("Simulator configuration", func() {
 
 	// tensor-parallel-size is accepted for vLLM command line compatibility and ignored
 	c = createConfigWithModel(common.TestModelName, nil)
-	c.MaxCPULoras = 1
+	c.Lora.MaxCPULoras = 1
 	c.Seed = 100
 	c.TPSize = 2
 	test = testCase{
@@ -397,7 +397,7 @@ var _ = Describe("Simulator configuration", func() {
 	// zmq-endpoint and kv-events-replay-endpoint ports far enough apart that
 	// they don't collide even once each rank's offset (0..data-parallel-size-1) is applied
 	c = createConfigWithModel(common.TestModelName, nil)
-	c.MaxCPULoras = 1
+	c.Lora.MaxCPULoras = 1
 	c.Seed = 100
 	c.DPSize = 3
 	c.KVCache = common.NewConfig().KVCache
@@ -419,7 +419,7 @@ var _ = Describe("Simulator configuration", func() {
 	// being set here. These ports (range [5557,5559] vs [5600,5602]) don't collide
 	// either way.
 	c = createConfigWithModel(common.TestModelName, nil)
-	c.MaxCPULoras = 1
+	c.Lora.MaxCPULoras = 1
 	c.Seed = 100
 	c.DPSize = 3
 	c.Rank = 2

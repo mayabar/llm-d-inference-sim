@@ -375,13 +375,13 @@ func (s *SimContext) updateFakeMetrics(update *common.FakeMetrics, old *common.F
 		if len(update.LoraMetrics) != 0 {
 			for _, metrics := range update.LoraMetrics {
 				s.metrics.loraInfo.WithLabelValues(
-					strconv.Itoa(s.Config().MaxLoras),
+					strconv.Itoa(s.Config().Lora.MaxLoras),
 					metrics.RunningLoras,
 					metrics.WaitingLoras).Set(metrics.Timestamp)
 			}
 		} else {
 			s.metrics.loraInfo.WithLabelValues(
-				strconv.Itoa(s.Config().MaxLoras),
+				strconv.Itoa(s.Config().Lora.MaxLoras),
 				"",
 				"").Set(float64(time.Now().Unix()))
 		}

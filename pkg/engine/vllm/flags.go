@@ -31,8 +31,8 @@ const dummy = " "
 // file already loaded into cfg, or from the command line) into their
 // structured fields. Must be called before f.Parse.
 func (Engine) BindFlags(f *pflag.FlagSet, cfg *common.Configuration) error {
-	f.IntVar(&cfg.MaxLoras, "max-loras", cfg.MaxLoras, "Maximum number of LoRAs in a single batch")
-	f.IntVar(&cfg.MaxCPULoras, "max-cpu-loras", cfg.MaxCPULoras, "Maximum number of LoRAs to store in CPU memory")
+	f.IntVar(&cfg.Lora.MaxLoras, "max-loras", cfg.Lora.MaxLoras, "Maximum number of LoRAs in a single batch")
+	f.IntVar(&cfg.Lora.MaxCPULoras, "max-cpu-loras", cfg.Lora.MaxCPULoras, "Maximum number of LoRAs to store in CPU memory")
 
 	f.DurationVar(&cfg.Latencies.KVCacheTransferTimePerToken, "kv-cache-transfer-time-per-token", cfg.Latencies.KVCacheTransferTimePerToken, "Time for KV-cache transfer per token from a remote vLLM, e.g. 100ms")
 	f.DurationVar(&cfg.Latencies.KVCacheTransferTimeStdDev, "kv-cache-transfer-time-std-dev", cfg.Latencies.KVCacheTransferTimeStdDev, "Standard deviation for time for KV-cache transfer per token from a remote vLLM, e.g. 100ms")
@@ -106,7 +106,7 @@ func (Engine) BindFlags(f *pflag.FlagSet, cfg *common.Configuration) error {
 		}
 	}
 	if loraModuleNames != nil {
-		cfg.LoraModulesString = loraModuleNames
+		cfg.Lora.LoraModulesString = loraModuleNames
 		if err := unmarshalLoras(cfg); err != nil {
 			return err
 		}
@@ -136,16 +136,16 @@ func (l *multiString) Type() string {
 	return "strings"
 }
 
-// unmarshalLoras reconciles cfg.LoraModulesString (raw JSON strings, from a
-// YAML config file or the --lora-modules flag) into cfg.LoraModules.
+// unmarshalLoras reconciles cfg.Lora.LoraModulesString (raw JSON strings, from a
+// YAML config file or the --lora-modules flag) into cfg.Lora.LoraModules.
 func unmarshalLoras(cfg *common.Configuration) error {
-	cfg.LoraModules = make([]common.LoraModule, 0)
-	for _, jsonStr := range cfg.LoraModulesString {
+	cfg.Lora.LoraModules = make([]common.LoraModule, 0)
+	for _, jsonStr := range cfg.Lora.LoraModulesString {
 		var lora common.LoraModule
 		if err := json.Unmarshal([]byte(jsonStr), &lora); err != nil {
 			return err
 		}
-		cfg.LoraModules = append(cfg.LoraModules, lora)
+		cfg.Lora.LoraModules = append(cfg.Lora.LoraModules, lora)
 	}
 	return nil
 }
