@@ -34,7 +34,6 @@ import (
 	"github.com/llm-d/llm-d-inference-sim/pkg/common/logging"
 	"github.com/llm-d/llm-d-inference-sim/pkg/dataset"
 	"github.com/llm-d/llm-d-inference-sim/pkg/endpoint"
-	"github.com/llm-d/llm-d-inference-sim/pkg/engine/vllm/fakemetrics"
 	"github.com/llm-d/llm-d-inference-sim/pkg/kvcache"
 	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 	"github.com/llm-d/llm-d-inference-sim/pkg/tokenizer"
@@ -161,9 +160,9 @@ func (s *SimContext) MetricsRegistry() *prometheus.Registry {
 // are serialized so concurrent callers cannot lose each other's changes.
 //
 // A "fake-metrics" field in the body is forwarded to the metrics bus'
-// fake-metrics controller; this runs after Configuration.Update has
-// validated the merged result but before the config swap, so a Prometheus
-// side-effect failure aborts the whole update.
+// fake-metrics controller after Configuration.Update has validated the merged
+// result. The controller only enqueues the update, so the Prometheus side
+// effect lands after this returns and cannot abort the config swap.
 func (s *SimContext) ApplyConfigUpdate(body []byte) error {
 	s.adminMu.Lock()
 	defer s.adminMu.Unlock()
@@ -178,15 +177,7 @@ func (s *SimContext) ApplyConfigUpdate(body []byte) error {
 		}
 	}
 	if update.FakeMetrics != nil {
-		// FakeMetrics is an engine-owned interface; only vLLM's concrete type
-		// is understood here. A future engine with a different concrete type
-		// skips fake-metrics application, an explicit limitation of the
-		// current, vLLM-specific application logic in pkg/metrics.
-		if newFM, ok := update.FakeMetrics.(*fakemetrics.Config); ok {
-			if err := s.metricsBus.ApplyFakeMetricsUpdate(newFM); err != nil {
-				return fmt.Errorf("failed to update fake metrics: %w", err)
-			}
-		}
+		s.metricsBus.ApplyFakeMetricsUpdate(update.FakeMetrics)
 	}
 	s.SetConfig(next)
 	// The calculator caches latency-related fields at construction time, so
@@ -400,7 +391,7 @@ func (s *SimContext) RequestStarted(req api.Request) {
 	common.WriteToChannel(s.metricsBus.RequestRunning, metrics.RequestRunning{}, s.logger)
 
 	dispModel := req.GetDisplayedModel()
-	if s.isLora(dispModel) {
+	if req.IsLoRA() {
 		req.SetModelLoraID(s.GetLoraID(dispModel))
 		common.WriteToChannel(s.metricsBus.LoRAChanged,
 			metrics.LoRAChanged{Model: dispModel, State: metrics.LoRARunning}, s.logger)

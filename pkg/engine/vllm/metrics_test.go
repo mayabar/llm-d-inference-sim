@@ -90,12 +90,12 @@ func counterValue(c *prometheus.CounterVec, labelValues ...string) func() float6
 var _ = Describe("MetricsBus", func() {
 	It("has a nil-safe ApplyFakeMetricsUpdate", func() {
 		var b *metrics.MetricsBus
-		Expect(b.ApplyFakeMetricsUpdate(&fakemetrics.Config{})).To(Succeed())
+		Expect(func() { b.ApplyFakeMetricsUpdate(&fakemetrics.Config{}) }).NotTo(Panic())
 	})
 
 	It("treats a nil fake-metrics update as a no-op on a live bus", func() {
 		_, bus := newTestAdapter(newTestConfig())
-		Expect(bus.ApplyFakeMetricsUpdate(nil)).To(Succeed())
+		Expect(func() { bus.ApplyFakeMetricsUpdate(nil) }).NotTo(Panic())
 	})
 })
 
@@ -199,7 +199,7 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 				WaitingRequests:        &common.FakeMetricWithFunction{FixedValue: 7},
 				KVCacheUsagePercentage: &common.FakeMetricWithFunction{FixedValue: kv},
 			}
-			Expect(adapter.ApplyFakeMetricsUpdate(upd)).To(Succeed())
+			adapter.ApplyFakeMetricsUpdate(upd)
 
 			Eventually(gaugeValue(adapter.runningRequests)).Should(Equal(float64(3)))
 			Eventually(gaugeValue(adapter.waitingRequests)).Should(Equal(float64(7)))
@@ -229,7 +229,7 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 					},
 				},
 			}
-			Expect(adapter.ApplyFakeMetricsUpdate(upd)).To(Succeed())
+			adapter.ApplyFakeMetricsUpdate(upd)
 
 			adapter.genMu.Lock()
 			running := adapter.tickerRunning
@@ -241,7 +241,7 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 			upd2 := &fakemetrics.Config{
 				RunningRequests: &common.FakeMetricWithFunction{FixedValue: 2},
 			}
-			Expect(adapter.ApplyFakeMetricsUpdate(upd2)).To(Succeed())
+			adapter.ApplyFakeMetricsUpdate(upd2)
 
 			adapter.genMu.Lock()
 			running = adapter.tickerRunning
@@ -269,7 +269,7 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 					},
 				},
 			}
-			Expect(adapter.ApplyFakeMetricsUpdate(upd)).To(Succeed())
+			adapter.ApplyFakeMetricsUpdate(upd)
 			Expect(adapter.Close()).To(Succeed())
 
 			adapter.genMu.Lock()

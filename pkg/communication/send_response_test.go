@@ -31,7 +31,6 @@ import (
 	"github.com/llm-d/llm-d-inference-sim/pkg/api"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	"github.com/llm-d/llm-d-inference-sim/pkg/endpoint"
-	"github.com/llm-d/llm-d-inference-sim/pkg/engine/vllm/fakemetrics"
 	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 	"github.com/llm-d/llm-d-inference-sim/pkg/simulator"
 	"github.com/llm-d/llm-d-inference-sim/pkg/tokenizer"
@@ -69,7 +68,7 @@ func (stubMetricsAdapter) OnRequestRejected(metrics.RequestRejected)         {}
 func (stubMetricsAdapter) OnKVCacheUsageChanged(metrics.KVCacheUsageChanged) {}
 func (stubMetricsAdapter) OnPrefixCacheQueried(metrics.PrefixCacheQueried)   {}
 func (stubMetricsAdapter) OnLoRASetsChanged(metrics.LoRASetsChanged)         {}
-func (stubMetricsAdapter) ApplyFakeMetricsUpdate(*fakemetrics.Config) error  { return nil }
+func (stubMetricsAdapter) ApplyFakeMetricsUpdate(common.FakeMetrics)         {}
 
 // newRunningSim builds and starts a real Simulator (echo mode), so
 // HandleRequest produces genuine ResponseInfo entries -- including real,

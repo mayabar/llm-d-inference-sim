@@ -23,7 +23,6 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
-	"github.com/llm-d/llm-d-inference-sim/pkg/engine/vllm/fakemetrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -53,7 +52,13 @@ type EngineMetricsAdapter interface {
 	OnPrefixCacheQueried(ev PrefixCacheQueried)
 	OnLoRASetsChanged(ev LoRASetsChanged)
 
-	ApplyFakeMetricsUpdate(update *fakemetrics.Config) error
+	// ApplyFakeMetricsUpdate enqueues a partial fake-metrics update on the
+	// adapter's per-metric channels. The update carries the engine-owned
+	// FakeMetrics interface; each adapter narrows it to its own concrete type
+	// and ignores a configuration belonging to another engine. Application is
+	// asynchronous: the updater goroutines log and skip a metric whose
+	// collector cannot be recreated, so a caller cannot observe such a failure.
+	ApplyFakeMetricsUpdate(update common.FakeMetrics)
 }
 
 // AdapterFactory builds the metrics adapter for one engine backend. The active
@@ -194,14 +199,14 @@ func (b *MetricsBus) decrementLoraRefCount(lora string, theMap *sync.Map) {
 }
 
 // ApplyFakeMetricsUpdate forwards a partial fake-metrics update to the
-// adapter's fake controller when the adapter supports it. Non-vLLM adapters
-// or adapters not in fake mode return nil; the caller is expected to have
-// already gated on config.FakeMetrics != nil.
-func (b *MetricsBus) ApplyFakeMetricsUpdate(update *fakemetrics.Config) error {
+// adapter's fake controller when the adapter supports it. Adapters not in
+// fake mode ignore it; the caller is expected to have already gated on
+// config.FakeMetrics != nil.
+func (b *MetricsBus) ApplyFakeMetricsUpdate(update common.FakeMetrics) {
 	if b == nil || update == nil {
-		return nil
+		return
 	}
-	return b.adapter.ApplyFakeMetricsUpdate(update)
+	b.adapter.ApplyFakeMetricsUpdate(update)
 }
 
 // -- Events -----------------------------------------------------------------

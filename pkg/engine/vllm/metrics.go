@@ -20,6 +20,7 @@ package vllm
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"slices"
 	"strconv"
@@ -284,9 +285,7 @@ func (m *VLLMMetricsAdapter) Start(_ context.Context) error {
 		if fm.LoraMetrics == nil {
 			fm.LoraMetrics = []common.LorasMetrics{}
 		}
-		if err := m.ApplyFakeMetricsUpdate(&fm); err != nil {
-			return err
-		}
+		m.applyFakeMetrics(&fm)
 	}
 
 	m.genMu.Lock()
@@ -1354,7 +1353,23 @@ func resolveTokenTotal(buckets []float64, samples []int, explicit *float64) *flo
 	return metrics.InitFakeHistogram(nil, "", buckets, samples)
 }
 
-func (m *VLLMMetricsAdapter) ApplyFakeMetricsUpdate(update *fakemetrics.Config) error {
+// ApplyFakeMetricsUpdate narrows the engine-owned fake-metrics configuration
+// to vLLM's concrete type and applies it. A configuration belonging to another
+// engine is logged and dropped.
+func (m *VLLMMetricsAdapter) ApplyFakeMetricsUpdate(update common.FakeMetrics) {
+	vllmUpdate, ok := update.(*fakemetrics.Config)
+	if !ok || vllmUpdate == nil {
+		m.logger.Error(fmt.Errorf("unexpected fake-metrics configuration type %T", update),
+			"ignoring fake-metrics update")
+		return
+	}
+	m.applyFakeMetrics(vllmUpdate)
+}
+
+// applyFakeMetrics enqueues the update on the per-metric channels and returns.
+// The updater goroutines perform the collector unregister/recreate, logging and
+// skipping any metric that fails to re-register.
+func (m *VLLMMetricsAdapter) applyFakeMetrics(update *fakemetrics.Config) {
 	m.genMu.Lock()
 	defer m.genMu.Unlock()
 	generatorsWereEmpty := len(m.generators) == 0
@@ -1447,8 +1462,6 @@ func (m *VLLMMetricsAdapter) ApplyFakeMetricsUpdate(update *fakemetrics.Config) 
 			m.stopTickerLocked()
 		}
 	}
-
-	return nil
 }
 
 func (m *VLLMMetricsAdapter) startTickerLocked() {

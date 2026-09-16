@@ -29,7 +29,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
-	"github.com/llm-d/llm-d-inference-sim/pkg/engine/vllm/fakemetrics"
 )
 
 // stubAdapter records nothing and exposes no collectors; the bus-level tests
@@ -59,7 +58,7 @@ func (stubAdapter) OnKVCacheUsageChanged(KVCacheUsageChanged) {}
 func (stubAdapter) OnPrefixCacheQueried(PrefixCacheQueried)   {}
 func (stubAdapter) OnLoRASetsChanged(LoRASetsChanged)         {}
 
-func (stubAdapter) ApplyFakeMetricsUpdate(*fakemetrics.Config) error { return nil }
+func (stubAdapter) ApplyFakeMetricsUpdate(common.FakeMetrics) {}
 
 func newBusTestConfig() common.Configuration {
 	return common.Configuration{
