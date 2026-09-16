@@ -20,6 +20,8 @@ package engine
 
 import (
 	"context"
+	"fmt"
+	"sort"
 
 	"github.com/buaazp/fasthttprouter"
 	"github.com/go-logr/logr"
@@ -29,6 +31,7 @@ import (
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	"github.com/llm-d/llm-d-inference-sim/pkg/communication"
+	"github.com/llm-d/llm-d-inference-sim/pkg/engine/vllm"
 	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 )
 
@@ -56,4 +59,29 @@ type Engine interface {
 	// metrics.NewMetricsBus.
 	NewMetricsAdapter(ctx context.Context, registry *prometheus.Registry,
 		logger logr.Logger, config common.Configuration) (metrics.EngineMetricsAdapter, error)
+}
+
+// registry maps each engine backend's name to its constructor. Adding a
+// backend means adding one entry here.
+var registry = map[string]func() Engine{
+	"vllm": func() Engine { return vllm.New() },
+}
+
+// Select returns the Engine implementation for the named engine backend.
+func Select(name string) (Engine, error) {
+	newEngine, ok := registry[name]
+	if !ok {
+		return nil, fmt.Errorf("unknown engine '%s'", name)
+	}
+	return newEngine(), nil
+}
+
+// Names returns the registered engine backend names, sorted.
+func Names() []string {
+	names := make([]string, 0, len(registry))
+	for name := range registry {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
