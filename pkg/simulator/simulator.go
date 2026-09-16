@@ -28,11 +28,14 @@ import (
 	"github.com/valyala/fasthttp"
 	"k8s.io/klog/v2"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/llm-d/llm-d-inference-sim/pkg/api"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common/logging"
 	"github.com/llm-d/llm-d-inference-sim/pkg/dataset"
 	"github.com/llm-d/llm-d-inference-sim/pkg/endpoint"
+	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 	"github.com/llm-d/llm-d-inference-sim/pkg/tokenizer"
 )
 
@@ -239,6 +242,11 @@ func (s *Simulator) Stop() {
 	s.drainCancel()
 }
 
+// MetricsRegistry returns the simulator's Prometheus registry.
+func (s *Simulator) MetricsRegistry() *prometheus.Registry {
+	return s.Context.MetricsRegistry()
+}
+
 func (s *Simulator) processing(ctx context.Context) {
 	s.Context.logger.V(logging.INFO).Info("Start processing routine")
 
@@ -311,8 +319,6 @@ func (s *Simulator) findRequestAndSendToProcess(worker *worker) bool {
 		s.Context.logger.V(logging.TRACE).Info("Sending request to processing", "model", nextReq.Request().GetModel(),
 			"req", nextReq.Request().GetRequestID(), "worker", worker.id)
 		common.WriteToChannel(worker.reqChan, nextReq, s.Context.logger)
-		// decrement waiting requests metric
-		common.WriteToChannel(s.Context.metrics.waitingReqChan, common.MetricInfo{Value: -1}, s.Context.logger)
 		return true
 	}
 
@@ -332,11 +338,13 @@ func (s *Simulator) addRequestToQueue(reqCtx endpoint.RequestContext) {
 		reqCtx.SignalDone()
 		return
 	}
-	// increment the waiting requests metric
-	common.WriteToChannel(s.Context.metrics.waitingReqChan, common.MetricInfo{Value: 1}, s.Context.logger)
-	// update loraInfo metrics with the new waiting request
-	if s.Context.isLora(reqCtx.Request().GetDisplayedModel()) {
-		common.WriteToChannel(s.Context.metrics.lorasChan, loraUsage{reqCtx.Request().GetDisplayedModel(), waitingUsageState},
+	dispModel := reqCtx.Request().GetDisplayedModel()
+	common.WriteToChannel(s.Context.metricsBus.RequestQueued,
+		metrics.RequestQueued{},
+		s.Context.logger)
+	if reqCtx.Request().IsLoRA() {
+		common.WriteToChannel(s.Context.metricsBus.LoRAChanged,
+			metrics.LoRAChanged{Model: dispModel, State: metrics.LoRAWaiting},
 			s.Context.logger)
 	}
 }
@@ -365,6 +373,8 @@ func (s *Simulator) HandleRequest(req endpoint.Request) (numChoices int, isStrea
 	// the model is valid, update the displayed model which will be different from the model mentioned in the request only in case of base model aliases
 	// in this case the first alias is used, in all other cases the model from the request is used as the displayed model
 	req.SetDisplayedModel(s.Context.getDisplayedModelName(req.GetModel()))
+	// fixed once here so every later metrics touchpoint agrees, even if the LoRA is unloaded mid-flight
+	req.SetIsLoRA(s.Context.isLora(req.GetDisplayedModel()))
 
 	if serverErr := req.Validate(s.toolsValidator); serverErr != nil {
 		return 0, false, nil, serverErr, false
@@ -427,8 +437,10 @@ func (s *Simulator) dequeue() endpoint.RequestContext {
 		if ok && item.reqCtx != nil && s.Context.loraIsLoaded(item.reqCtx.Request().GetDisplayedModel()) {
 			s.waitingQueue.Remove(elem)
 			s.Context.incrementLora(item.reqCtx.Request().GetDisplayedModel())
-			common.WriteToChannel(s.Context.metrics.reqQueueTimeChan, time.Since(item.enqueueTime).Seconds(),
-				s.Context.logger)
+			common.WriteToChannel(s.Context.metricsBus.RequestDequeued,
+				metrics.RequestDequeued{
+					QueueTime: time.Since(item.enqueueTime).Seconds(),
+				}, s.Context.logger)
 			return item.reqCtx
 		}
 	}
@@ -438,8 +450,10 @@ func (s *Simulator) dequeue() endpoint.RequestContext {
 		item, ok := elem.Value.(waitingQueueItem)
 		if ok && item.reqCtx != nil && s.Context.loadLora(item.reqCtx.Request().GetDisplayedModel()) {
 			s.waitingQueue.Remove(elem)
-			common.WriteToChannel(s.Context.metrics.reqQueueTimeChan, time.Since(item.enqueueTime).Seconds(),
-				s.Context.logger)
+			common.WriteToChannel(s.Context.metricsBus.RequestDequeued,
+				metrics.RequestDequeued{
+					QueueTime: time.Since(item.enqueueTime).Seconds(),
+				}, s.Context.logger)
 			return item.reqCtx
 		}
 	}
@@ -513,13 +527,9 @@ func (s *Simulator) simulateResponseProcessing(respCtx endpoint.ResponseContext)
 				}
 			}
 		}
-		decodeTime := time.Since(startDecode).Seconds()
-		meanTPOT := 0.0
-		if nTokens > 0 {
-			meanTPOT = decodeTime / float64(nTokens)
-		}
-		common.WriteToChannel(s.Context.metrics.reqTpotChan, meanTPOT, s.Context.logger)
-		common.WriteToChannel(s.Context.metrics.reqDecodeTimeChan, decodeTime, s.Context.logger)
+		common.WriteToChannel(s.Context.metricsBus.DecodeEnded,
+			metrics.DecodeEnded{GenerationTokens: nTokens, DecodeDuration: time.Since(startDecode).Seconds()},
+			s.Context.logger)
 
 		if reqCtx.Request().SendImage() {
 			s.Context.simulateImageGenerationLatency()
@@ -530,14 +540,7 @@ func (s *Simulator) simulateResponseProcessing(respCtx endpoint.ResponseContext)
 // request processing finished
 func (s *Simulator) onResponseProcessingFinished(reqCtx endpoint.RequestContext) {
 	// decrement running requests count
-	common.WriteToChannel(s.Context.metrics.runReqChan, common.MetricInfo{Value: -1}, s.Context.logger)
-
-	model := reqCtx.Request().GetDisplayedModel()
-	if s.Context.isLora(model) {
-		// update loraInfo metrics to reflect that the request processing has been finished
-		common.WriteToChannel(s.Context.metrics.lorasChan, loraUsage{model, doneUsageState},
-			s.Context.logger)
-	}
+	s.Context.nRunningReqs.Add(-1)
 
 	reqCtx.KVCacheOnRequestEnd()
 	reqCtx.SignalDone()
