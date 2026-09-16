@@ -106,6 +106,13 @@ func (b *MetricsBus) Start(ctx context.Context) error {
 	return b.adapter.Start(ctx)
 }
 
+// Close releases the adapter's resources. Callers must cancel the context
+// passed to Start first, so the drainer goroutines are gone before the adapter
+// tears itself down.
+func (b *MetricsBus) Close() error {
+	return b.adapter.Close()
+}
+
 // subscribeAdapter spawns one drainer goroutine per event channel, each
 // dispatching to the adapter's matching On<Event> handler.
 func (b *MetricsBus) subscribeAdapter(ctx context.Context) {

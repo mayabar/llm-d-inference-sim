@@ -236,10 +236,16 @@ func (s *Simulator) InitializeSim(ctx context.Context) error {
 }
 
 // Stop cancels the internal drain context, causing all internal goroutines
-// (workers, metrics, kvcache) to stop cleanly. It must be called by the
-// communication layer after all open requests have been drained.
+// (workers, metrics, kvcache) to stop cleanly, then closes the metrics bus.
+// It must be called by the communication layer after all open requests have
+// been drained.
 func (s *Simulator) Stop() {
 	s.drainCancel()
+	if s.Context.metricsBus != nil {
+		if err := s.Context.metricsBus.Close(); err != nil {
+			s.Context.logger.Error(err, "failed to close the metrics bus")
+		}
+	}
 }
 
 // MetricsRegistry returns the simulator's Prometheus registry.
