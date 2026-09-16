@@ -14,13 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Unit tests for VLLMMetricsAdapter and MetricsBus that do not duplicate the
-// integration coverage under pkg/tests/. These cover paths not otherwise
-// exercised: MetricsBus nil-safety, adapter initial values, direct event
-// handler invocations, fake-mode filtering, and ApplyUpdate scalar/reset
-// paths reached without booting the simulator.
+// Unit tests for VLLMMetricsAdapter that do not duplicate the integration
+// coverage under pkg/tests/. These cover paths not otherwise exercised: bus
+// nil-safety, adapter initial values, direct event handler invocations,
+// fake-mode filtering, and ApplyFakeMetricsUpdate scalar/reset paths reached
+// without booting the simulator.
 
-package metrics
+package vllm
 
 import (
 	"context"
@@ -34,6 +34,7 @@ import (
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	"github.com/llm-d/llm-d-inference-sim/pkg/engine/vllm/fakemetrics"
+	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 )
 
 func newTestConfig() common.Configuration {
@@ -51,19 +52,24 @@ func newTestConfig() common.Configuration {
 }
 
 // newTestAdapter builds a VLLMMetricsAdapter with a fresh Prometheus registry
-// and a canceled-on-cleanup context. Returned cancel stops all updater
-// goroutines and the ticker.
-func newTestAdapter(cfg common.Configuration) (*VLLMMetricsAdapter, *MetricsBus, context.CancelFunc) {
+// and a canceled-on-cleanup context, which stops all updater goroutines and
+// the ticker.
+func newTestAdapter(cfg common.Configuration) (*VLLMMetricsAdapter, *metrics.MetricsBus) {
 	ctx, cancel := context.WithCancel(context.Background())
 	DeferCleanup(cancel)
 
 	registry := prometheus.NewRegistry()
-	bus, err := NewMetricsBus(ctx, cfg, registry, logr.Discard())
+	adapter, err := newMetricsAdapter(ctx, registry, logr.Discard(), cfg)
 	Expect(err).NotTo(HaveOccurred())
 
-	adapter, ok := bus.adapter.(*VLLMMetricsAdapter)
-	Expect(ok).To(BeTrue(), "adapter is not *VLLMMetricsAdapter")
-	return adapter, bus, cancel
+	bus, err := metrics.NewMetricsBus(ctx, cfg, registry, logr.Discard(),
+		func(context.Context, *prometheus.Registry, logr.Logger,
+			common.Configuration) (metrics.EngineMetricsAdapter, error) {
+			return adapter, nil
+		})
+	Expect(err).NotTo(HaveOccurred())
+
+	return adapter, bus
 }
 
 // gaugeValue reads the model-labeled gauge. Adapter writes are asynchronous
@@ -83,12 +89,12 @@ func counterValue(c *prometheus.CounterVec, labelValues ...string) func() float6
 
 var _ = Describe("MetricsBus", func() {
 	It("has a nil-safe ApplyFakeMetricsUpdate", func() {
-		var b *MetricsBus
+		var b *metrics.MetricsBus
 		Expect(b.ApplyFakeMetricsUpdate(&fakemetrics.Config{})).To(Succeed())
 	})
 
 	It("treats a nil fake-metrics update as a no-op on a live bus", func() {
-		_, bus, _ := newTestAdapter(newTestConfig())
+		_, bus := newTestAdapter(newTestConfig())
 		Expect(bus.ApplyFakeMetricsUpdate(nil)).To(Succeed())
 	})
 })
@@ -96,7 +102,7 @@ var _ = Describe("MetricsBus", func() {
 var _ = Describe("VLLMMetricsAdapter", func() {
 	Describe("initial values", func() {
 		It("starts request and cache gauges at zero and stamps cache_config_info", func() {
-			adapter, _, _ := newTestAdapter(newTestConfig())
+			adapter, _ := newTestAdapter(newTestConfig())
 
 			Expect(testutil.ToFloat64(adapter.runningRequests.WithLabelValues(common.TestModelName))).To(BeZero())
 			Expect(testutil.ToFloat64(adapter.waitingRequests.WithLabelValues(common.TestModelName))).To(BeZero())
@@ -108,31 +114,31 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 
 	Describe("event handlers", func() {
 		It("updates the waiting gauge on queue/dequeue", func() {
-			adapter, _, _ := newTestAdapter(newTestConfig())
+			adapter, _ := newTestAdapter(newTestConfig())
 
-			adapter.onRequestQueued(RequestQueued{})
-			adapter.onRequestQueued(RequestQueued{})
+			adapter.OnRequestQueued(metrics.RequestQueued{})
+			adapter.OnRequestQueued(metrics.RequestQueued{})
 			Eventually(gaugeValue(adapter.waitingRequests)).Should(Equal(float64(2)))
 
-			adapter.onRequestDequeued(RequestDequeued{QueueTime: 0.1})
+			adapter.OnRequestDequeued(metrics.RequestDequeued{QueueTime: 0.1})
 			Eventually(gaugeValue(adapter.waitingRequests)).Should(Equal(float64(1)))
 		})
 
 		It("updates the running gauge on OnRequestRunning", func() {
-			adapter, _, _ := newTestAdapter(newTestConfig())
+			adapter, _ := newTestAdapter(newTestConfig())
 
-			adapter.onRequestRunning(RequestRunning{})
-			adapter.onRequestRunning(RequestRunning{})
+			adapter.OnRequestRunning(metrics.RequestRunning{})
+			adapter.OnRequestRunning(metrics.RequestRunning{})
 			Eventually(gaugeValue(adapter.runningRequests)).Should(Equal(float64(2)))
 		})
 
 		It("decrements running and records tokens on success", func() {
-			adapter, _, _ := newTestAdapter(newTestConfig())
+			adapter, _ := newTestAdapter(newTestConfig())
 
-			adapter.onRequestRunning(RequestRunning{})
+			adapter.OnRequestRunning(metrics.RequestRunning{})
 			Eventually(gaugeValue(adapter.runningRequests)).Should(Equal(float64(1)))
 
-			adapter.onRequestSucceeded(RequestSucceeded{
+			adapter.OnRequestSucceeded(metrics.RequestSucceeded{
 				PromptTokens:       10,
 				GenerationTokens:   20,
 				GenTokensPerChoice: []int{20},
@@ -147,17 +153,17 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 		})
 
 		It("updates the KV-cache usage gauge", func() {
-			adapter, _, _ := newTestAdapter(newTestConfig())
+			adapter, _ := newTestAdapter(newTestConfig())
 
-			adapter.onKVCacheUsageChanged(KVCacheUsageChanged{KVCacheUsagePerc: 0.75})
+			adapter.OnKVCacheUsageChanged(metrics.KVCacheUsageChanged{KVCacheUsagePerc: 0.75})
 			Eventually(gaugeValue(adapter.kvCacheUsagePercentage)).Should(Equal(0.75))
 		})
 
 		It("accumulates prefix-cache counters", func() {
-			adapter, _, _ := newTestAdapter(newTestConfig())
+			adapter, _ := newTestAdapter(newTestConfig())
 
-			adapter.onPrefixCacheQueried(PrefixCacheQueried{QueriedTokens: 100, CachedPromptTokens: 40})
-			adapter.onPrefixCacheQueried(PrefixCacheQueried{QueriedTokens: 50, CachedPromptTokens: 10})
+			adapter.OnPrefixCacheQueried(metrics.PrefixCacheQueried{QueriedTokens: 100, CachedPromptTokens: 40})
+			adapter.OnPrefixCacheQueried(metrics.PrefixCacheQueried{QueriedTokens: 50, CachedPromptTokens: 10})
 			Eventually(counterValue(adapter.prefixCacheQueriesTotal, common.TestModelName)).Should(Equal(float64(150)))
 			Eventually(counterValue(adapter.prefixCacheHitsTotal, common.TestModelName)).Should(Equal(float64(50)))
 		})
@@ -167,12 +173,12 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 		It("drops real-path events", func() {
 			cfg := newTestConfig()
 			cfg.FakeMetrics = &fakemetrics.Config{}
-			adapter, _, _ := newTestAdapter(cfg)
+			adapter, _ := newTestAdapter(cfg)
 
-			adapter.onRequestQueued(RequestQueued{})
-			adapter.onRequestRunning(RequestRunning{})
-			adapter.onKVCacheUsageChanged(KVCacheUsageChanged{KVCacheUsagePerc: 0.9})
-			adapter.onPrefixCacheQueried(PrefixCacheQueried{QueriedTokens: 5, CachedPromptTokens: 3})
+			adapter.OnRequestQueued(metrics.RequestQueued{})
+			adapter.OnRequestRunning(metrics.RequestRunning{})
+			adapter.OnKVCacheUsageChanged(metrics.KVCacheUsageChanged{KVCacheUsagePerc: 0.9})
+			adapter.OnPrefixCacheQueried(metrics.PrefixCacheQueried{QueriedTokens: 5, CachedPromptTokens: 3})
 
 			// Nothing should change; Consistently gives the updater goroutines a
 			// chance to run and still find zeros.
@@ -185,7 +191,7 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 		It("applies fixed scalar values via ApplyUpdate", func() {
 			cfg := newTestConfig()
 			cfg.FakeMetrics = &fakemetrics.Config{}
-			adapter, _, _ := newTestAdapter(cfg)
+			adapter, _ := newTestAdapter(cfg)
 
 			kv := 0.4
 			upd := &fakemetrics.Config{
@@ -193,7 +199,7 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 				WaitingRequests:        &common.FakeMetricWithFunction{FixedValue: 7},
 				KVCacheUsagePercentage: &common.FakeMetricWithFunction{FixedValue: kv},
 			}
-			Expect(adapter.applyUpdate(upd)).To(Succeed())
+			Expect(adapter.ApplyFakeMetricsUpdate(upd)).To(Succeed())
 
 			Eventually(gaugeValue(adapter.runningRequests)).Should(Equal(float64(3)))
 			Eventually(gaugeValue(adapter.waitingRequests)).Should(Equal(float64(7)))
@@ -203,7 +209,7 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 		It("starts and stops the ticker as generators are enabled and cleared", func() {
 			cfg := newTestConfig()
 			cfg.FakeMetrics = &fakemetrics.Config{}
-			adapter, _, _ := newTestAdapter(cfg)
+			adapter, _ := newTestAdapter(cfg)
 
 			// Simulate that Start() has already run, the ticker only auto-starts
 			// once the adapter is marked started.
@@ -223,7 +229,7 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 					},
 				},
 			}
-			Expect(adapter.applyUpdate(upd)).To(Succeed())
+			Expect(adapter.ApplyFakeMetricsUpdate(upd)).To(Succeed())
 
 			adapter.genMu.Lock()
 			running := adapter.tickerRunning
@@ -235,7 +241,7 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 			upd2 := &fakemetrics.Config{
 				RunningRequests: &common.FakeMetricWithFunction{FixedValue: 2},
 			}
-			Expect(adapter.applyUpdate(upd2)).To(Succeed())
+			Expect(adapter.ApplyFakeMetricsUpdate(upd2)).To(Succeed())
 
 			adapter.genMu.Lock()
 			running = adapter.tickerRunning
@@ -246,7 +252,7 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 		It("stops the ticker on Close", func() {
 			cfg := newTestConfig()
 			cfg.FakeMetrics = &fakemetrics.Config{}
-			adapter, _, _ := newTestAdapter(cfg)
+			adapter, _ := newTestAdapter(cfg)
 
 			adapter.genMu.Lock()
 			adapter.started = true
@@ -263,7 +269,7 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 					},
 				},
 			}
-			Expect(adapter.applyUpdate(upd)).To(Succeed())
+			Expect(adapter.ApplyFakeMetricsUpdate(upd)).To(Succeed())
 			Expect(adapter.Close()).To(Succeed())
 
 			adapter.genMu.Lock()
@@ -275,52 +281,4 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 		})
 	})
 
-	Describe("LoRA ref counting on the bus", func() {
-		It("moves adapters through waiting -> running -> done", func() {
-			ctx, cancel := context.WithCancel(context.Background())
-			DeferCleanup(cancel)
-
-			registry := prometheus.NewRegistry()
-			bus, err := NewMetricsBus(ctx, newTestConfig(), registry, logr.Discard())
-			Expect(err).NotTo(HaveOccurred())
-			Expect(bus.Start(ctx)).To(Succeed())
-
-			send := func(name string, state LoRAState) {
-				common.WriteToChannel(bus.LoRAChanged,
-					LoRAChanged{Model: name, State: state},
-					logr.Discard())
-			}
-
-			send("a", LoRAWaiting)
-			send("b", LoRAWaiting)
-			Eventually(loraKeys(&bus.waitingLoras)).Should(ConsistOf("a", "b"))
-
-			send("a", LoRARunning)
-			Eventually(loraKeys(&bus.waitingLoras)).Should(ConsistOf("b"))
-			Eventually(loraKeys(&bus.runningLoras)).Should(ConsistOf("a"))
-
-			send("a", LoRADone)
-			send("b", LoRARunning)
-			send("b", LoRADone)
-			Eventually(loraKeys(&bus.waitingLoras)).Should(BeEmpty())
-			Eventually(loraKeys(&bus.runningLoras)).Should(BeEmpty())
-		})
-	})
 })
-
-// loraKeys returns a poller that snapshots the string keys of a sync.Map-like
-// container (any type implementing Range).
-func loraKeys(m interface {
-	Range(func(any, any) bool)
-}) func() []string {
-	return func() []string {
-		var got []string
-		m.Range(func(k, _ any) bool {
-			if s, ok := k.(string); ok {
-				got = append(got, s)
-			}
-			return true
-		})
-		return got
-	}
-}

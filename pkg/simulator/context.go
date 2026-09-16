@@ -103,9 +103,24 @@ type SimContext struct {
 	nRunningReqs atomic.Int64
 }
 
-// Engine validates the active engine's own configuration fields.
+// Engine validates the active engine's own configuration fields and supplies
+// its metrics adapter. Structurally satisfied by engine.Engine; declared here
+// because pkg/simulator cannot import pkg/engine without closing an import
+// cycle through pkg/communication's tests.
 type Engine interface {
 	ValidateConfig(cfg *common.Configuration) error
+	NewMetricsAdapter(ctx context.Context, registry *prometheus.Registry,
+		logger logr.Logger, config common.Configuration) (metrics.EngineMetricsAdapter, error)
+}
+
+// metricsAdapterFactory returns the active engine's metrics-adapter factory,
+// or nil when no engine is set, in which case the bus falls back to exposing
+// no metrics at all.
+func (s *SimContext) metricsAdapterFactory() metrics.AdapterFactory {
+	if s.Engine == nil {
+		return nil
+	}
+	return s.Engine.NewMetricsAdapter
 }
 
 type latencyCalcHolder struct {
@@ -210,7 +225,8 @@ func (s *SimContext) initialize(ctx context.Context) error {
 	s.prometheusRegistry = prometheus.NewRegistry()
 
 	var err error
-	s.metricsBus, err = metrics.NewMetricsBus(ctx, *s.Config(), s.prometheusRegistry, s.logger)
+	s.metricsBus, err = metrics.NewMetricsBus(ctx, *s.Config(), s.prometheusRegistry, s.logger,
+		s.metricsAdapterFactory())
 	if err != nil {
 		return err
 	}

@@ -26,7 +26,7 @@ import (
 	"time"
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
-	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
+	"github.com/llm-d/llm-d-inference-sim/pkg/engine/vllm"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openai/openai-go/v3"
@@ -293,8 +293,8 @@ var _ = Describe("Simulator requests scheduling", Ordered, func() {
 			eventuallyMetricsWithin(client, 5*time.Second, func(g Gomega, metricsData string) {
 				// max-num-seqs is 12, so number of running requests should be 12
 				// and the number of waiting requests 1000-12=988
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMReqRunningMetricName, 12)))
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMReqWaitingMetricName, 988)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMReqRunningMetricName, 12)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMReqWaitingMetricName, 988)))
 
 				// max-loras is 2, so the last lora metric should be:
 				// running: two loras (doesn't matter which two)
@@ -320,8 +320,8 @@ var _ = Describe("Simulator requests scheduling", Ordered, func() {
 		})
 
 		It("Should work correctly with many simultaneous requests with many workers", func() {
-			runningMetric := getCountMetricPrefix(common.TestModelName, metrics.VLLMReqRunningMetricName)
-			waitingMetric := getCountMetricPrefix(common.TestModelName, metrics.VLLMReqWaitingMetricName)
+			runningMetric := getCountMetricPrefix(common.TestModelName, vllm.VLLMReqRunningMetricName)
+			waitingMetric := getCountMetricPrefix(common.TestModelName, vllm.VLLMReqWaitingMetricName)
 			ctx := context.TODO()
 			args := []string{"cmd", "--model", common.TestModelName, "--mode", common.ModeRandom,
 				"--time-to-first-token", "2s", "--time-to-first-token-std-dev", "600ms",

@@ -27,31 +27,38 @@ import (
 )
 
 // EngineMetricsAdapter turns MetricsBus events into engine-specific metric
-// observations. Start spawns one drainer goroutine per bus channel, each
-// dispatching to the matching on<Event> handler. Handlers run serially per
-// channel, so a slow handler cannot block other event kinds.
+// observations. The bus spawns one drainer goroutine per channel, each
+// dispatching to the matching On<Event> handler. Handlers run serially per
+// channel, so a slow handler cannot block other event kinds. Implementations
+// live with their engine (vLLM's is in pkg/engine/vllm), hence the exported
+// handler names.
 type EngineMetricsAdapter interface {
 	Start(ctx context.Context) error
 	Close() error
 
-	onRequestReceived(ev RequestReceived)
-	onRequestQueued(ev RequestQueued)
-	onRequestDequeued(ev RequestDequeued)
-	onRequestRunning(ev RequestRunning)
-	onPrefillStarted(ev PrefillStarted)
-	onPrefillEnded(ev PrefillEnded)
-	onDecodeStarted(ev DecodeStarted)
-	onTokenGenerated(ev TokenGenerated)
-	onDecodeEnded(ev DecodeEnded)
-	onRequestSucceeded(ev RequestSucceeded)
-	onRequestFailed(ev RequestFailed)
-	onRequestRejected(ev RequestRejected)
-	onKVCacheUsageChanged(ev KVCacheUsageChanged)
-	onPrefixCacheQueried(ev PrefixCacheQueried)
-	onLoRASetsChanged(ev loraSetsChanged)
+	OnRequestReceived(ev RequestReceived)
+	OnRequestQueued(ev RequestQueued)
+	OnRequestDequeued(ev RequestDequeued)
+	OnRequestRunning(ev RequestRunning)
+	OnPrefillStarted(ev PrefillStarted)
+	OnPrefillEnded(ev PrefillEnded)
+	OnDecodeStarted(ev DecodeStarted)
+	OnTokenGenerated(ev TokenGenerated)
+	OnDecodeEnded(ev DecodeEnded)
+	OnRequestSucceeded(ev RequestSucceeded)
+	OnRequestFailed(ev RequestFailed)
+	OnRequestRejected(ev RequestRejected)
+	OnKVCacheUsageChanged(ev KVCacheUsageChanged)
+	OnPrefixCacheQueried(ev PrefixCacheQueried)
+	OnLoRASetsChanged(ev LoRASetsChanged)
 
-	applyUpdate(update *fakemetrics.Config) error
+	ApplyFakeMetricsUpdate(update *fakemetrics.Config) error
 }
+
+// AdapterFactory builds the metrics adapter for one engine backend. The active
+// engine supplies it, so pkg/metrics never names a concrete backend.
+type AdapterFactory func(ctx context.Context, registry *prometheus.Registry,
+	logger logr.Logger, config common.Configuration) (EngineMetricsAdapter, error)
 
 // MetricsBus carries state-change events from producers to the engine
 // metrics adapter. Producers push via common.WriteToChannel; the adapter
@@ -79,8 +86,8 @@ type MetricsBus struct {
 	PrefixCacheQuery common.Channel[PrefixCacheQueried]
 	// LoRAChanged carries all LoRA request transitions on one channel to preserve per-request ordering.
 	LoRAChanged common.Channel[LoRAChanged]
-	// loraSetsChanged is emitted by the bus after each LoRAChanged event with the per-LoRA waiting/running counts.
-	loraSetsChanged common.Channel[loraSetsChanged]
+	// LoRASetsChanged is emitted by the bus after each LoRAChanged event with the per-LoRA waiting/running counts.
+	LoRASetsChanged common.Channel[LoRASetsChanged]
 }
 
 func (b *MetricsBus) Start(ctx context.Context) error {
@@ -88,7 +95,39 @@ func (b *MetricsBus) Start(ctx context.Context) error {
 	// so that the first LoRAChanged event is processed before the first LoRASetsChanged event.
 	go b.loraCounterLoop(ctx)
 
+	b.subscribeAdapter(ctx)
+
 	return b.adapter.Start(ctx)
+}
+
+// subscribeAdapter spawns one drainer goroutine per event channel, each
+// dispatching to the adapter's matching On<Event> handler.
+func (b *MetricsBus) subscribeAdapter(ctx context.Context) {
+	go Subscribe(ctx, b.RequestQueued, b.adapter.OnRequestQueued)
+	go Subscribe(ctx, b.RequestDequeued, b.adapter.OnRequestDequeued)
+	go Subscribe(ctx, b.RequestRunning, b.adapter.OnRequestRunning)
+	go Subscribe(ctx, b.PrefillStarted, b.adapter.OnPrefillStarted)
+	go Subscribe(ctx, b.PrefillEnded, b.adapter.OnPrefillEnded)
+	go Subscribe(ctx, b.DecodeStarted, b.adapter.OnDecodeStarted)
+	go Subscribe(ctx, b.TokenGenerated, b.adapter.OnTokenGenerated)
+	go Subscribe(ctx, b.DecodeEnded, b.adapter.OnDecodeEnded)
+	go Subscribe(ctx, b.RequestSucceeded, b.adapter.OnRequestSucceeded)
+	go Subscribe(ctx, b.RequestFailed, b.adapter.OnRequestFailed)
+	go Subscribe(ctx, b.KVCacheUsage, b.adapter.OnKVCacheUsageChanged)
+	go Subscribe(ctx, b.PrefixCacheQuery, b.adapter.OnPrefixCacheQueried)
+	go Subscribe(ctx, b.LoRASetsChanged, b.adapter.OnLoRASetsChanged)
+}
+
+// Subscribe reads events from ch and dispatches them to fn until ctx is done.
+func Subscribe[E any](ctx context.Context, ch common.Channel[E], fn func(E)) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case event := <-ch.Channel:
+			fn(event)
+		}
+	}
 }
 
 // loraCounterLoop subscribes to LoRAChanged, mutates the per-LoRA waiting/running
@@ -112,12 +151,12 @@ func (b *MetricsBus) loraCounterLoop(ctx context.Context) {
 				continue
 			}
 
-			common.WriteToChannel(b.loraSetsChanged, b.snapshotLoraSets(), b.logger)
+			common.WriteToChannel(b.LoRASetsChanged, b.snapshotLoraSets(), b.logger)
 		}
 	}
 }
 
-func (b *MetricsBus) snapshotLoraSets() loraSetsChanged {
+func (b *MetricsBus) snapshotLoraSets() LoRASetsChanged {
 	running := make(map[string]int)
 	b.runningLoras.Range(func(k, v any) bool {
 		running[k.(string)] = v.(int)
@@ -128,7 +167,7 @@ func (b *MetricsBus) snapshotLoraSets() loraSetsChanged {
 		waiting[k.(string)] = v.(int)
 		return true
 	})
-	return loraSetsChanged{
+	return LoRASetsChanged{
 		Running: running,
 		Waiting: waiting,
 	}
@@ -161,7 +200,7 @@ func (b *MetricsBus) ApplyFakeMetricsUpdate(update *fakemetrics.Config) error {
 	if b == nil || update == nil {
 		return nil
 	}
-	return b.adapter.applyUpdate(update)
+	return b.adapter.ApplyFakeMetricsUpdate(update)
 }
 
 // -- Events -----------------------------------------------------------------
@@ -277,21 +316,21 @@ type LoRAChanged struct {
 	State LoRAState
 }
 
-// loraSetsChanged is emitted after the bus applies a LoRAChanged event; it
+// LoRASetsChanged is emitted after the bus applies a LoRAChanged event; it
 // carries the current per-LoRA waiting and running request counts. Adapters
 // derive labels (e.g. lora_requests_info) from these maps.
-type loraSetsChanged struct {
+type LoRASetsChanged struct {
 	Running map[string]int
 	Waiting map[string]int
 }
 
-// channelCapacities returns the buffered-channel sizes derived from config,
+// ChannelCapacities returns the buffered-channel sizes derived from config,
 // shared by the bus and every EngineMetricsAdapter so buffer sizing stays
 // consistent across both.
 // The per-token stream is buffered on the bus and again on the adapter channel
 // behind it; both must use tokens, or the narrower one decides when
 // observations are dropped and the wider one is reserved for nothing.
-func channelCapacities(config common.Configuration) (running, waiting, requests, tokens int) {
+func ChannelCapacities(config common.Configuration) (running, waiting, requests, tokens int) {
 	running = config.MaxNumSeqs * 2
 	waiting = config.MaxWaitingQueueLength * 2
 	requests = (config.MaxNumSeqs + config.MaxWaitingQueueLength) * 2
@@ -300,24 +339,17 @@ func channelCapacities(config common.Configuration) (running, waiting, requests,
 }
 
 // --------------------------------
-func NewMetricsBus(ctx context.Context, config common.Configuration, registry *prometheus.Registry, logger logr.Logger) (*MetricsBus, error) {
+func NewMetricsBus(ctx context.Context, config common.Configuration, registry *prometheus.Registry,
+	logger logr.Logger, newAdapter AdapterFactory) (*MetricsBus, error) {
 	mBus := &MetricsBus{
 		registry: registry,
 		logger:   logger,
 	}
 
-	// TODO create metrics adapter based on config.EngineType (vllm, sglang, etc.)
-	adapter, err := NewVLLMMetricsAdapter(ctx, mBus, logger, config)
-	if err != nil {
-		return nil, err
-	}
-
-	mBus.adapter = adapter
-
 	// create channels with capacity based on config
 	done := ctx.Done()
 
-	maxNumberOfRunningRequests, maxNumberOfWaitingRequests, _, maxNumberOfTokens := channelCapacities(config)
+	maxNumberOfRunningRequests, maxNumberOfWaitingRequests, _, maxNumberOfTokens := ChannelCapacities(config)
 
 	mBus.RequestQueued = common.Channel[RequestQueued]{
 		Channel: make(chan RequestQueued, maxNumberOfWaitingRequests),
@@ -384,10 +416,22 @@ func NewMetricsBus(ctx context.Context, config common.Configuration, registry *p
 		Name:    "bus.LoRAChanged",
 		Done:    done,
 	}
-	mBus.loraSetsChanged = common.Channel[loraSetsChanged]{
-		Channel: make(chan loraSetsChanged, maxNumberOfWaitingRequests+maxNumberOfRunningRequests),
+	mBus.LoRASetsChanged = common.Channel[LoRASetsChanged]{
+		Channel: make(chan LoRASetsChanged, maxNumberOfWaitingRequests+maxNumberOfRunningRequests),
 		Name:    "bus.LoRASetsChanged",
 		Done:    done,
 	}
+
+	if newAdapter == nil {
+		mBus.adapter = nopAdapter{}
+		return mBus, nil
+	}
+
+	adapter, err := newAdapter(ctx, registry, logger, config)
+	if err != nil {
+		return nil, err
+	}
+	mBus.adapter = adapter
+
 	return mBus, nil
 }

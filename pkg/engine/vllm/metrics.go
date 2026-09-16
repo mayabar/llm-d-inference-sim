@@ -14,9 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// vLLM Prometheus implementation of EngineMetricsAdapter.
+// vLLM Prometheus implementation of metrics.EngineMetricsAdapter.
 
-package metrics
+package vllm
 
 import (
 	"context"
@@ -33,6 +33,7 @@ import (
 	"github.com/llm-d/llm-d-inference-sim/pkg/api"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	"github.com/llm-d/llm-d-inference-sim/pkg/engine/vllm/fakemetrics"
+	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 )
 
 const (
@@ -119,7 +120,7 @@ type RequestSuccessCounterUpdate struct {
 // producers set Snapshot with the current per-LoRA counts; the fake-metrics
 // applier sets Reset.
 type LoRAUpdate struct {
-	Snapshot *loraSetsChanged
+	Snapshot *metrics.LoRASetsChanged
 	Reset    *LoRAReset
 }
 
@@ -131,10 +132,19 @@ type LoRAReset struct {
 	Entries  []common.LorasMetrics
 }
 
-// VLLMMetricsAdapter implements EngineMetricsAdapter and produces the vLLM
-// Prometheus surface. Bus events are drained, dispatched to On<Event>
-// handlers that fan out to per-metric channels, and written to Prometheus
-// by one updater goroutine per metric.
+// activeGenerator is one fake-metric generator bound to the gauge channel it
+// feeds. The ticker evaluates fn on every refresh and pushes the result.
+type activeGenerator struct {
+	fn         metrics.Generator
+	params     *common.FunctionInfo
+	roundToInt bool
+	updateFunc func(upd GaugeUpdate)
+}
+
+// VLLMMetricsAdapter implements metrics.EngineMetricsAdapter and produces the
+// vLLM Prometheus surface. The bus dispatches drained events to the On<Event>
+// handlers, which fan out to per-metric channels, written to Prometheus by one
+// updater goroutine per metric.
 type VLLMMetricsAdapter struct {
 	logger logr.Logger
 	config common.Configuration
@@ -143,12 +153,13 @@ type VLLMMetricsAdapter struct {
 	fake *fakemetrics.Config
 	ctx  context.Context
 
-	bus *MetricsBus
+	registry *prometheus.Registry
 
 	// genMu guards the fake-metrics generator set and ticker lifecycle:
 	// generators, started, tickerRunning, tickerCancel, tickerStart. Held
-	// briefly by ApplyUpdate, Start, Close, and tick (snapshot only) so the
-	// ticker goroutine and admin-driven updates cannot race on the map.
+	// briefly by ApplyFakeMetricsUpdate, Start, Close, and tick (snapshot
+	// only) so the ticker goroutine and admin-driven updates cannot race on
+	// the map.
 	genMu         sync.Mutex
 	generators    map[string]activeGenerator
 	started       bool
@@ -219,14 +230,25 @@ type VLLMMetricsAdapter struct {
 	nRunningReqs int64
 }
 
-// NewVLLMMetricsAdapter registers the Prometheus collectors, stamps initial
-// values, and spawns the per-metric updater goroutines. Call Start to wire
-// in the event bus; ctx must match the one passed here. Returns an error
-// if any collector fails to register.
-func NewVLLMMetricsAdapter(ctx context.Context, bus *MetricsBus, logger logr.Logger, config common.Configuration) (*VLLMMetricsAdapter, error) {
+// NewMetricsAdapter returns the vLLM metrics adapter.
+func (Engine) NewMetricsAdapter(ctx context.Context, registry *prometheus.Registry,
+	logger logr.Logger, config common.Configuration) (metrics.EngineMetricsAdapter, error) {
+	m, err := newMetricsAdapter(ctx, registry, logger, config)
+	if err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// newMetricsAdapter registers the Prometheus collectors on registry, stamps
+// initial values, and spawns the per-metric updater goroutines. ctx must match
+// the one passed to metrics.NewMetricsBus. Returns an error if any collector
+// fails to register.
+func newMetricsAdapter(ctx context.Context, registry *prometheus.Registry,
+	logger logr.Logger, config common.Configuration) (*VLLMMetricsAdapter, error) {
 	m := &VLLMMetricsAdapter{
 		logger:     logger,
-		bus:        bus,
+		registry:   registry,
 		config:     config,
 		generators: make(map[string]activeGenerator),
 		ctx:        ctx,
@@ -253,31 +275,16 @@ func (m *VLLMMetricsAdapter) Close() error {
 	return nil
 }
 
-// Start wires the event bus into the adapter by spawning one drainer
-// goroutine per bus channel. Each drainer calls the matching On<Event>
-// handler, which forwards the event onto the per-metric channel that
-// NewVLLMMetricsAdapter already stood up.
-func (m *VLLMMetricsAdapter) Start(ctx context.Context) error {
-	go subscribe(ctx, m.bus.RequestQueued, m.onRequestQueued)
-	go subscribe(ctx, m.bus.RequestDequeued, m.onRequestDequeued)
-	go subscribe(ctx, m.bus.RequestRunning, m.onRequestRunning)
-	go subscribe(ctx, m.bus.PrefillStarted, m.onPrefillStarted)
-	go subscribe(ctx, m.bus.PrefillEnded, m.onPrefillEnded)
-	go subscribe(ctx, m.bus.DecodeStarted, m.onDecodeStarted)
-	go subscribe(ctx, m.bus.TokenGenerated, m.onTokenGenerated)
-	go subscribe(ctx, m.bus.DecodeEnded, m.onDecodeEnded)
-	go subscribe(ctx, m.bus.RequestSucceeded, m.onRequestSucceeded)
-	go subscribe(ctx, m.bus.RequestFailed, m.onRequestFailed)
-	go subscribe(ctx, m.bus.KVCacheUsage, m.onKVCacheUsageChanged)
-	go subscribe(ctx, m.bus.PrefixCacheQuery, m.onPrefixCacheQueried)
-	go subscribe(ctx, m.bus.loraSetsChanged, m.onLoRASetsChanged)
-
+// Start applies the initial fake-metrics configuration and starts the
+// generator ticker. The bus has already subscribed the On<Event> handlers to
+// its channels by the time this runs.
+func (m *VLLMMetricsAdapter) Start(_ context.Context) error {
 	if m.fake != nil {
 		fm := *m.fake
 		if fm.LoraMetrics == nil {
 			fm.LoraMetrics = []common.LorasMetrics{}
 		}
-		if err := m.applyUpdate(&fm); err != nil {
+		if err := m.ApplyFakeMetricsUpdate(&fm); err != nil {
 			return err
 		}
 	}
@@ -293,154 +300,154 @@ func (m *VLLMMetricsAdapter) Start(ctx context.Context) error {
 }
 
 func (m *VLLMMetricsAdapter) createAndStartPrometheusChannels(ctx context.Context) {
-	maxNumberOfRunningRequests, maxNumberOfWaitingRequests, maxNumberOfRequests, maxNumberOfTokens := channelCapacities(m.config)
+	maxNumberOfRunningRequests, maxNumberOfWaitingRequests, maxNumberOfRequests, maxNumberOfTokens := metrics.ChannelCapacities(m.config)
 
 	m.runReqChan = common.Channel[GaugeUpdate]{
 		Channel: make(chan GaugeUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.runReqChan",
 		Done:    ctx.Done(),
 	}
-	go subscribe(ctx, m.runReqChan, m.runningRequestsUpdater)
+	go metrics.Subscribe(ctx, m.runReqChan, m.runningRequestsUpdater)
 
 	m.waitingReqChan = common.Channel[GaugeUpdate]{
 		Channel: make(chan GaugeUpdate, maxNumberOfWaitingRequests),
 		Name:    "vllm.waitingReqChan",
 		Done:    ctx.Done(),
 	}
-	go subscribe(ctx, m.waitingReqChan, m.waitingRequestsUpdater)
+	go metrics.Subscribe(ctx, m.waitingReqChan, m.waitingRequestsUpdater)
 
 	m.kvCacheUsageChan = common.Channel[GaugeUpdate]{
 		Channel: make(chan GaugeUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.kvCacheUsageChan",
 		Done:    ctx.Done(),
 	}
-	go subscribe(ctx, m.kvCacheUsageChan, m.kvCacheUsageUpdater)
+	go metrics.Subscribe(ctx, m.kvCacheUsageChan, m.kvCacheUsageUpdater)
 
 	m.ttftChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.ttftChan",
 		Done:    ctx.Done(),
 	}
-	go subscribe(ctx, m.ttftChan, m.ttftUpdater)
+	go metrics.Subscribe(ctx, m.ttftChan, m.ttftUpdater)
 
 	m.perTokenLatencyChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfTokens),
 		Name:    "vllm.perTokenLatencyChan",
 		Done:    ctx.Done(),
 	}
-	go subscribe(ctx, m.perTokenLatencyChan, m.perTokenLatencyUpdater)
+	go metrics.Subscribe(ctx, m.perTokenLatencyChan, m.perTokenLatencyUpdater)
 
 	m.e2eReqLatencyChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.e2eReqLatencyChan",
 		Done:    ctx.Done(),
 	}
-	go subscribe(ctx, m.e2eReqLatencyChan, m.e2eReqLatencyUpdater)
+	go metrics.Subscribe(ctx, m.e2eReqLatencyChan, m.e2eReqLatencyUpdater)
 
 	m.reqQueueTimeChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfWaitingRequests),
 		Name:    "vllm.reqQueueTimeChan",
 		Done:    ctx.Done(),
 	}
-	go subscribe(ctx, m.reqQueueTimeChan, m.reqQueueTimeUpdater)
+	go metrics.Subscribe(ctx, m.reqQueueTimeChan, m.reqQueueTimeUpdater)
 
 	m.reqInferenceTimeChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.reqInferenceTimeChan",
 		Done:    ctx.Done(),
 	}
-	go subscribe(ctx, m.reqInferenceTimeChan, m.reqInferenceTimeUpdater)
+	go metrics.Subscribe(ctx, m.reqInferenceTimeChan, m.reqInferenceTimeUpdater)
 
 	m.reqPrefillTimeChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.reqPrefillTimeChan",
 		Done:    ctx.Done(),
 	}
-	go subscribe(ctx, m.reqPrefillTimeChan, m.reqPrefillTimeUpdater)
+	go metrics.Subscribe(ctx, m.reqPrefillTimeChan, m.reqPrefillTimeUpdater)
 
 	m.reqDecodeTimeChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.reqDecodeTimeChan",
 		Done:    ctx.Done(),
 	}
-	go subscribe(ctx, m.reqDecodeTimeChan, m.reqDecodeTimeUpdater)
+	go metrics.Subscribe(ctx, m.reqDecodeTimeChan, m.reqDecodeTimeUpdater)
 
 	m.reqTpotChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.reqTpotChan",
 		Done:    ctx.Done(),
 	}
-	go subscribe(ctx, m.reqTpotChan, m.reqTpotUpdater)
+	go metrics.Subscribe(ctx, m.reqTpotChan, m.reqTpotUpdater)
 
 	m.lorasChan = common.Channel[LoRAUpdate]{
 		Channel: make(chan LoRAUpdate, maxNumberOfRequests),
 		Name:    "vllm.lorasChan",
 		Done:    ctx.Done(),
 	}
-	go subscribe(ctx, m.lorasChan, m.lorasUpdater)
+	go metrics.Subscribe(ctx, m.lorasChan, m.lorasUpdater)
 
 	m.requestPromptTokensChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.requestPromptTokensChan",
 		Done:    ctx.Done(),
 	}
-	go subscribe(ctx, m.requestPromptTokensChan, m.requestPromptTokensUpdater)
+	go metrics.Subscribe(ctx, m.requestPromptTokensChan, m.requestPromptTokensUpdater)
 
 	m.requestGenerationTokensChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.requestGenerationTokensChan",
 		Done:    ctx.Done(),
 	}
-	go subscribe(ctx, m.requestGenerationTokensChan, m.requestGenerationTokensUpdater)
+	go metrics.Subscribe(ctx, m.requestGenerationTokensChan, m.requestGenerationTokensUpdater)
 
 	m.maxNumGenerationTokensChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.maxNumGenerationTokensChan",
 		Done:    ctx.Done(),
 	}
-	go subscribe(ctx, m.maxNumGenerationTokensChan, m.maxNumGenerationTokensUpdater)
+	go metrics.Subscribe(ctx, m.maxNumGenerationTokensChan, m.maxNumGenerationTokensUpdater)
 
 	m.requestParamsMaxTokensChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.requestParamsMaxTokensChan",
 		Done:    ctx.Done(),
 	}
-	go subscribe(ctx, m.requestParamsMaxTokensChan, m.requestParamsMaxTokensUpdater)
+	go metrics.Subscribe(ctx, m.requestParamsMaxTokensChan, m.requestParamsMaxTokensUpdater)
 
 	m.promptTokensTotalChan = common.Channel[CounterUpdate]{
 		Channel: make(chan CounterUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.promptTokensTotalChan",
 		Done:    ctx.Done(),
 	}
-	go subscribe(ctx, m.promptTokensTotalChan, m.promptTokensTotalUpdater)
+	go metrics.Subscribe(ctx, m.promptTokensTotalChan, m.promptTokensTotalUpdater)
 
 	m.generationTokensTotalChan = common.Channel[CounterUpdate]{
 		Channel: make(chan CounterUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.generationTokensTotalChan",
 		Done:    ctx.Done(),
 	}
-	go subscribe(ctx, m.generationTokensTotalChan, m.generationTokensTotalUpdater)
+	go metrics.Subscribe(ctx, m.generationTokensTotalChan, m.generationTokensTotalUpdater)
 
 	m.requestSuccessTotalChan = common.Channel[RequestSuccessCounterUpdate]{
 		Channel: make(chan RequestSuccessCounterUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.requestSuccessTotalChan",
 		Done:    ctx.Done(),
 	}
-	go subscribe(ctx, m.requestSuccessTotalChan, m.requestSuccessTotalUpdater)
+	go metrics.Subscribe(ctx, m.requestSuccessTotalChan, m.requestSuccessTotalUpdater)
 
 	m.prefixCacheHitsTotalChan = common.Channel[CounterUpdate]{
 		Channel: make(chan CounterUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.prefixCacheHitsTotalChan",
 		Done:    ctx.Done(),
 	}
-	go subscribe(ctx, m.prefixCacheHitsTotalChan, m.prefixCacheHitsTotalUpdater)
+	go metrics.Subscribe(ctx, m.prefixCacheHitsTotalChan, m.prefixCacheHitsTotalUpdater)
 
 	m.prefixCacheQueriesTotalChan = common.Channel[CounterUpdate]{
 		Channel: make(chan CounterUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.prefixCacheQueriesTotalChan",
 		Done:    ctx.Done(),
 	}
-	go subscribe(ctx, m.prefixCacheQueriesTotalChan, m.prefixCacheQueriesTotalUpdater)
+	go metrics.Subscribe(ctx, m.prefixCacheQueriesTotalChan, m.prefixCacheQueriesTotalUpdater)
 }
 
 // -- Per-metric write helpers ---------------------------------------------
@@ -590,24 +597,12 @@ func (m *VLLMMetricsAdapter) applyHistogramUpdate(histPP **prometheus.HistogramV
 			(*histPP).WithLabelValues(m.config.DisplayModelName).Observe(*upd.Observe)
 		}
 	case upd.Reset != nil:
-		m.bus.registry.Unregister(*histPP)
+		m.registry.Unregister(*histPP)
 		if err := recreate(); err != nil {
 			m.logger.Error(err, "failed to recreate histogram during fake-metrics reset")
 			return
 		}
-		InitFakeHistogram(*histPP, m.config.DisplayModelName, upd.Reset.Buckets, upd.Reset.Samples)
-	}
-}
-
-// subscribe reads events from ch and dispatches them to fn until ctx is done.
-func subscribe[E any](ctx context.Context, ch common.Channel[E], fn func(E)) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case event := <-ch.Channel:
-			fn(event)
-		}
+		metrics.InitFakeHistogram(*histPP, m.config.DisplayModelName, upd.Reset.Buckets, upd.Reset.Samples)
 	}
 }
 
@@ -667,18 +662,18 @@ func (m *VLLMMetricsAdapter) writeToLoRAs(upd LoRAUpdate) {
 
 // -- Event handlers  -------------------
 
-func (m *VLLMMetricsAdapter) onRequestReceived(_ RequestReceived) {
+func (m *VLLMMetricsAdapter) OnRequestReceived(_ metrics.RequestReceived) {
 	// State marker; no exposed metric today.
 }
 
-func (m *VLLMMetricsAdapter) onRequestRejected(_ RequestRejected) {
+func (m *VLLMMetricsAdapter) OnRequestRejected(_ metrics.RequestRejected) {
 	// State marker; no exposed metric today.
 }
 
 // request queued
 // - update number of waiting requests
 // - update LoRA state if applicable
-func (m *VLLMMetricsAdapter) onRequestQueued(ev RequestQueued) {
+func (m *VLLMMetricsAdapter) OnRequestQueued(ev metrics.RequestQueued) {
 	if m.fake != nil {
 		return
 	}
@@ -689,7 +684,7 @@ func (m *VLLMMetricsAdapter) onRequestQueued(ev RequestQueued) {
 // - update number of waiting requests
 // - update queue time histogram
 // lora will be marked as runnning in OnRequestRunning
-func (m *VLLMMetricsAdapter) onRequestDequeued(ev RequestDequeued) {
+func (m *VLLMMetricsAdapter) OnRequestDequeued(ev metrics.RequestDequeued) {
 	if m.fake != nil {
 		return
 	}
@@ -701,7 +696,7 @@ func (m *VLLMMetricsAdapter) onRequestDequeued(ev RequestDequeued) {
 // request running
 // - update number of running requests
 // - update LoRA state if applicable
-func (m *VLLMMetricsAdapter) onRequestRunning(ev RequestRunning) {
+func (m *VLLMMetricsAdapter) OnRequestRunning(ev metrics.RequestRunning) {
 	if m.fake != nil {
 		return
 	}
@@ -709,14 +704,14 @@ func (m *VLLMMetricsAdapter) onRequestRunning(ev RequestRunning) {
 }
 
 // prefill started
-func (m *VLLMMetricsAdapter) onPrefillStarted(_ PrefillStarted) {
+func (m *VLLMMetricsAdapter) OnPrefillStarted(_ metrics.PrefillStarted) {
 	// State marker.
 }
 
 // prefill step ended
 // - update prefill time histogram
 // - update TTFT histogram
-func (m *VLLMMetricsAdapter) onPrefillEnded(ev PrefillEnded) {
+func (m *VLLMMetricsAdapter) OnPrefillEnded(ev metrics.PrefillEnded) {
 	if m.fake != nil {
 		return
 	}
@@ -724,13 +719,13 @@ func (m *VLLMMetricsAdapter) onPrefillEnded(ev PrefillEnded) {
 	m.writeToTTFT(observation(ev.PrefillDuration))
 }
 
-func (m *VLLMMetricsAdapter) onDecodeStarted(_ DecodeStarted) {
+func (m *VLLMMetricsAdapter) OnDecodeStarted(_ metrics.DecodeStarted) {
 	// State marker.
 }
 
 // token generated
 // - update tpot and itl latency histograms
-func (m *VLLMMetricsAdapter) onTokenGenerated(ev TokenGenerated) {
+func (m *VLLMMetricsAdapter) OnTokenGenerated(ev metrics.TokenGenerated) {
 	if m.fake != nil {
 		return
 	}
@@ -740,7 +735,7 @@ func (m *VLLMMetricsAdapter) onTokenGenerated(ev TokenGenerated) {
 // decode ended
 // - update decode time histogram
 // - update requests tpot histogram
-func (m *VLLMMetricsAdapter) onDecodeEnded(ev DecodeEnded) {
+func (m *VLLMMetricsAdapter) OnDecodeEnded(ev metrics.DecodeEnded) {
 	if m.fake != nil {
 		return
 	}
@@ -752,7 +747,7 @@ func (m *VLLMMetricsAdapter) onDecodeEnded(ev DecodeEnded) {
 }
 
 // request processing finished successfully - update all relevant metrics
-func (m *VLLMMetricsAdapter) onRequestSucceeded(ev RequestSucceeded) {
+func (m *VLLMMetricsAdapter) OnRequestSucceeded(ev metrics.RequestSucceeded) {
 	if m.fake != nil {
 		return
 	}
@@ -785,7 +780,7 @@ func (m *VLLMMetricsAdapter) onRequestSucceeded(ev RequestSucceeded) {
 
 // request processing failed
 // - update all relevant metrics
-func (m *VLLMMetricsAdapter) onRequestFailed(ev RequestFailed) {
+func (m *VLLMMetricsAdapter) OnRequestFailed(ev metrics.RequestFailed) {
 	if m.fake != nil {
 		return
 	}
@@ -797,7 +792,7 @@ func (m *VLLMMetricsAdapter) onRequestFailed(ev RequestFailed) {
 
 // change in kv cache utilization
 // - update kv cache usage gauge
-func (m *VLLMMetricsAdapter) onKVCacheUsageChanged(ev KVCacheUsageChanged) {
+func (m *VLLMMetricsAdapter) OnKVCacheUsageChanged(ev metrics.KVCacheUsageChanged) {
 	if m.fake != nil {
 		return
 	}
@@ -806,7 +801,7 @@ func (m *VLLMMetricsAdapter) onKVCacheUsageChanged(ev KVCacheUsageChanged) {
 
 // change in prefix cache utilization
 // - update prefix cache hits and queries counters
-func (m *VLLMMetricsAdapter) onPrefixCacheQueried(ev PrefixCacheQueried) {
+func (m *VLLMMetricsAdapter) OnPrefixCacheQueried(ev metrics.PrefixCacheQueried) {
 	if m.fake != nil {
 		return
 	}
@@ -820,7 +815,7 @@ func (m *VLLMMetricsAdapter) onPrefixCacheQueried(ev PrefixCacheQueried) {
 // OnLoRASetsChanged receives the per-LoRA waiting/running snapshot produced
 // by the bus after each LoRAChanged event and forwards it to the LoRA
 // updater goroutine.
-func (m *VLLMMetricsAdapter) onLoRASetsChanged(ev loraSetsChanged) {
+func (m *VLLMMetricsAdapter) OnLoRASetsChanged(ev metrics.LoRASetsChanged) {
 	if m.fake != nil {
 		return
 	}
@@ -918,7 +913,7 @@ func (m *VLLMMetricsAdapter) lorasUpdater(upd LoRAUpdate) {
 // populate to stamp the recreated collector's series. Called only from
 // updater goroutines.
 func (m *VLLMMetricsAdapter) resetCollector(current prometheus.Collector, recreate func() error, errMsg string, populate func()) {
-	m.bus.registry.Unregister(current)
+	m.registry.Unregister(current)
 	if err := recreate(); err != nil {
 		m.logger.Error(err, errMsg)
 		return
@@ -991,7 +986,7 @@ func (m *VLLMMetricsAdapter) reportKVCacheUsage(value float64) {
 	}
 }
 
-func (m *VLLMMetricsAdapter) reportLoras(snap loraSetsChanged) {
+func (m *VLLMMetricsAdapter) reportLoras(snap metrics.LoRASetsChanged) {
 	if m.fake != nil {
 		return
 	}
@@ -1088,7 +1083,7 @@ func (m *VLLMMetricsAdapter) buildMetrics() error {
 // register registers c with the bus's Prometheus registry, logging errMsg
 // on failure.
 func (m *VLLMMetricsAdapter) register(c prometheus.Collector, errMsg string) error {
-	if err := m.bus.registry.Register(c); err != nil {
+	if err := m.registry.Register(c); err != nil {
 		m.logger.Error(err, errMsg)
 		return err
 	}
@@ -1225,7 +1220,7 @@ func (m *VLLMMetricsAdapter) createAndRegisterReqPromptTokensHistogram() error {
 	m.requestPromptTokens = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    VLLMPromptTokensMetricName,
 		Help:    "Number of prefill tokens processed.",
-		Buckets: Build125Buckets(m.config.MaxModelLen),
+		Buckets: metrics.Build125Buckets(m.config.MaxModelLen),
 	}, modelLabel)
 	return m.register(m.requestPromptTokens, "prometheus request_prompt_tokens histogram register failed")
 }
@@ -1234,7 +1229,7 @@ func (m *VLLMMetricsAdapter) createAndRegisterReqGenerationTokensHistogram() err
 	m.requestGenerationTokens = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    VLLMGenerationTokensMetricName,
 		Help:    "Number of generation tokens processed.",
-		Buckets: Build125Buckets(m.config.MaxModelLen),
+		Buckets: metrics.Build125Buckets(m.config.MaxModelLen),
 	}, modelLabel)
 	return m.register(m.requestGenerationTokens, "prometheus request_generation_tokens histogram register failed")
 }
@@ -1243,7 +1238,7 @@ func (m *VLLMMetricsAdapter) createAndRegisterMaxNumGenerationTokensHistogram() 
 	m.maxNumGenerationTokens = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    VLLMMaxNumGenerationTokensMetricName,
 		Help:    "Histogram of maximum number of requested generation tokens.",
-		Buckets: Build125Buckets(m.config.MaxModelLen),
+		Buckets: metrics.Build125Buckets(m.config.MaxModelLen),
 	}, modelLabel)
 	return m.register(m.maxNumGenerationTokens, "prometheus max_num_generation_tokens histogram register failed")
 }
@@ -1252,7 +1247,7 @@ func (m *VLLMMetricsAdapter) createAndRegisterReqParamsMaxTokensHistogram() erro
 	m.requestParamsMaxTokens = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    VLLMParamMaxTokensMetricName,
 		Help:    "Histogram of the max_tokens request parameter.",
-		Buckets: Build125Buckets(m.config.MaxModelLen),
+		Buckets: metrics.Build125Buckets(m.config.MaxModelLen),
 	}, modelLabel)
 	return m.register(m.requestParamsMaxTokens, "prometheus request_params_max_tokens histogram register failed")
 }
@@ -1323,7 +1318,7 @@ func (m *VLLMMetricsAdapter) setInitialValues() {
 func (m *VLLMMetricsAdapter) updateScalarLocked(key string, fm *common.FakeMetricWithFunction, updateFunc func(upd GaugeUpdate), roundToInt bool) {
 	if fm.IsFunction {
 		gen := activeGenerator{
-			fn:         Dispatch(fm.Function.Name),
+			fn:         metrics.Dispatch(fm.Function.Name),
 			params:     fm.Function,
 			roundToInt: roundToInt,
 			updateFunc: updateFunc,
@@ -1340,6 +1335,14 @@ func (m *VLLMMetricsAdapter) updateScalarLocked(key string, fm *common.FakeMetri
 	updateFunc(gaugeReset(fm.FixedValue))
 }
 
+func float64Ptr(v *int64) *float64 {
+	if v == nil {
+		return nil
+	}
+	f := float64(*v)
+	return &f
+}
+
 // resolveTokenTotal returns the target absolute value for a token counter
 // paired with a histogram: explicit wins when set, else the sum of the
 // histogram Samples.
@@ -1348,10 +1351,10 @@ func resolveTokenTotal(buckets []float64, samples []int, explicit *float64) *flo
 		return explicit
 	}
 
-	return InitFakeHistogram(nil, "", buckets, samples)
+	return metrics.InitFakeHistogram(nil, "", buckets, samples)
 }
 
-func (m *VLLMMetricsAdapter) applyUpdate(update *fakemetrics.Config) error {
+func (m *VLLMMetricsAdapter) ApplyFakeMetricsUpdate(update *fakemetrics.Config) error {
 	m.genMu.Lock()
 	defer m.genMu.Unlock()
 	generatorsWereEmpty := len(m.generators) == 0
@@ -1391,7 +1394,7 @@ func (m *VLLMMetricsAdapter) applyUpdate(update *fakemetrics.Config) error {
 		m.writeToReqTpot(HistogramUpdate{Reset: &HistogramReset{Buckets: common.TPOTBucketsBoundaries, Samples: update.ReqTPOTBucketValues}})
 	}
 
-	tokenBuckets := Build125Buckets(m.config.MaxModelLen)
+	tokenBuckets := metrics.Build125Buckets(m.config.MaxModelLen)
 
 	if update.RequestParamsMaxTokens != nil {
 		m.writeToRequestParamsMaxTokens(HistogramUpdate{Reset: &HistogramReset{Buckets: tokenBuckets, Samples: update.RequestParamsMaxTokens}})

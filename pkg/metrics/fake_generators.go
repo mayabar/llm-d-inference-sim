@@ -31,13 +31,6 @@ import (
 // FunctionInfo. Producer code evaluates one on every refresh tick.
 type Generator func(params *common.FunctionInfo, t time.Duration) float64
 
-type activeGenerator struct {
-	fn         Generator
-	params     *common.FunctionInfo
-	roundToInt bool
-	updateFunc func(upd GaugeUpdate)
-}
-
 // Dispatch returns the Generator registered for name, or nil for an unknown
 // name. Names come from common.FunctionInfo.Name, populated by the parser from
 // the "fun:start:end:period" wire form.

@@ -41,7 +41,6 @@ import (
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	"github.com/llm-d/llm-d-inference-sim/pkg/communication"
 	"github.com/llm-d/llm-d-inference-sim/pkg/engine/vllm"
-	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 	"github.com/llm-d/llm-d-inference-sim/pkg/simulator"
 	"github.com/llm-d/llm-d-inference-sim/pkg/tokenizer"
 	"github.com/openai/openai-go/v3"
@@ -524,7 +523,7 @@ func getLastLoraMetrics(metricsData []string) ([]string, error) {
 	lastTimestamp := float64(0)
 	var lastMetrics []string
 	for _, metric := range metricsData {
-		if strings.HasPrefix(metric, metrics.VLLMLoRARequestsMetricName) {
+		if strings.HasPrefix(metric, vllm.VLLMLoRARequestsMetricName) {
 			timestamp, err := extractTimestamp(metric)
 			if err != nil {
 				return nil, err
@@ -719,17 +718,17 @@ func checkLatencyMetrics(client *http.Client, modelName string, numOfInputTokens
 		prevBoundary := math.Inf(-1)
 
 		for _, bucketBoundary := range common.RequestLatencyBucketsBoundaries {
-			checkBucketBoundary(g, metricsData, modelName, metrics.VLLMPrefillTimeMetricName, bucketBoundary, prevBoundary, expectedPrefillTimeInSecs)
-			checkBucketBoundary(g, metricsData, modelName, metrics.VLLMDecodeTimeMetricName, bucketBoundary, prevBoundary, expectedDecodeTimeInSecs)
-			checkBucketBoundary(g, metricsData, modelName, metrics.VLLME2EReqLatencyMetricName, bucketBoundary, prevBoundary, expectedE2ELatency)
+			checkBucketBoundary(g, metricsData, modelName, vllm.VLLMPrefillTimeMetricName, bucketBoundary, prevBoundary, expectedPrefillTimeInSecs)
+			checkBucketBoundary(g, metricsData, modelName, vllm.VLLMDecodeTimeMetricName, bucketBoundary, prevBoundary, expectedDecodeTimeInSecs)
+			checkBucketBoundary(g, metricsData, modelName, vllm.VLLME2EReqLatencyMetricName, bucketBoundary, prevBoundary, expectedE2ELatency)
 
 			prevBoundary = bucketBoundary
 		}
 		// check the last bucket
 		lastBoundary := common.RequestLatencyBucketsBoundaries[len(common.RequestLatencyBucketsBoundaries)-1]
-		checkBucketBoundary(g, metricsData, modelName, metrics.VLLMPrefillTimeMetricName, math.Inf(1), lastBoundary, expectedPrefillTimeInSecs)
-		checkBucketBoundary(g, metricsData, modelName, metrics.VLLMDecodeTimeMetricName, math.Inf(1), lastBoundary, expectedDecodeTimeInSecs)
-		checkBucketBoundary(g, metricsData, modelName, metrics.VLLME2EReqLatencyMetricName, math.Inf(1), lastBoundary, expectedE2ELatency)
+		checkBucketBoundary(g, metricsData, modelName, vllm.VLLMPrefillTimeMetricName, math.Inf(1), lastBoundary, expectedPrefillTimeInSecs)
+		checkBucketBoundary(g, metricsData, modelName, vllm.VLLMDecodeTimeMetricName, math.Inf(1), lastBoundary, expectedDecodeTimeInSecs)
+		checkBucketBoundary(g, metricsData, modelName, vllm.VLLME2EReqLatencyMetricName, math.Inf(1), lastBoundary, expectedE2ELatency)
 	})
 }
 

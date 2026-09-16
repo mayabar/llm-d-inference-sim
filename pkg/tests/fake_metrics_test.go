@@ -27,6 +27,7 @@ import (
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/api"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
+	"github.com/llm-d/llm-d-inference-sim/pkg/engine/vllm"
 	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 	"github.com/llm-d/llm-d-inference-sim/pkg/simulator"
 	. "github.com/onsi/ginkgo/v2"
@@ -94,37 +95,37 @@ var _ = Describe("Fake metrics", Ordered, func() {
 
 			eventuallyMetrics(client, func(g Gomega, metricsData string) {
 
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMReqRunningMetricName, 10)))
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMReqWaitingMetricName, 30)))
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMKVCacheUsageMetricName, 0.4)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMReqRunningMetricName, 10)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMReqWaitingMetricName, 30)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMKVCacheUsageMetricName, 0.4)))
 				g.Expect(metricsData).To(ContainSubstring("vllm:lora_requests_info{max_lora=\"1\",running_lora_adapters=\"lora4,lora2\",waiting_lora_adapters=\"lora3\"} 1.257894567e+09"))
 				g.Expect(metricsData).To(ContainSubstring("vllm:lora_requests_info{max_lora=\"1\",running_lora_adapters=\"lora4,lora3\",waiting_lora_adapters=\"\"} 1.257894569e+09"))
 
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTTFTMetricName, 0.001, 1)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTTFTMetricName, 0.005, 3)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTTFTMetricName, 0.01, 6)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTTFTMetricName, 0.02, 6)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMTTFTMetricName, 0.001, 1)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMTTFTMetricName, 0.005, 3)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMTTFTMetricName, 0.01, 6)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMTTFTMetricName, 0.02, 6)))
 
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTPOTMetricName, 0.01, 0)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTPOTMetricName, 0.025, 0)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTPOTMetricName, 0.05, 1)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTPOTMetricName, 0.075, 3)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTPOTMetricName, 0.1, 6)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTPOTMetricName, 0.15, 6)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMTPOTMetricName, 0.01, 0)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMTPOTMetricName, 0.025, 0)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMTPOTMetricName, 0.05, 1)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMTPOTMetricName, 0.075, 3)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMTPOTMetricName, 0.1, 6)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMTPOTMetricName, 0.15, 6)))
 
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMInterTokenLatencyMetricName, 0.01, 0)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMInterTokenLatencyMetricName, 0.025, 0)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMInterTokenLatencyMetricName, 0.05, 1)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMInterTokenLatencyMetricName, 0.075, 3)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMInterTokenLatencyMetricName, 0.1, 6)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMInterTokenLatencyMetricName, 0.15, 6)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMInterTokenLatencyMetricName, 0.01, 0)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMInterTokenLatencyMetricName, 0.025, 0)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMInterTokenLatencyMetricName, 0.05, 1)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMInterTokenLatencyMetricName, 0.075, 3)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMInterTokenLatencyMetricName, 0.1, 6)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMInterTokenLatencyMetricName, 0.15, 6)))
 
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqTPOTMetricName, 0.01, 0)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqTPOTMetricName, 0.025, 2)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqTPOTMetricName, 0.05, 6)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqTPOTMetricName, 0.075, 12)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqTPOTMetricName, 0.1, 20)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqTPOTMetricName, 0.15, 20)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMReqTPOTMetricName, 0.01, 0)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMReqTPOTMetricName, 0.025, 2)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMReqTPOTMetricName, 0.05, 6)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMReqTPOTMetricName, 0.075, 12)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMReqTPOTMetricName, 0.1, 20)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMReqTPOTMetricName, 0.15, 20)))
 
 				buckets := metrics.Build125Buckets(1024)
 				var expectedCount int
@@ -139,15 +140,15 @@ var _ = Describe("Fake metrics", Ordered, func() {
 						expectedCount = 60
 					}
 
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMGenerationTokensMetricName, boundary, expectedCount)))
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMMaxNumGenerationTokensMetricName, boundary, expectedCount)))
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMPromptTokensMetricName, boundary, expectedCount)))
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMParamMaxTokensMetricName, boundary, expectedCount)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMGenerationTokensMetricName, boundary, expectedCount)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMMaxNumGenerationTokensMetricName, boundary, expectedCount)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMPromptTokensMetricName, boundary, expectedCount)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMParamMaxTokensMetricName, boundary, expectedCount)))
 
 				}
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMGenerationTokensMetricName, math.Inf(1), expectedCount)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMPromptTokensMetricName, math.Inf(1), expectedCount)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMParamMaxTokensMetricName, math.Inf(1), expectedCount)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMGenerationTokensMetricName, math.Inf(1), expectedCount)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMPromptTokensMetricName, math.Inf(1), expectedCount)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMParamMaxTokensMetricName, math.Inf(1), expectedCount)))
 				g.Expect(metricsData).To(ContainSubstring(fmt.Sprintf(`vllm:generation_tokens_total{model_name="%s"} 200`, common.TestModelName)))
 				g.Expect(metricsData).To(ContainSubstring(fmt.Sprintf(`vllm:prompt_tokens_total{model_name="%s"} 200`, common.TestModelName)))
 
@@ -156,8 +157,8 @@ var _ = Describe("Fake metrics", Ordered, func() {
 				g.Expect(metricsData).To(ContainSubstring(fmt.Sprintf(`vllm:request_success_total{finish_reason="stop",model_name="%s"} 20`, common.TestModelName)))
 				g.Expect(metricsData).To(ContainSubstring(fmt.Sprintf(`vllm:request_success_total{finish_reason="tool_calls",model_name="%s"} 0`, common.TestModelName)))
 
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMPrefixCacheHitsTotalMetricName, 750)))
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMPrefixCacheQueriesTotalMetricName, 2000)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMPrefixCacheHitsTotalMetricName, 750)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMPrefixCacheQueriesTotalMetricName, 2000)))
 			})
 		})
 
@@ -182,17 +183,17 @@ var _ = Describe("Fake metrics", Ordered, func() {
 				metricsLines := strings.Split(metricsData, "\n")
 
 				// Running requests: should be various values in [1, 5]
-				count := findIntMetric(metricsLines, getCountMetricPrefix(common.TestModelName, metrics.VLLMReqRunningMetricName))
+				count := findIntMetric(metricsLines, getCountMetricPrefix(common.TestModelName, vllm.VLLMReqRunningMetricName))
 				Expect(count).ToNot(BeNil())
 				Expect(*count).To(BeNumerically(">=", 1))
 				Expect(*count).To(BeNumerically("<=", 5))
 
 				// Waiting requests: should be either 10 or 15
-				Expect(metricsData).To(Or(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMReqWaitingMetricName, 10)),
-					ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMReqWaitingMetricName, 15))))
+				Expect(metricsData).To(Or(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMReqWaitingMetricName, 10)),
+					ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMReqWaitingMetricName, 15))))
 
 				// KV cache usage: should grow from 0 to 1, and reach 1 after 700ms (i >= 4)
-				kvCacheUsage := findFloatMetric(metricsLines, getCountMetricPrefix(common.TestModelName, metrics.VLLMKVCacheUsageMetricName))
+				kvCacheUsage := findFloatMetric(metricsLines, getCountMetricPrefix(common.TestModelName, vllm.VLLMKVCacheUsageMetricName))
 				Expect(kvCacheUsage).ToNot(BeNil())
 				if i < 4 {
 					Expect(*kvCacheUsage).To(BeNumerically("<", 1))
@@ -222,7 +223,7 @@ var _ = Describe("Fake metrics", Ordered, func() {
 				metricsLines := strings.Split(sampleMetrics(client), "\n")
 
 				// KV cache usage: should decrease from 1 towards 0, and reset at 550ms (i=3)
-				kvCacheUsage := findFloatMetric(metricsLines, getCountMetricPrefix(common.TestModelName, metrics.VLLMKVCacheUsageMetricName))
+				kvCacheUsage := findFloatMetric(metricsLines, getCountMetricPrefix(common.TestModelName, vllm.VLLMKVCacheUsageMetricName))
 				Expect(kvCacheUsage).ToNot(BeNil())
 				if i != 3 {
 					Expect(*kvCacheUsage).To(BeNumerically("<=", 1))
@@ -285,11 +286,11 @@ var _ = Describe("Fake metrics", Ordered, func() {
 
 			eventuallyMetrics(client, func(g Gomega, metricsData string) {
 
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMReqRunningMetricName, 10)))
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMReqWaitingMetricName, 30)))
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMKVCacheUsageMetricName, 0.4)))
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMPrefixCacheHitsTotalMetricName, 750)))
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMPrefixCacheQueriesTotalMetricName, 2000)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMReqRunningMetricName, 10)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMReqWaitingMetricName, 30)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMKVCacheUsageMetricName, 0.4)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMPrefixCacheHitsTotalMetricName, 750)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMPrefixCacheQueriesTotalMetricName, 2000)))
 			})
 		})
 
@@ -308,7 +309,7 @@ var _ = Describe("Fake metrics", Ordered, func() {
 				time.Sleep(200 * time.Millisecond)
 				lines := strings.Split(sampleMetrics(client), "\n")
 
-				v := findFloatMetric(lines, getCountMetricPrefix(common.TestModelName, metrics.VLLMKVCacheUsageMetricName))
+				v := findFloatMetric(lines, getCountMetricPrefix(common.TestModelName, vllm.VLLMKVCacheUsageMetricName))
 				Expect(v).ToNot(BeNil())
 				if i < 4 {
 					Expect(*v).To(BeNumerically("<", 1))
@@ -334,8 +335,8 @@ var _ = Describe("Fake metrics", Ordered, func() {
 
 			consistentlyMetrics(client, func(g Gomega, metricsData string) {
 
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMPrefixCacheQueriesTotalMetricName, 1000)))
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMPrefixCacheHitsTotalMetricName, 500)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMPrefixCacheQueriesTotalMetricName, 1000)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMPrefixCacheHitsTotalMetricName, 500)))
 			})
 		})
 
@@ -366,8 +367,8 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			consistentlyMetrics(client, func(g Gomega, metricsData string) {
 
 				// Fake values should be unchanged — reportPrefixCacheStats returns early when FakeMetrics is set
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.QwenModelName, metrics.VLLMPrefixCacheQueriesTotalMetricName, 200)))
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.QwenModelName, metrics.VLLMPrefixCacheHitsTotalMetricName, 100)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.QwenModelName, vllm.VLLMPrefixCacheQueriesTotalMetricName, 200)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.QwenModelName, vllm.VLLMPrefixCacheHitsTotalMetricName, 100)))
 			})
 		})
 	})
@@ -386,9 +387,9 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			eventuallyMetrics(client, func(g Gomega, metricsData string) {
 
 				for _, boundary := range common.TTFTBucketsBoundaries {
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTTFTMetricName, boundary, 0)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMTTFTMetricName, boundary, 0)))
 				}
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTTFTMetricName, math.Inf(1), 1)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMTTFTMetricName, math.Inf(1), 1)))
 			})
 		})
 	})
@@ -425,17 +426,17 @@ var _ = Describe("Fake metrics", Ordered, func() {
 						expectedCount = 3
 					}
 
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLME2EReqLatencyMetricName, boundary, expectedCount)))
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqInferenceTimeMetricName, boundary, expectedCount)))
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqQueueTimeMetricName, boundary, expectedCount)))
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMPrefillTimeMetricName, boundary, expectedCount)))
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMDecodeTimeMetricName, boundary, expectedCount)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLME2EReqLatencyMetricName, boundary, expectedCount)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMReqInferenceTimeMetricName, boundary, expectedCount)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMReqQueueTimeMetricName, boundary, expectedCount)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMPrefillTimeMetricName, boundary, expectedCount)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMDecodeTimeMetricName, boundary, expectedCount)))
 				}
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLME2EReqLatencyMetricName, math.Inf(1), 3)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqInferenceTimeMetricName, math.Inf(1), 3)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqQueueTimeMetricName, math.Inf(1), 3)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMPrefillTimeMetricName, math.Inf(1), 3)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMDecodeTimeMetricName, math.Inf(1), 3)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLME2EReqLatencyMetricName, math.Inf(1), 3)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMReqInferenceTimeMetricName, math.Inf(1), 3)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMReqQueueTimeMetricName, math.Inf(1), 3)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMPrefillTimeMetricName, math.Inf(1), 3)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMDecodeTimeMetricName, math.Inf(1), 3)))
 			})
 		})
 	})
@@ -459,13 +460,13 @@ var _ = Describe("Fake metrics", Ordered, func() {
 				metricsLines := strings.Split(metricsData, "\n")
 
 				// Running requests: should be various values in [1, 5]
-				count := findIntMetric(metricsLines, getCountMetricPrefix(common.TestModelName, metrics.VLLMReqRunningMetricName))
+				count := findIntMetric(metricsLines, getCountMetricPrefix(common.TestModelName, vllm.VLLMReqRunningMetricName))
 				g.Expect(count).ToNot(BeNil())
 				g.Expect(*count).To(BeNumerically(">=", 1))
 				g.Expect(*count).To(BeNumerically("<=", 5))
 
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMReqWaitingMetricName, 30)))
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMKVCacheUsageMetricName, 0.4)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMReqWaitingMetricName, 30)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMKVCacheUsageMetricName, 0.4)))
 			})
 
 			// Update
@@ -481,9 +482,9 @@ var _ = Describe("Fake metrics", Ordered, func() {
 
 			eventuallyMetrics(client, func(g Gomega, metricsData string) {
 
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMReqRunningMetricName, 15)))
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMReqWaitingMetricName, 0)))
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMKVCacheUsageMetricName, 0.9)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMReqRunningMetricName, 15)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMReqWaitingMetricName, 0)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMKVCacheUsageMetricName, 0.9)))
 			})
 
 			// Update
@@ -499,13 +500,13 @@ var _ = Describe("Fake metrics", Ordered, func() {
 
 			// kv-cache-usage ramps to 1 over 150ms, so wait for it to top out first
 			eventuallyMetrics(client, func(g Gomega, metricsData string) {
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMReqWaitingMetricName, 30)))
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMKVCacheUsageMetricName, 1)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMReqWaitingMetricName, 30)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMKVCacheUsageMetricName, 1)))
 			})
 
 			// Running requests: should be various values in [10, 50]
 			consistentlyMetrics(client, func(g Gomega, metricsData string) {
-				count := findIntMetric(strings.Split(metricsData, "\n"), getCountMetricPrefix(common.TestModelName, metrics.VLLMReqRunningMetricName))
+				count := findIntMetric(strings.Split(metricsData, "\n"), getCountMetricPrefix(common.TestModelName, vllm.VLLMReqRunningMetricName))
 				g.Expect(count).ToNot(BeNil())
 				g.Expect(*count).To(BeNumerically(">=", 10))
 				g.Expect(*count).To(BeNumerically("<=", 50))
@@ -534,9 +535,9 @@ var _ = Describe("Fake metrics", Ordered, func() {
 
 			eventuallyMetrics(client, func(g Gomega, metricsData string) {
 
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMReqRunningMetricName, 7)))
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMReqWaitingMetricName, 8)))
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMKVCacheUsageMetricName, 0.5)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMReqRunningMetricName, 7)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMReqWaitingMetricName, 8)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMKVCacheUsageMetricName, 0.5)))
 			})
 
 			// The non-fake-metrics field also took effect.
@@ -564,23 +565,23 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			eventuallyMetrics(client, func(g Gomega, metricsData string) {
 
 				for _, boundary := range common.TTFTBucketsBoundaries {
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTTFTMetricName, boundary, 0)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMTTFTMetricName, boundary, 0)))
 				}
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTTFTMetricName, math.Inf(1), 1)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMTTFTMetricName, math.Inf(1), 1)))
 
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTPOTMetricName, 0.01, 0)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTPOTMetricName, 0.025, 0)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTPOTMetricName, 0.05, 1)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTPOTMetricName, 0.075, 3)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTPOTMetricName, 0.1, 6)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTPOTMetricName, 0.15, 6)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMTPOTMetricName, 0.01, 0)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMTPOTMetricName, 0.025, 0)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMTPOTMetricName, 0.05, 1)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMTPOTMetricName, 0.075, 3)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMTPOTMetricName, 0.1, 6)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMTPOTMetricName, 0.15, 6)))
 
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMInterTokenLatencyMetricName, 0.01, 0)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMInterTokenLatencyMetricName, 0.025, 0)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMInterTokenLatencyMetricName, 0.05, 1)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMInterTokenLatencyMetricName, 0.075, 3)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMInterTokenLatencyMetricName, 0.1, 6)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMInterTokenLatencyMetricName, 0.15, 6)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMInterTokenLatencyMetricName, 0.01, 0)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMInterTokenLatencyMetricName, 0.025, 0)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMInterTokenLatencyMetricName, 0.05, 1)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMInterTokenLatencyMetricName, 0.075, 3)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMInterTokenLatencyMetricName, 0.1, 6)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMInterTokenLatencyMetricName, 0.15, 6)))
 			})
 
 			// Update
@@ -594,13 +595,13 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
 			consistentlyMetrics(client, func(g Gomega, metricsData string) {
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTTFTMetricName, 0.001, 1)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTTFTMetricName, 0.005, 3)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTTFTMetricName, 0.01, 6)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMTTFTMetricName, 0.02, 6)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMTTFTMetricName, 0.001, 1)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMTTFTMetricName, 0.005, 3)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMTTFTMetricName, 0.01, 6)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMTTFTMetricName, 0.02, 6)))
 
-				g.Expect(metricsData).NotTo(ContainSubstring(metrics.VLLMTPOTMetricName))
-				g.Expect(metricsData).NotTo(ContainSubstring(metrics.VLLMInterTokenLatencyMetricName))
+				g.Expect(metricsData).NotTo(ContainSubstring(vllm.VLLMTPOTMetricName))
+				g.Expect(metricsData).NotTo(ContainSubstring(vllm.VLLMInterTokenLatencyMetricName))
 			})
 		})
 
@@ -636,11 +637,11 @@ var _ = Describe("Fake metrics", Ordered, func() {
 					default:
 						expectedCount = 3
 					}
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLME2EReqLatencyMetricName, boundary, expectedCount)))
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqQueueTimeMetricName, boundary, expectedCount)))
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqInferenceTimeMetricName, boundary, expectedCount)))
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMPrefillTimeMetricName, boundary, expectedCount)))
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMDecodeTimeMetricName, boundary, expectedCount)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLME2EReqLatencyMetricName, boundary, expectedCount)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMReqQueueTimeMetricName, boundary, expectedCount)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMReqInferenceTimeMetricName, boundary, expectedCount)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMPrefillTimeMetricName, boundary, expectedCount)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMDecodeTimeMetricName, boundary, expectedCount)))
 				}
 
 				// Initial token-param buckets: [10,20,30] on Build125Buckets
@@ -654,8 +655,8 @@ var _ = Describe("Fake metrics", Ordered, func() {
 					default:
 						expectedCount = 60
 					}
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMParamMaxTokensMetricName, boundary, expectedCount)))
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMMaxNumGenerationTokensMetricName, boundary, expectedCount)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMParamMaxTokensMetricName, boundary, expectedCount)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMMaxNumGenerationTokensMetricName, boundary, expectedCount)))
 				}
 			})
 
@@ -686,17 +687,17 @@ var _ = Describe("Fake metrics", Ordered, func() {
 					default:
 						expectedCount = 2
 					}
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLME2EReqLatencyMetricName, boundary, expectedCount)))
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqQueueTimeMetricName, boundary, expectedCount)))
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqInferenceTimeMetricName, boundary, expectedCount)))
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMPrefillTimeMetricName, boundary, expectedCount)))
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMDecodeTimeMetricName, boundary, expectedCount)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLME2EReqLatencyMetricName, boundary, expectedCount)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMReqQueueTimeMetricName, boundary, expectedCount)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMReqInferenceTimeMetricName, boundary, expectedCount)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMPrefillTimeMetricName, boundary, expectedCount)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMDecodeTimeMetricName, boundary, expectedCount)))
 				}
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLME2EReqLatencyMetricName, math.Inf(1), 2)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqQueueTimeMetricName, math.Inf(1), 2)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMReqInferenceTimeMetricName, math.Inf(1), 2)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMPrefillTimeMetricName, math.Inf(1), 2)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMDecodeTimeMetricName, math.Inf(1), 2)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLME2EReqLatencyMetricName, math.Inf(1), 2)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMReqQueueTimeMetricName, math.Inf(1), 2)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMReqInferenceTimeMetricName, math.Inf(1), 2)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMPrefillTimeMetricName, math.Inf(1), 2)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMDecodeTimeMetricName, math.Inf(1), 2)))
 
 				// After update: token-param buckets [1,2,3]
 				for _, boundary := range buckets {
@@ -708,11 +709,11 @@ var _ = Describe("Fake metrics", Ordered, func() {
 					default:
 						expectedCount = 6
 					}
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMParamMaxTokensMetricName, boundary, expectedCount)))
-					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMMaxNumGenerationTokensMetricName, boundary, expectedCount)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMParamMaxTokensMetricName, boundary, expectedCount)))
+					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMMaxNumGenerationTokensMetricName, boundary, expectedCount)))
 				}
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMParamMaxTokensMetricName, math.Inf(1), 6)))
-				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, metrics.VLLMMaxNumGenerationTokensMetricName, math.Inf(1), 6)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMParamMaxTokensMetricName, math.Inf(1), 6)))
+				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMMaxNumGenerationTokensMetricName, math.Inf(1), 6)))
 			})
 		})
 
@@ -735,8 +736,8 @@ var _ = Describe("Fake metrics", Ordered, func() {
 
 				g.Expect(metricsData).To(ContainSubstring(fmt.Sprintf(`vllm:request_success_total{finish_reason="stop",model_name="%s"} 20`, common.TestModelName)))
 				g.Expect(metricsData).To(ContainSubstring(fmt.Sprintf(`vllm:request_success_total{finish_reason="length",model_name="%s"} 5`, common.TestModelName)))
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMPrefixCacheHitsTotalMetricName, 500)))
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMPrefixCacheQueriesTotalMetricName, 1000)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMPrefixCacheHitsTotalMetricName, 500)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMPrefixCacheQueriesTotalMetricName, 1000)))
 			})
 
 			// Update all three
@@ -757,8 +758,8 @@ var _ = Describe("Fake metrics", Ordered, func() {
 				g.Expect(metricsData).To(ContainSubstring(fmt.Sprintf(`vllm:request_success_total{finish_reason="length",model_name="%s"} 50`, common.TestModelName)))
 				g.Expect(metricsData).To(ContainSubstring(fmt.Sprintf(`vllm:request_success_total{finish_reason="tool_calls",model_name="%s"} 10`, common.TestModelName)))
 				g.Expect(metricsData).To(ContainSubstring(fmt.Sprintf(`vllm:request_success_total{finish_reason="remote_decode",model_name="%s"} 5`, common.TestModelName)))
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMPrefixCacheHitsTotalMetricName, 750)))
-				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, metrics.VLLMPrefixCacheQueriesTotalMetricName, 2000)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMPrefixCacheHitsTotalMetricName, 750)))
+				g.Expect(metricsData).To(ContainSubstring(getCountMetricLine(common.TestModelName, vllm.VLLMPrefixCacheQueriesTotalMetricName, 2000)))
 			})
 		})
 
@@ -852,8 +853,8 @@ var _ = Describe("Fake metrics", Ordered, func() {
 				// Verify initial state
 				eventuallyMetrics(client, func(g Gomega, metricsData string) {
 
-					verifyTokenMetrics(g, metricsData, metrics.VLLMPromptTokensMetricName, metrics.VLLMPromptTokensTotalMetricName, initialPrompt)
-					verifyTokenMetrics(g, metricsData, metrics.VLLMGenerationTokensMetricName, metrics.VLLMGenerationTokensTotalMetricName, initialGen)
+					verifyTokenMetrics(g, metricsData, vllm.VLLMPromptTokensMetricName, vllm.VLLMPromptTokensTotalMetricName, initialPrompt)
+					verifyTokenMetrics(g, metricsData, vllm.VLLMGenerationTokensMetricName, vllm.VLLMGenerationTokensTotalMetricName, initialGen)
 				})
 
 				// First update: POST new fake metrics and verify
@@ -863,8 +864,8 @@ var _ = Describe("Fake metrics", Ordered, func() {
 
 				eventuallyMetrics(client, func(g Gomega, metricsData string) {
 
-					verifyTokenMetrics(g, metricsData, metrics.VLLMPromptTokensMetricName, metrics.VLLMPromptTokensTotalMetricName, firstPrompt)
-					verifyTokenMetrics(g, metricsData, metrics.VLLMGenerationTokensMetricName, metrics.VLLMGenerationTokensTotalMetricName, firstGen)
+					verifyTokenMetrics(g, metricsData, vllm.VLLMPromptTokensMetricName, vllm.VLLMPromptTokensTotalMetricName, firstPrompt)
+					verifyTokenMetrics(g, metricsData, vllm.VLLMGenerationTokensMetricName, vllm.VLLMGenerationTokensTotalMetricName, firstGen)
 				})
 
 				// Second update: POST new fake metrics and verify
@@ -874,8 +875,8 @@ var _ = Describe("Fake metrics", Ordered, func() {
 
 				eventuallyMetrics(client, func(g Gomega, metricsData string) {
 
-					verifyTokenMetrics(g, metricsData, metrics.VLLMPromptTokensMetricName, metrics.VLLMPromptTokensTotalMetricName, secondPrompt)
-					verifyTokenMetrics(g, metricsData, metrics.VLLMGenerationTokensMetricName, metrics.VLLMGenerationTokensTotalMetricName, secondGen)
+					verifyTokenMetrics(g, metricsData, vllm.VLLMPromptTokensMetricName, vllm.VLLMPromptTokensTotalMetricName, secondPrompt)
+					verifyTokenMetrics(g, metricsData, vllm.VLLMGenerationTokensMetricName, vllm.VLLMGenerationTokensTotalMetricName, secondGen)
 				})
 			},
 			// Prompt tokens: hist+total -> update hist -> update total
