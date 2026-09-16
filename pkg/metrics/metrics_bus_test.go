@@ -29,7 +29,37 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
+	"github.com/llm-d/llm-d-inference-sim/pkg/engine/vllm/fakemetrics"
 )
+
+// stubAdapter records nothing and exposes no collectors; the bus-level tests
+// assert on the bus's own state, not on any engine's metric surface.
+type stubAdapter struct{}
+
+func newStubAdapter(context.Context, *prometheus.Registry, logr.Logger, common.Configuration) (EngineMetricsAdapter, error) {
+	return stubAdapter{}, nil
+}
+
+func (stubAdapter) Start(context.Context) error { return nil }
+func (stubAdapter) Close() error                { return nil }
+
+func (stubAdapter) OnRequestReceived(RequestReceived)         {}
+func (stubAdapter) OnRequestQueued(RequestQueued)             {}
+func (stubAdapter) OnRequestDequeued(RequestDequeued)         {}
+func (stubAdapter) OnRequestRunning(RequestRunning)           {}
+func (stubAdapter) OnPrefillStarted(PrefillStarted)           {}
+func (stubAdapter) OnPrefillEnded(PrefillEnded)               {}
+func (stubAdapter) OnDecodeStarted(DecodeStarted)             {}
+func (stubAdapter) OnTokenGenerated(TokenGenerated)           {}
+func (stubAdapter) OnDecodeEnded(DecodeEnded)                 {}
+func (stubAdapter) OnRequestSucceeded(RequestSucceeded)       {}
+func (stubAdapter) OnRequestFailed(RequestFailed)             {}
+func (stubAdapter) OnRequestRejected(RequestRejected)         {}
+func (stubAdapter) OnKVCacheUsageChanged(KVCacheUsageChanged) {}
+func (stubAdapter) OnPrefixCacheQueried(PrefixCacheQueried)   {}
+func (stubAdapter) OnLoRASetsChanged(LoRASetsChanged)         {}
+
+func (stubAdapter) ApplyFakeMetricsUpdate(*fakemetrics.Config) error { return nil }
 
 func newBusTestConfig() common.Configuration {
 	return common.Configuration{
@@ -50,7 +80,8 @@ var _ = Describe("LoRA ref counting on the bus", func() {
 		ctx, cancel := context.WithCancel(context.Background())
 		DeferCleanup(cancel)
 
-		bus, err := NewMetricsBus(ctx, newBusTestConfig(), prometheus.NewRegistry(), logr.Discard(), nil)
+		bus, err := NewMetricsBus(ctx, newBusTestConfig(), prometheus.NewRegistry(), logr.Discard(),
+			newStubAdapter)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(bus.Start(ctx)).To(Succeed())
 

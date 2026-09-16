@@ -18,6 +18,7 @@ package metrics
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/go-logr/logr"
@@ -341,6 +342,10 @@ func ChannelCapacities(config common.Configuration) (running, waiting, requests,
 // --------------------------------
 func NewMetricsBus(ctx context.Context, config common.Configuration, registry *prometheus.Registry,
 	logger logr.Logger, newAdapter AdapterFactory) (*MetricsBus, error) {
+	if newAdapter == nil {
+		return nil, errors.New("metrics adapter factory is required")
+	}
+
 	mBus := &MetricsBus{
 		registry: registry,
 		logger:   logger,
@@ -420,11 +425,6 @@ func NewMetricsBus(ctx context.Context, config common.Configuration, registry *p
 		Channel: make(chan LoRASetsChanged, maxNumberOfWaitingRequests+maxNumberOfRunningRequests),
 		Name:    "bus.LoRASetsChanged",
 		Done:    done,
-	}
-
-	if newAdapter == nil {
-		mBus.adapter = nopAdapter{}
-		return mBus, nil
 	}
 
 	adapter, err := newAdapter(ctx, registry, logger, config)

@@ -18,6 +18,7 @@ package simulator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -94,10 +95,10 @@ type SimContext struct {
 	// they stay stable for the simulator's lifetime
 	mooncakeEnginesOnce sync.Once
 	mooncakeEngines     map[string]map[string]string
-	// Engine is the active engine, used by admin-config updates
-	// (ApplyConfigUpdate, below) to re-validate its own configuration fields
-	// the same way the initial configuration does. Set once before the
-	// simulator starts serving; nil is treated as "nothing to validate".
+	// Engine is the active engine. It supplies the metrics adapter and lets
+	// admin-config updates (ApplyConfigUpdate, below) re-validate the engine's
+	// own configuration fields the same way the initial configuration does.
+	// Required: initialize rejects a nil Engine.
 	Engine Engine
 	// nRunningReqs is the number of inference requests that are currently being processed.
 	nRunningReqs atomic.Int64
@@ -111,16 +112,6 @@ type Engine interface {
 	ValidateConfig(cfg *common.Configuration) error
 	NewMetricsAdapter(ctx context.Context, registry *prometheus.Registry,
 		logger logr.Logger, config common.Configuration) (metrics.EngineMetricsAdapter, error)
-}
-
-// metricsAdapterFactory returns the active engine's metrics-adapter factory,
-// or nil when no engine is set, in which case the bus falls back to exposing
-// no metrics at all.
-func (s *SimContext) metricsAdapterFactory() metrics.AdapterFactory {
-	if s.Engine == nil {
-		return nil
-	}
-	return s.Engine.NewMetricsAdapter
 }
 
 type latencyCalcHolder struct {
@@ -224,9 +215,13 @@ func (s *SimContext) initialize(ctx context.Context) error {
 
 	s.prometheusRegistry = prometheus.NewRegistry()
 
+	if s.Engine == nil {
+		return errors.New("no engine set on the simulator context")
+	}
+
 	var err error
 	s.metricsBus, err = metrics.NewMetricsBus(ctx, *s.Config(), s.prometheusRegistry, s.logger,
-		s.metricsAdapterFactory())
+		s.Engine.NewMetricsAdapter)
 	if err != nil {
 		return err
 	}
