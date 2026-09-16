@@ -354,24 +354,25 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 				Expect(err).NotTo(HaveOccurred())
 			}
 
-			metricsData := fetchMetrics(client)
-			metricsLines := strings.Split(metricsData, "\n")
+			eventuallyMetrics(client, func(g Gomega, metricsData string) {
+				metricsLines := strings.Split(metricsData, "\n")
 
-			// We sent two sequentual requests to two different LoRAs, we expect to see (in this order)
-			// 1. running: lora1, waiting: empty
-			// 2. running: lora2, waiting: empty
-			// 3. running: empty, waiting: empty
-			Expect(isLoraMetricPresent(metricsLines, lora1Arr, emptyArray)).To(BeTrue())
-			Expect(isLoraMetricPresent(metricsLines, lora2Arr, emptyArray)).To(BeTrue())
-			Expect(isLoraMetricPresent(metricsLines, emptyArray, emptyArray)).To(BeTrue())
+				// We sent two sequentual requests to two different LoRAs, we expect to see (in this order)
+				// 1. running: lora1, waiting: empty
+				// 2. running: lora2, waiting: empty
+				// 3. running: empty, waiting: empty
+				g.Expect(isLoraMetricPresent(metricsLines, lora1Arr, emptyArray)).To(BeTrue())
+				g.Expect(isLoraMetricPresent(metricsLines, lora2Arr, emptyArray)).To(BeTrue())
+				g.Expect(isLoraMetricPresent(metricsLines, emptyArray, emptyArray)).To(BeTrue())
 
-			// Check the order
-			timestamp1 := getLoraValidTimestamp(metricsLines, lora1Arr, emptyArray)
-			timestamp2 := getLoraValidTimestamp(metricsLines, lora2Arr, emptyArray)
-			timestamp3 := getLoraValidTimestamp(metricsLines, emptyArray, emptyArray)
+				// Check the order
+				timestamp1 := getLoraValidTimestamp(metricsLines, lora1Arr, emptyArray)
+				timestamp2 := getLoraValidTimestamp(metricsLines, lora2Arr, emptyArray)
+				timestamp3 := getLoraValidTimestamp(metricsLines, emptyArray, emptyArray)
 
-			Expect(timestamp1 <= timestamp2).To(BeTrue())
-			Expect(timestamp2 <= timestamp3).To(BeTrue())
+				g.Expect(timestamp1 <= timestamp2).To(BeTrue())
+				g.Expect(timestamp2 <= timestamp3).To(BeTrue())
+			})
 		},
 		Entry("no streaming", false),
 		Entry("streaming", true),
@@ -416,35 +417,36 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 
 		wg.Wait()
 
-		metricsData := fetchMetrics(client)
-		metricsLines := strings.Split(metricsData, "\n")
+		eventuallyMetrics(client, func(g Gomega, metricsData string) {
+			metricsLines := strings.Split(metricsData, "\n")
 
-		// max_loras is 1 by default
-		// We sent 3 requests, we expect to see (in this order)
-		// 1. running: lora1, waiting: empty
-		// 2. running: lora1, waiting: lora2
-		// 3. running: empty, waiting: lora2
-		// 4. running: lora2, waiting: empty
-		// 5. running: empty, waiting: empty
-		// (Requests 1 and 3 can run in parallel)
-		Expect(isLoraMetricPresent(metricsLines, lora1Arr, emptyArray)).To(BeTrue())
-		Expect(isLoraMetricPresent(metricsLines, lora1Arr, lora2Arr)).To(BeTrue())
-		Expect(isLoraMetricPresent(metricsLines, emptyArray, lora2Arr)).To(BeTrue())
-		Expect(isLoraMetricPresent(metricsLines, lora2Arr, emptyArray)).To(BeTrue())
-		Expect(isLoraMetricPresent(metricsLines, emptyArray, emptyArray)).To(BeTrue())
+			// max_loras is 1 by default
+			// We sent 3 requests, we expect to see (in this order)
+			// 1. running: lora1, waiting: empty
+			// 2. running: lora1, waiting: lora2
+			// 3. running: empty, waiting: lora2
+			// 4. running: lora2, waiting: empty
+			// 5. running: empty, waiting: empty
+			// (Requests 1 and 3 can run in parallel)
+			g.Expect(isLoraMetricPresent(metricsLines, lora1Arr, emptyArray)).To(BeTrue())
+			g.Expect(isLoraMetricPresent(metricsLines, lora1Arr, lora2Arr)).To(BeTrue())
+			g.Expect(isLoraMetricPresent(metricsLines, emptyArray, lora2Arr)).To(BeTrue())
+			g.Expect(isLoraMetricPresent(metricsLines, lora2Arr, emptyArray)).To(BeTrue())
+			g.Expect(isLoraMetricPresent(metricsLines, emptyArray, emptyArray)).To(BeTrue())
 
-		// Check the order
-		timestamp1 := getLoraValidTimestamp(metricsLines, lora1Arr, emptyArray)
-		timestamp2 := getLoraValidTimestamp(metricsLines, lora1Arr, lora2Arr)
-		timestamp3 := getLoraValidTimestamp(metricsLines, emptyArray, lora2Arr)
-		timestamp4 := getLoraValidTimestamp(metricsLines, lora2Arr, emptyArray)
-		timestamp5 := getLoraValidTimestamp(metricsLines, emptyArray, emptyArray)
+			// Check the order
+			timestamp1 := getLoraValidTimestamp(metricsLines, lora1Arr, emptyArray)
+			timestamp2 := getLoraValidTimestamp(metricsLines, lora1Arr, lora2Arr)
+			timestamp3 := getLoraValidTimestamp(metricsLines, emptyArray, lora2Arr)
+			timestamp4 := getLoraValidTimestamp(metricsLines, lora2Arr, emptyArray)
+			timestamp5 := getLoraValidTimestamp(metricsLines, emptyArray, emptyArray)
 
-		// in case of requests sent with delay the order is well-defined
-		Expect(timestamp1 <= timestamp2).To(BeTrue())
-		Expect(timestamp2 <= timestamp3).To(BeTrue())
-		Expect(timestamp3 <= timestamp4).To(BeTrue())
-		Expect(timestamp4 <= timestamp5).To(BeTrue())
+			// in case of requests sent with delay the order is well-defined
+			g.Expect(timestamp1 <= timestamp2).To(BeTrue())
+			g.Expect(timestamp2 <= timestamp3).To(BeTrue())
+			g.Expect(timestamp3 <= timestamp4).To(BeTrue())
+			g.Expect(timestamp4 <= timestamp5).To(BeTrue())
+		})
 	})
 
 	It("Should send correct lora metrics for parallel requests without delay", func() {
@@ -477,50 +479,51 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 
 		wg.Wait()
 
-		metricsData := fetchMetrics(client)
-		metricsLines := strings.Split(metricsData, "\n")
+		eventuallyMetrics(client, func(g Gomega, metricsData string) {
+			metricsLines := strings.Split(metricsData, "\n")
 
-		// We sent two parallel requests: first to lora1 and then to lora2,
-		// we expect to see metrics in this order:
-		// 1. running: one of the loras, waiting: another lora
-		// 2. running: empty, waiting: another lora
-		// 3. running: the second lora, waiting: empty
-		// 4. running: empty, waiting: empty
-		Expect(isLoraMetricPresent(metricsLines, lora1Arr, lora2Arr) || isLoraMetricPresent(metricsLines, lora2Arr, lora1Arr)).To(BeTrue())
-		Expect(isLoraMetricPresent(metricsLines, emptyArray, lora1Arr) || isLoraMetricPresent(metricsLines, emptyArray, lora2Arr)).To(BeTrue())
-		Expect(isLoraMetricPresent(metricsLines, lora1Arr, emptyArray) || isLoraMetricPresent(metricsLines, lora2Arr, emptyArray)).To(BeTrue())
-		Expect(isLoraMetricPresent(metricsLines, emptyArray, emptyArray)).To(BeTrue())
+			// We sent two parallel requests: first to lora1 and then to lora2,
+			// we expect to see metrics in this order:
+			// 1. running: one of the loras, waiting: another lora
+			// 2. running: empty, waiting: another lora
+			// 3. running: the second lora, waiting: empty
+			// 4. running: empty, waiting: empty
+			g.Expect(isLoraMetricPresent(metricsLines, lora1Arr, lora2Arr) || isLoraMetricPresent(metricsLines, lora2Arr, lora1Arr)).To(BeTrue())
+			g.Expect(isLoraMetricPresent(metricsLines, emptyArray, lora1Arr) || isLoraMetricPresent(metricsLines, emptyArray, lora2Arr)).To(BeTrue())
+			g.Expect(isLoraMetricPresent(metricsLines, lora1Arr, emptyArray) || isLoraMetricPresent(metricsLines, lora2Arr, emptyArray)).To(BeTrue())
+			g.Expect(isLoraMetricPresent(metricsLines, emptyArray, emptyArray)).To(BeTrue())
 
-		// Check the order:
-		l1RunningL2Waiting, err := getLoraTimestamp(metricsLines, lora1Arr, lora2Arr)
-		Expect(err).NotTo(HaveOccurred())
-		l2RunningL1Waiting, err := getLoraTimestamp(metricsLines, lora2Arr, lora1Arr)
-		Expect(err).NotTo(HaveOccurred())
-		l1WaitingEmptyRunning, err := getLoraTimestamp(metricsLines, emptyArray, lora1Arr)
-		Expect(err).NotTo(HaveOccurred())
-		l2WaitingEmptyRunning, err := getLoraTimestamp(metricsLines, emptyArray, lora2Arr)
-		Expect(err).NotTo(HaveOccurred())
-		l1RunningEmptyWaiting, err := getLoraTimestamp(metricsLines, lora1Arr, emptyArray)
-		Expect(err).NotTo(HaveOccurred())
-		l2RunningEmptyWaiting, err := getLoraTimestamp(metricsLines, lora2Arr, emptyArray)
-		Expect(err).NotTo(HaveOccurred())
-		emptyTimestamp := getLoraValidTimestamp(metricsLines, emptyArray, emptyArray)
+			// Check the order:
+			l1RunningL2Waiting, err := getLoraTimestamp(metricsLines, lora1Arr, lora2Arr)
+			g.Expect(err).NotTo(HaveOccurred())
+			l2RunningL1Waiting, err := getLoraTimestamp(metricsLines, lora2Arr, lora1Arr)
+			g.Expect(err).NotTo(HaveOccurred())
+			l1WaitingEmptyRunning, err := getLoraTimestamp(metricsLines, emptyArray, lora1Arr)
+			g.Expect(err).NotTo(HaveOccurred())
+			l2WaitingEmptyRunning, err := getLoraTimestamp(metricsLines, emptyArray, lora2Arr)
+			g.Expect(err).NotTo(HaveOccurred())
+			l1RunningEmptyWaiting, err := getLoraTimestamp(metricsLines, lora1Arr, emptyArray)
+			g.Expect(err).NotTo(HaveOccurred())
+			l2RunningEmptyWaiting, err := getLoraTimestamp(metricsLines, lora2Arr, emptyArray)
+			g.Expect(err).NotTo(HaveOccurred())
+			emptyTimestamp := getLoraValidTimestamp(metricsLines, emptyArray, emptyArray)
 
-		if l1RunningL2Waiting != nil {
-			Expect(l2RunningL1Waiting).To(BeNil())
-			Expect(l2WaitingEmptyRunning).NotTo(BeNil())
-			Expect(l2RunningEmptyWaiting).NotTo(BeNil())
-			Expect(*l1RunningL2Waiting <= *l2WaitingEmptyRunning).To(BeTrue())
-			Expect(*l2WaitingEmptyRunning <= *l2RunningEmptyWaiting).To(BeTrue())
-			Expect(*l2RunningEmptyWaiting <= emptyTimestamp).To(BeTrue())
-		} else {
-			Expect(l2RunningL1Waiting).NotTo(BeNil())
-			Expect(l1WaitingEmptyRunning).NotTo(BeNil())
-			Expect(l1RunningEmptyWaiting).NotTo(BeNil())
-			Expect(*l2RunningL1Waiting <= *l1WaitingEmptyRunning).To(BeTrue())
-			Expect(*l1WaitingEmptyRunning <= *l1RunningEmptyWaiting).To(BeTrue())
-			Expect(*l1RunningEmptyWaiting <= emptyTimestamp).To(BeTrue())
-		}
+			if l1RunningL2Waiting != nil {
+				g.Expect(l2RunningL1Waiting).To(BeNil())
+				g.Expect(l2WaitingEmptyRunning).NotTo(BeNil())
+				g.Expect(l2RunningEmptyWaiting).NotTo(BeNil())
+				g.Expect(*l1RunningL2Waiting <= *l2WaitingEmptyRunning).To(BeTrue())
+				g.Expect(*l2WaitingEmptyRunning <= *l2RunningEmptyWaiting).To(BeTrue())
+				g.Expect(*l2RunningEmptyWaiting <= emptyTimestamp).To(BeTrue())
+			} else {
+				g.Expect(l2RunningL1Waiting).NotTo(BeNil())
+				g.Expect(l1WaitingEmptyRunning).NotTo(BeNil())
+				g.Expect(l1RunningEmptyWaiting).NotTo(BeNil())
+				g.Expect(*l2RunningL1Waiting <= *l1WaitingEmptyRunning).To(BeTrue())
+				g.Expect(*l1WaitingEmptyRunning <= *l1RunningEmptyWaiting).To(BeTrue())
+				g.Expect(*l1RunningEmptyWaiting <= emptyTimestamp).To(BeTrue())
+			}
+		})
 	})
 
 	It("should send correct ttft, tpot and inter_token_latency metrics", func() {
