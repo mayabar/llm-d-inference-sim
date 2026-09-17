@@ -808,7 +808,6 @@ func (m *VLLMMetricsAdapter) OnPrefixCacheQueried(ev metrics.PrefixCacheQueried)
 	queried := float64(ev.QueriedTokens)
 	m.writeToPrefixCacheHitsTotal(CounterUpdate{Add: &hit})
 	m.writeToPrefixCacheQueriesTotal(CounterUpdate{Add: &queried})
-
 }
 
 // OnLoRASetsChanged receives the per-LoRA waiting/running snapshot produced

@@ -250,7 +250,7 @@ func (s *Simulator) Stop() {
 
 // MetricsRegistry returns the simulator's Prometheus registry.
 func (s *Simulator) MetricsRegistry() *prometheus.Registry {
-	return s.Context.MetricsRegistry()
+	return s.Context.prometheusRegistry
 }
 
 func (s *Simulator) processing(ctx context.Context) {

@@ -151,10 +151,6 @@ func (s *SimContext) SetConfig(c *common.Configuration) {
 	s.config.Store(c)
 }
 
-func (s *SimContext) MetricsRegistry() *prometheus.Registry {
-	return s.prometheusRegistry
-}
-
 // ApplyConfigUpdate validates the partial JSON body against the current
 // configuration and atomically swaps in the resulting configuration. Updates
 // are serialized so concurrent callers cannot lose each other's changes.
