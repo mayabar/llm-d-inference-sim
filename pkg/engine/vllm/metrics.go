@@ -33,7 +33,6 @@ import (
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/api"
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
-	"github.com/llm-d/llm-d-inference-sim/pkg/engine/vllm/fakemetrics"
 	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 )
 
@@ -156,7 +155,7 @@ type VLLMMetricsAdapter struct {
 	config common.Configuration
 	// fake is config.FakeMetrics narrowed to vLLM's concrete type, nil when
 	// fake metrics are off or another engine owns the configuration.
-	fake *fakemetrics.Config
+	fake *VLLMFakeMetrics
 	ctx  context.Context
 
 	registry *prometheus.Registry
@@ -259,7 +258,7 @@ func newMetricsAdapter(ctx context.Context, registry *prometheus.Registry,
 		generators: make(map[string]activeGenerator),
 		ctx:        ctx,
 	}
-	if fake, ok := config.FakeMetrics.(*fakemetrics.Config); ok {
+	if fake, ok := config.FakeMetrics.(*VLLMFakeMetrics); ok {
 		m.fake = fake
 	}
 
@@ -1182,7 +1181,7 @@ func resolveTokenTotal(buckets []float64, samples []int, explicit *float64) *flo
 // to vLLM's concrete type and applies it. A configuration belonging to another
 // engine is logged and dropped.
 func (m *VLLMMetricsAdapter) ApplyFakeMetricsUpdate(update common.FakeMetrics) {
-	vllmUpdate, ok := update.(*fakemetrics.Config)
+	vllmUpdate, ok := update.(*VLLMFakeMetrics)
 	if !ok || vllmUpdate == nil {
 		m.logger.Error(fmt.Errorf("unexpected fake-metrics configuration type %T", update),
 			"ignoring fake-metrics update")
@@ -1194,7 +1193,7 @@ func (m *VLLMMetricsAdapter) ApplyFakeMetricsUpdate(update common.FakeMetrics) {
 // applyFakeMetrics enqueues the update on the per-metric channels and returns.
 // The updater goroutines perform the collector unregister/recreate, logging and
 // skipping any metric that fails to re-register.
-func (m *VLLMMetricsAdapter) applyFakeMetrics(update *fakemetrics.Config) {
+func (m *VLLMMetricsAdapter) applyFakeMetrics(update *VLLMFakeMetrics) {
 	m.genMu.Lock()
 	defer m.genMu.Unlock()
 	generatorsWereEmpty := len(m.generators) == 0
