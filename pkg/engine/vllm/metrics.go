@@ -306,151 +306,67 @@ func (m *VLLMMetricsAdapter) Start(_ context.Context) error {
 func (m *VLLMMetricsAdapter) createAndStartPrometheusChannels(ctx context.Context) {
 	maxNumberOfRunningRequests, maxNumberOfWaitingRequests, maxNumberOfRequests, maxNumberOfTokens := metrics.ChannelCapacities(m.config)
 
-	m.runReqChan = common.Channel[GaugeUpdate]{
-		Channel: make(chan GaugeUpdate, maxNumberOfRunningRequests),
-		Name:    "vllm.runReqChan",
-		Done:    ctx.Done(),
-	}
+	m.runReqChan = common.NewChannel[GaugeUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.runReqChan, m.runningRequestsUpdater)
 
-	m.waitingReqChan = common.Channel[GaugeUpdate]{
-		Channel: make(chan GaugeUpdate, maxNumberOfWaitingRequests),
-		Name:    "vllm.waitingReqChan",
-		Done:    ctx.Done(),
-	}
+	m.waitingReqChan = common.NewChannel[GaugeUpdate]("vllm", maxNumberOfWaitingRequests, ctx.Done())
 	go common.Subscribe(ctx, m.waitingReqChan, m.waitingRequestsUpdater)
 
-	m.kvCacheUsageChan = common.Channel[GaugeUpdate]{
-		Channel: make(chan GaugeUpdate, maxNumberOfRunningRequests),
-		Name:    "vllm.kvCacheUsageChan",
-		Done:    ctx.Done(),
-	}
+	m.kvCacheUsageChan = common.NewChannel[GaugeUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.kvCacheUsageChan, m.kvCacheUsageUpdater)
 
-	m.ttftChan = common.Channel[HistogramUpdate]{
-		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
-		Name:    "vllm.ttftChan",
-		Done:    ctx.Done(),
-	}
+	m.ttftChan = common.NewChannel[HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.ttftChan, m.ttftUpdater)
 
-	m.perTokenLatencyChan = common.Channel[HistogramUpdate]{
-		Channel: make(chan HistogramUpdate, maxNumberOfTokens),
-		Name:    "vllm.perTokenLatencyChan",
-		Done:    ctx.Done(),
-	}
+	m.perTokenLatencyChan = common.NewChannel[HistogramUpdate]("vllm", maxNumberOfTokens, ctx.Done())
 	go common.Subscribe(ctx, m.perTokenLatencyChan, m.perTokenLatencyUpdater)
 
-	m.e2eReqLatencyChan = common.Channel[HistogramUpdate]{
-		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
-		Name:    "vllm.e2eReqLatencyChan",
-		Done:    ctx.Done(),
-	}
+	m.e2eReqLatencyChan = common.NewChannel[HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.e2eReqLatencyChan, m.e2eReqLatencyUpdater)
 
-	m.reqQueueTimeChan = common.Channel[HistogramUpdate]{
-		Channel: make(chan HistogramUpdate, maxNumberOfWaitingRequests),
-		Name:    "vllm.reqQueueTimeChan",
-		Done:    ctx.Done(),
-	}
+	m.reqQueueTimeChan = common.NewChannel[HistogramUpdate]("vllm", maxNumberOfWaitingRequests, ctx.Done())
 	go common.Subscribe(ctx, m.reqQueueTimeChan, m.reqQueueTimeUpdater)
 
-	m.reqInferenceTimeChan = common.Channel[HistogramUpdate]{
-		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
-		Name:    "vllm.reqInferenceTimeChan",
-		Done:    ctx.Done(),
-	}
+	m.reqInferenceTimeChan = common.NewChannel[HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.reqInferenceTimeChan, m.reqInferenceTimeUpdater)
 
-	m.reqPrefillTimeChan = common.Channel[HistogramUpdate]{
-		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
-		Name:    "vllm.reqPrefillTimeChan",
-		Done:    ctx.Done(),
-	}
+	m.reqPrefillTimeChan = common.NewChannel[HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.reqPrefillTimeChan, m.reqPrefillTimeUpdater)
 
-	m.reqDecodeTimeChan = common.Channel[HistogramUpdate]{
-		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
-		Name:    "vllm.reqDecodeTimeChan",
-		Done:    ctx.Done(),
-	}
+	m.reqDecodeTimeChan = common.NewChannel[HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.reqDecodeTimeChan, m.reqDecodeTimeUpdater)
 
-	m.reqTpotChan = common.Channel[HistogramUpdate]{
-		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
-		Name:    "vllm.reqTpotChan",
-		Done:    ctx.Done(),
-	}
+	m.reqTpotChan = common.NewChannel[HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.reqTpotChan, m.reqTpotUpdater)
 
-	m.lorasChan = common.Channel[LoRAUpdate]{
-		Channel: make(chan LoRAUpdate, maxNumberOfRequests),
-		Name:    "vllm.lorasChan",
-		Done:    ctx.Done(),
-	}
+	m.lorasChan = common.NewChannel[LoRAUpdate]("vllm", maxNumberOfRequests, ctx.Done())
 	go common.Subscribe(ctx, m.lorasChan, m.lorasUpdater)
 
-	m.requestPromptTokensChan = common.Channel[HistogramUpdate]{
-		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
-		Name:    "vllm.requestPromptTokensChan",
-		Done:    ctx.Done(),
-	}
+	m.requestPromptTokensChan = common.NewChannel[HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.requestPromptTokensChan, m.requestPromptTokensUpdater)
 
-	m.requestGenerationTokensChan = common.Channel[HistogramUpdate]{
-		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
-		Name:    "vllm.requestGenerationTokensChan",
-		Done:    ctx.Done(),
-	}
+	m.requestGenerationTokensChan = common.NewChannel[HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.requestGenerationTokensChan, m.requestGenerationTokensUpdater)
 
-	m.maxNumGenerationTokensChan = common.Channel[HistogramUpdate]{
-		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
-		Name:    "vllm.maxNumGenerationTokensChan",
-		Done:    ctx.Done(),
-	}
+	m.maxNumGenerationTokensChan = common.NewChannel[HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.maxNumGenerationTokensChan, m.maxNumGenerationTokensUpdater)
 
-	m.requestParamsMaxTokensChan = common.Channel[HistogramUpdate]{
-		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
-		Name:    "vllm.requestParamsMaxTokensChan",
-		Done:    ctx.Done(),
-	}
+	m.requestParamsMaxTokensChan = common.NewChannel[HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.requestParamsMaxTokensChan, m.requestParamsMaxTokensUpdater)
 
-	m.promptTokensTotalChan = common.Channel[CounterUpdate]{
-		Channel: make(chan CounterUpdate, maxNumberOfRunningRequests),
-		Name:    "vllm.promptTokensTotalChan",
-		Done:    ctx.Done(),
-	}
+	m.promptTokensTotalChan = common.NewChannel[CounterUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.promptTokensTotalChan, m.promptTokensTotalUpdater)
 
-	m.generationTokensTotalChan = common.Channel[CounterUpdate]{
-		Channel: make(chan CounterUpdate, maxNumberOfRunningRequests),
-		Name:    "vllm.generationTokensTotalChan",
-		Done:    ctx.Done(),
-	}
+	m.generationTokensTotalChan = common.NewChannel[CounterUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.generationTokensTotalChan, m.generationTokensTotalUpdater)
 
-	m.requestSuccessTotalChan = common.Channel[RequestSuccessCounterUpdate]{
-		Channel: make(chan RequestSuccessCounterUpdate, maxNumberOfRunningRequests),
-		Name:    "vllm.requestSuccessTotalChan",
-		Done:    ctx.Done(),
-	}
+	m.requestSuccessTotalChan = common.NewChannel[RequestSuccessCounterUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.requestSuccessTotalChan, m.requestSuccessTotalUpdater)
 
-	m.prefixCacheHitsTotalChan = common.Channel[CounterUpdate]{
-		Channel: make(chan CounterUpdate, maxNumberOfRunningRequests),
-		Name:    "vllm.prefixCacheHitsTotalChan",
-		Done:    ctx.Done(),
-	}
+	m.prefixCacheHitsTotalChan = common.NewChannel[CounterUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.prefixCacheHitsTotalChan, m.prefixCacheHitsTotalUpdater)
 
-	m.prefixCacheQueriesTotalChan = common.Channel[CounterUpdate]{
-		Channel: make(chan CounterUpdate, maxNumberOfRunningRequests),
-		Name:    "vllm.prefixCacheQueriesTotalChan",
-		Done:    ctx.Done(),
-	}
+	m.prefixCacheQueriesTotalChan = common.NewChannel[CounterUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.prefixCacheQueriesTotalChan, m.prefixCacheQueriesTotalUpdater)
 }
 

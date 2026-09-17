@@ -166,10 +166,10 @@ type Channel[T any] struct {
 	Done <-chan struct{}
 }
 
-func NewChannel[T any](capacity int, done <-chan struct{}) Channel[T] {
+func NewChannel[T any](prefix string, capacity int, done <-chan struct{}) Channel[T] {
 	return Channel[T]{
 		Channel: make(chan T, capacity),
-		Name:    reflect.TypeFor[T]().Name(),
+		Name:    prefix + "." + reflect.TypeFor[T]().Name(),
 		Done:    done,
 	}
 }

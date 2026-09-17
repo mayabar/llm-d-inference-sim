@@ -318,8 +318,7 @@ type LoRAChanged struct {
 }
 
 // LoRASetsChanged is emitted after the bus applies a LoRAChanged event; it
-// carries the current per-LoRA waiting and running request counts. Adapters
-// derive labels (e.g. lora_requests_info) from these maps.
+// carries the current per-LoRA waiting and running request counts
 type LoRASetsChanged struct {
 	Running map[string]int
 	Waiting map[string]int
@@ -356,20 +355,20 @@ func NewMetricsBus(ctx context.Context, config common.Configuration, registry *p
 
 	maxNumberOfRunningRequests, maxNumberOfWaitingRequests, maxNumberOfRequests, maxNumberOfTokens := ChannelCapacities(config)
 
-	mBus.RequestQueued = common.NewChannel[RequestQueued](maxNumberOfWaitingRequests, done)
-	mBus.RequestDequeued = common.NewChannel[RequestDequeued](maxNumberOfWaitingRequests, done)
-	mBus.RequestRunning = common.NewChannel[RequestRunning](maxNumberOfRunningRequests, done)
-	mBus.PrefillStarted = common.NewChannel[PrefillStarted](maxNumberOfRunningRequests, done)
-	mBus.PrefillEnded = common.NewChannel[PrefillEnded](maxNumberOfRunningRequests, done)
-	mBus.DecodeStarted = common.NewChannel[DecodeStarted](maxNumberOfRunningRequests, done)
-	mBus.TokenGenerated = common.NewChannel[TokenGenerated](maxNumberOfTokens, done)
-	mBus.DecodeEnded = common.NewChannel[DecodeEnded](maxNumberOfRunningRequests, done)
-	mBus.RequestSucceeded = common.NewChannel[RequestSucceeded](maxNumberOfRunningRequests, done)
-	mBus.RequestFailed = common.NewChannel[RequestFailed](maxNumberOfRunningRequests, done)
-	mBus.KVCacheUsage = common.NewChannel[KVCacheUsageChanged](maxNumberOfRunningRequests, done)
-	mBus.PrefixCacheQuery = common.NewChannel[PrefixCacheQueried](maxNumberOfRunningRequests, done)
-	mBus.LoRAChanged = common.NewChannel[LoRAChanged](maxNumberOfRequests, done)
-	mBus.LoRASetsChanged = common.NewChannel[LoRASetsChanged](maxNumberOfRequests, done)
+	mBus.RequestQueued = common.NewChannel[RequestQueued]("bus", maxNumberOfWaitingRequests, done)
+	mBus.RequestDequeued = common.NewChannel[RequestDequeued]("bus", maxNumberOfWaitingRequests, done)
+	mBus.RequestRunning = common.NewChannel[RequestRunning]("bus", maxNumberOfRunningRequests, done)
+	mBus.PrefillStarted = common.NewChannel[PrefillStarted]("bus", maxNumberOfRunningRequests, done)
+	mBus.PrefillEnded = common.NewChannel[PrefillEnded]("bus", maxNumberOfRunningRequests, done)
+	mBus.DecodeStarted = common.NewChannel[DecodeStarted]("bus", maxNumberOfRunningRequests, done)
+	mBus.TokenGenerated = common.NewChannel[TokenGenerated]("bus", maxNumberOfTokens, done)
+	mBus.DecodeEnded = common.NewChannel[DecodeEnded]("bus", maxNumberOfRunningRequests, done)
+	mBus.RequestSucceeded = common.NewChannel[RequestSucceeded]("bus", maxNumberOfRunningRequests, done)
+	mBus.RequestFailed = common.NewChannel[RequestFailed]("bus", maxNumberOfRunningRequests, done)
+	mBus.KVCacheUsage = common.NewChannel[KVCacheUsageChanged]("bus", maxNumberOfRunningRequests, done)
+	mBus.PrefixCacheQuery = common.NewChannel[PrefixCacheQueried]("bus", maxNumberOfRunningRequests, done)
+	mBus.LoRAChanged = common.NewChannel[LoRAChanged]("bus", maxNumberOfRequests, done)
+	mBus.LoRASetsChanged = common.NewChannel[LoRASetsChanged]("bus", maxNumberOfRequests, done)
 
 	adapter, err := newAdapter(ctx, registry, logger, config)
 	if err != nil {
