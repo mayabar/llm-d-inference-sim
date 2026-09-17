@@ -44,7 +44,7 @@ type stubEngine struct{}
 func (stubEngine) ValidateConfig(*common.Configuration) error { return nil }
 
 func (stubEngine) NewMetricsAdapter(context.Context, *prometheus.Registry, logr.Logger,
-	common.Configuration) (metrics.EngineMetricsAdapter, error) {
+	common.Configuration) (metrics.MetricsAdapter, error) {
 	return stubMetricsAdapter{}, nil
 }
 

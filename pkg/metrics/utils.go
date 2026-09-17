@@ -1,5 +1,5 @@
 /*
-Copyright 2025 The llm-d-inference-simference-sim Authors.
+Copyright 2026 The llm-d-inference-sim Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,21 +21,18 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// Build125Buckets generates histogram buckets in powers of 10 scaled by [1,2,5].
-// This matches vLLM's build_1_2_5_buckets() in metrics.py.
-//
-// Reference: https://github.com/vllm-project/vllm/blob/main/vllm/engine/metrics.py#L175
-func Build125Buckets(maxValue int) []float64 {
+// BuildBuckets generates histogram buckets in powers of 10 scaled by the given mantissas,
+// up to and including maxValue.
+func BuildBuckets(maxValue int, mantissas []int) []float64 {
 	if maxValue <= 0 {
 		return []float64{}
 	}
 	var buckets []float64
 	exponent := 0
-	mantissa := []int{1, 2, 5}
 
 	for {
 		complete := true
-		for _, m := range mantissa {
+		for _, m := range mantissas {
 			value := m * int(math.Pow10(exponent))
 			if value <= maxValue {
 				buckets = append(buckets, float64(value))

@@ -127,7 +127,7 @@ var _ = Describe("Fake metrics", Ordered, func() {
 				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMReqTPOTMetricName, 0.1, 20)))
 				g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMReqTPOTMetricName, 0.15, 20)))
 
-				buckets := metrics.Build125Buckets(1024)
+				buckets := metrics.BuildBuckets(1024, vllm.TokenBucketMantissas)
 				var expectedCount int
 
 				for _, boundary := range buckets {
@@ -644,8 +644,8 @@ var _ = Describe("Fake metrics", Ordered, func() {
 					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMDecodeTimeMetricName, boundary, expectedCount)))
 				}
 
-				// Initial token-param buckets: [10,20,30] on Build125Buckets
-				buckets := metrics.Build125Buckets(1024)
+				// Initial token-param buckets: [10,20,30] on BuildBuckets
+				buckets := metrics.BuildBuckets(1024, vllm.TokenBucketMantissas)
 				for _, boundary := range buckets {
 					switch {
 					case boundary <= 1:
@@ -676,7 +676,7 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
 			eventuallyMetrics(client, func(g Gomega, metricsData string) {
-				buckets := metrics.Build125Buckets(1024)
+				buckets := metrics.BuildBuckets(1024, vllm.TokenBucketMantissas)
 				var expectedCount int
 
 				// After update: latency buckets [1, 0, 0, 1] -> counts: 1, 1, 1, 2, 2, ...
@@ -973,7 +973,7 @@ func verifyTokenMetrics(g Gomega, metricsData string, histMetricName string, tot
 }
 
 func checkBuckets123(g Gomega, metricsData string, metricName string) {
-	buckets := metrics.Build125Buckets(1024)
+	buckets := metrics.BuildBuckets(1024, vllm.TokenBucketMantissas)
 	for _, boundary := range buckets {
 		switch {
 		case boundary <= 1:
@@ -992,7 +992,7 @@ func checkBuckets123(g Gomega, metricsData string, metricName string) {
 }
 
 func checkBuckets10_20(g Gomega, metricsData string, metricName string) {
-	buckets := metrics.Build125Buckets(1024)
+	buckets := metrics.BuildBuckets(1024, vllm.TokenBucketMantissas)
 	for _, boundary := range buckets {
 		switch {
 		case boundary <= 1:

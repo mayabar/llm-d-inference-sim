@@ -202,7 +202,7 @@ var _ = Describe("Simulator metrics", Ordered, func() {
 			g.Expect(err).NotTo(HaveOccurred())
 			metricsData := string(data)
 			// request_prompt_tokens_bucket and request_params_max_tokens_bucket
-			buckets := metrics.Build125Buckets(1024)
+			buckets := metrics.BuildBuckets(1024, vllm.TokenBucketMantissas)
 
 			for _, boundary := range buckets {
 				if boundary <= 20 {
@@ -1107,7 +1107,7 @@ var _ = Describe("build125Buckets", Ordered, func() {
 		}
 
 		for _, test := range tests {
-			got := metrics.Build125Buckets(test.maxValue)
+			got := metrics.BuildBuckets(test.maxValue, vllm.TokenBucketMantissas)
 			Expect(got).To(Equal(test.want))
 		}
 	})

@@ -121,7 +121,7 @@ var _ = Describe("gRPC Metrics", Ordered, func() {
 			metricsData := string(data)
 
 			// Check prompt tokens and max tokens bucket distributions
-			buckets := metrics.Build125Buckets(1024)
+			buckets := metrics.BuildBuckets(1024, vllm.TokenBucketMantissas)
 			for _, boundary := range buckets {
 				if boundary <= 20 {
 					g.Expect(metricsData).To(ContainSubstring(getFloatBucketMetricLine(common.TestModelName, vllm.VLLMPromptTokensMetricName, boundary, 0)))

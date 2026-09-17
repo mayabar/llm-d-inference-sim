@@ -35,7 +35,7 @@ import (
 // assert on the bus's own state, not on any engine's metric surface.
 type stubAdapter struct{}
 
-func newStubAdapter(context.Context, *prometheus.Registry, logr.Logger, common.Configuration) (EngineMetricsAdapter, error) {
+func newStubAdapter(context.Context, *prometheus.Registry, logr.Logger, common.Configuration) (MetricsAdapter, error) {
 	return stubAdapter{}, nil
 }
 

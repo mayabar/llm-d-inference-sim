@@ -17,9 +17,11 @@ limitations under the License.
 package common
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math/rand"
+	"reflect"
 	"sync"
 	"time"
 
@@ -164,6 +166,14 @@ type Channel[T any] struct {
 	Done <-chan struct{}
 }
 
+func NewChannel[T any](capacity int, done <-chan struct{}) Channel[T] {
+	return Channel[T]{
+		Channel: make(chan T, capacity),
+		Name:    reflect.TypeFor[T]().Name(),
+		Done:    done,
+	}
+}
+
 // WriteToChannelWithError attempts a non-blocking write to channel and returns an error
 // if the channel is full, unless channel.Done is closed (shutting down), in which case a
 // full channel is not reported as an error.
@@ -186,6 +196,18 @@ func WriteToChannelWithError[T any](channel Channel[T], object T) error {
 func WriteToChannel[T any](channel Channel[T], object T, logger logr.Logger) {
 	if err := WriteToChannelWithError(channel, object); err != nil {
 		logger.V(logging.WARN).Info("failed to write to", "channel", channel.Name)
+	}
+}
+
+// Subscribe reads events from ch and dispatches them to fn until ctx is done.
+func Subscribe[E any](ctx context.Context, ch Channel[E], fn func(E)) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case event := <-ch.Channel:
+			fn(event)
+		}
 	}
 }
 

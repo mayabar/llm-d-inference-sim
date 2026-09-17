@@ -58,7 +58,7 @@ type Engine interface {
 	// its collectors on registry. ctx must match the one passed to
 	// metrics.NewMetricsBus.
 	NewMetricsAdapter(ctx context.Context, registry *prometheus.Registry,
-		logger logr.Logger, config common.Configuration) (metrics.EngineMetricsAdapter, error)
+		logger logr.Logger, config common.Configuration) (metrics.MetricsAdapter, error)
 }
 
 // registry maps each engine backend's name to its constructor. Adding a

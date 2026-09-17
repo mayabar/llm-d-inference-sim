@@ -1,5 +1,5 @@
 /*
-Copyright 2025 The llm-d-inference-simference-sim Authors.
+Copyright 2026 The llm-d-inference-sim Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,13 +26,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// EngineMetricsAdapter turns MetricsBus events into engine-specific metric
+// MetricsAdapter turns MetricsBus events into engine-specific metric
 // observations. The bus spawns one drainer goroutine per channel, each
 // dispatching to the matching On<Event> handler. Handlers run serially per
 // channel, so a slow handler cannot block other event kinds. Implementations
 // live with their engine (vLLM's is in pkg/engine/vllm), hence the exported
 // handler names.
-type EngineMetricsAdapter interface {
+type MetricsAdapter interface {
 	Start(ctx context.Context) error
 	Close() error
 
@@ -64,13 +64,13 @@ type EngineMetricsAdapter interface {
 // AdapterFactory builds the metrics adapter for one engine backend. The active
 // engine supplies it, so pkg/metrics never names a concrete backend.
 type AdapterFactory func(ctx context.Context, registry *prometheus.Registry,
-	logger logr.Logger, config common.Configuration) (EngineMetricsAdapter, error)
+	logger logr.Logger, config common.Configuration) (MetricsAdapter, error)
 
 // MetricsBus carries state-change events from producers to the engine
 // metrics adapter. Producers push via common.WriteToChannel; the adapter
 // runs one drainer goroutine per channel.
 type MetricsBus struct {
-	adapter  EngineMetricsAdapter
+	adapter  MetricsAdapter
 	logger   logr.Logger
 	registry *prometheus.Registry
 
@@ -116,31 +116,19 @@ func (b *MetricsBus) Close() error {
 // subscribeAdapter spawns one drainer goroutine per event channel, each
 // dispatching to the adapter's matching On<Event> handler.
 func (b *MetricsBus) subscribeAdapter(ctx context.Context) {
-	go Subscribe(ctx, b.RequestQueued, b.adapter.OnRequestQueued)
-	go Subscribe(ctx, b.RequestDequeued, b.adapter.OnRequestDequeued)
-	go Subscribe(ctx, b.RequestRunning, b.adapter.OnRequestRunning)
-	go Subscribe(ctx, b.PrefillStarted, b.adapter.OnPrefillStarted)
-	go Subscribe(ctx, b.PrefillEnded, b.adapter.OnPrefillEnded)
-	go Subscribe(ctx, b.DecodeStarted, b.adapter.OnDecodeStarted)
-	go Subscribe(ctx, b.TokenGenerated, b.adapter.OnTokenGenerated)
-	go Subscribe(ctx, b.DecodeEnded, b.adapter.OnDecodeEnded)
-	go Subscribe(ctx, b.RequestSucceeded, b.adapter.OnRequestSucceeded)
-	go Subscribe(ctx, b.RequestFailed, b.adapter.OnRequestFailed)
-	go Subscribe(ctx, b.KVCacheUsage, b.adapter.OnKVCacheUsageChanged)
-	go Subscribe(ctx, b.PrefixCacheQuery, b.adapter.OnPrefixCacheQueried)
-	go Subscribe(ctx, b.LoRASetsChanged, b.adapter.OnLoRASetsChanged)
-}
-
-// Subscribe reads events from ch and dispatches them to fn until ctx is done.
-func Subscribe[E any](ctx context.Context, ch common.Channel[E], fn func(E)) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case event := <-ch.Channel:
-			fn(event)
-		}
-	}
+	go common.Subscribe(ctx, b.RequestQueued, b.adapter.OnRequestQueued)
+	go common.Subscribe(ctx, b.RequestDequeued, b.adapter.OnRequestDequeued)
+	go common.Subscribe(ctx, b.RequestRunning, b.adapter.OnRequestRunning)
+	go common.Subscribe(ctx, b.PrefillStarted, b.adapter.OnPrefillStarted)
+	go common.Subscribe(ctx, b.PrefillEnded, b.adapter.OnPrefillEnded)
+	go common.Subscribe(ctx, b.DecodeStarted, b.adapter.OnDecodeStarted)
+	go common.Subscribe(ctx, b.TokenGenerated, b.adapter.OnTokenGenerated)
+	go common.Subscribe(ctx, b.DecodeEnded, b.adapter.OnDecodeEnded)
+	go common.Subscribe(ctx, b.RequestSucceeded, b.adapter.OnRequestSucceeded)
+	go common.Subscribe(ctx, b.RequestFailed, b.adapter.OnRequestFailed)
+	go common.Subscribe(ctx, b.KVCacheUsage, b.adapter.OnKVCacheUsageChanged)
+	go common.Subscribe(ctx, b.PrefixCacheQuery, b.adapter.OnPrefixCacheQueried)
+	go common.Subscribe(ctx, b.LoRASetsChanged, b.adapter.OnLoRASetsChanged)
 }
 
 // loraCounterLoop subscribes to LoRAChanged, mutates the per-LoRA waiting/running
@@ -366,78 +354,22 @@ func NewMetricsBus(ctx context.Context, config common.Configuration, registry *p
 	// create channels with capacity based on config
 	done := ctx.Done()
 
-	maxNumberOfRunningRequests, maxNumberOfWaitingRequests, _, maxNumberOfTokens := ChannelCapacities(config)
+	maxNumberOfRunningRequests, maxNumberOfWaitingRequests, maxNumberOfRequests, maxNumberOfTokens := ChannelCapacities(config)
 
-	mBus.RequestQueued = common.Channel[RequestQueued]{
-		Channel: make(chan RequestQueued, maxNumberOfWaitingRequests),
-		Name:    "bus.RequestQueued",
-		Done:    done,
-	}
-	mBus.RequestDequeued = common.Channel[RequestDequeued]{
-		Channel: make(chan RequestDequeued, maxNumberOfWaitingRequests),
-		Name:    "bus.RequestDequeued",
-		Done:    done,
-	}
-	mBus.RequestRunning = common.Channel[RequestRunning]{
-		Channel: make(chan RequestRunning, maxNumberOfRunningRequests),
-		Name:    "bus.RequestRunning",
-		Done:    done,
-	}
-	mBus.PrefillStarted = common.Channel[PrefillStarted]{
-		Channel: make(chan PrefillStarted, maxNumberOfRunningRequests),
-		Name:    "bus.PrefillStarted",
-		Done:    done,
-	}
-	mBus.PrefillEnded = common.Channel[PrefillEnded]{
-		Channel: make(chan PrefillEnded, maxNumberOfRunningRequests),
-		Name:    "bus.PrefillEnded",
-		Done:    done,
-	}
-	mBus.DecodeStarted = common.Channel[DecodeStarted]{
-		Channel: make(chan DecodeStarted, maxNumberOfRunningRequests),
-		Name:    "bus.DecodeStarted",
-		Done:    done,
-	}
-	mBus.TokenGenerated = common.Channel[TokenGenerated]{
-		Channel: make(chan TokenGenerated, maxNumberOfTokens),
-		Name:    "bus.TokenGenerated",
-		Done:    done,
-	}
-	mBus.DecodeEnded = common.Channel[DecodeEnded]{
-		Channel: make(chan DecodeEnded, maxNumberOfRunningRequests),
-		Name:    "bus.DecodeEnded",
-		Done:    done,
-	}
-	mBus.RequestSucceeded = common.Channel[RequestSucceeded]{
-		Channel: make(chan RequestSucceeded, maxNumberOfRunningRequests),
-		Name:    "bus.RequestSucceeded",
-		Done:    done,
-	}
-	mBus.RequestFailed = common.Channel[RequestFailed]{
-		Channel: make(chan RequestFailed, maxNumberOfRunningRequests),
-		Name:    "bus.RequestFailed",
-		Done:    done,
-	}
-	mBus.KVCacheUsage = common.Channel[KVCacheUsageChanged]{
-		Channel: make(chan KVCacheUsageChanged, maxNumberOfRunningRequests),
-		Name:    "bus.KVCacheUsage",
-		Done:    done,
-	}
-	mBus.PrefixCacheQuery = common.Channel[PrefixCacheQueried]{
-		Channel: make(chan PrefixCacheQueried, maxNumberOfRunningRequests),
-		Name:    "bus.PrefixCacheQuery",
-		Done:    done,
-	}
-	mBus.LoRAChanged = common.Channel[LoRAChanged]{
-		Channel: make(chan LoRAChanged, maxNumberOfWaitingRequests+maxNumberOfRunningRequests),
-		Name:    "bus.LoRAChanged",
-		Done:    done,
-	}
-	mBus.LoRASetsChanged = common.Channel[LoRASetsChanged]{
-		Channel: make(chan LoRASetsChanged, maxNumberOfWaitingRequests+maxNumberOfRunningRequests),
-		Name:    "bus.LoRASetsChanged",
-		Done:    done,
-	}
+	mBus.RequestQueued = common.NewChannel[RequestQueued](maxNumberOfWaitingRequests, done)
+	mBus.RequestDequeued = common.NewChannel[RequestDequeued](maxNumberOfWaitingRequests, done)
+	mBus.RequestRunning = common.NewChannel[RequestRunning](maxNumberOfRunningRequests, done)
+	mBus.PrefillStarted = common.NewChannel[PrefillStarted](maxNumberOfRunningRequests, done)
+	mBus.PrefillEnded = common.NewChannel[PrefillEnded](maxNumberOfRunningRequests, done)
+	mBus.DecodeStarted = common.NewChannel[DecodeStarted](maxNumberOfRunningRequests, done)
+	mBus.TokenGenerated = common.NewChannel[TokenGenerated](maxNumberOfTokens, done)
+	mBus.DecodeEnded = common.NewChannel[DecodeEnded](maxNumberOfRunningRequests, done)
+	mBus.RequestSucceeded = common.NewChannel[RequestSucceeded](maxNumberOfRunningRequests, done)
+	mBus.RequestFailed = common.NewChannel[RequestFailed](maxNumberOfRunningRequests, done)
+	mBus.KVCacheUsage = common.NewChannel[KVCacheUsageChanged](maxNumberOfRunningRequests, done)
+	mBus.PrefixCacheQuery = common.NewChannel[PrefixCacheQueried](maxNumberOfRunningRequests, done)
+	mBus.LoRAChanged = common.NewChannel[LoRAChanged](maxNumberOfRequests, done)
+	mBus.LoRASetsChanged = common.NewChannel[LoRASetsChanged](maxNumberOfRequests, done)
 
 	adapter, err := newAdapter(ctx, registry, logger, config)
 	if err != nil {

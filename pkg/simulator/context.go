@@ -110,7 +110,7 @@ type SimContext struct {
 type Engine interface {
 	ValidateConfig(cfg *common.Configuration) error
 	NewMetricsAdapter(ctx context.Context, registry *prometheus.Registry,
-		logger logr.Logger, config common.Configuration) (metrics.EngineMetricsAdapter, error)
+		logger logr.Logger, config common.Configuration) (metrics.MetricsAdapter, error)
 }
 
 type latencyCalcHolder struct {

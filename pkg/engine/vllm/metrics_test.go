@@ -64,7 +64,7 @@ func newTestAdapter(cfg common.Configuration) (*VLLMMetricsAdapter, *metrics.Met
 
 	bus, err := metrics.NewMetricsBus(ctx, cfg, registry, logr.Discard(),
 		func(context.Context, *prometheus.Registry, logr.Logger,
-			common.Configuration) (metrics.EngineMetricsAdapter, error) {
+			common.Configuration) (metrics.MetricsAdapter, error) {
 			return adapter, nil
 		})
 	Expect(err).NotTo(HaveOccurred())

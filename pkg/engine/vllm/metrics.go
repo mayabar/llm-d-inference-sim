@@ -1,5 +1,5 @@
 /*
-Copyright 2025 The llm-d-inference-simference-sim Authors.
+Copyright 2026 The llm-d-inference-sim Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -64,6 +64,11 @@ const (
 )
 
 var modelLabel = []string{api.PromLabelModelName}
+
+// TokenBucketMantissas matches vLLM's build_1_2_5_buckets() in metrics.py.
+//
+// Reference: https://github.com/vllm-project/vllm/blob/main/vllm/engine/metrics.py#L175
+var TokenBucketMantissas = []int{1, 2, 5}
 
 // GaugeUpdate is a gauge-channel payload: either an Add delta from a real
 // event or a Reset to an absolute fake-metrics value. Exactly one variant
@@ -233,7 +238,7 @@ type VLLMMetricsAdapter struct {
 
 // NewMetricsAdapter returns the vLLM metrics adapter.
 func (Engine) NewMetricsAdapter(ctx context.Context, registry *prometheus.Registry,
-	logger logr.Logger, config common.Configuration) (metrics.EngineMetricsAdapter, error) {
+	logger logr.Logger, config common.Configuration) (metrics.MetricsAdapter, error) {
 	m, err := newMetricsAdapter(ctx, registry, logger, config)
 	if err != nil {
 		return nil, err
@@ -306,147 +311,147 @@ func (m *VLLMMetricsAdapter) createAndStartPrometheusChannels(ctx context.Contex
 		Name:    "vllm.runReqChan",
 		Done:    ctx.Done(),
 	}
-	go metrics.Subscribe(ctx, m.runReqChan, m.runningRequestsUpdater)
+	go common.Subscribe(ctx, m.runReqChan, m.runningRequestsUpdater)
 
 	m.waitingReqChan = common.Channel[GaugeUpdate]{
 		Channel: make(chan GaugeUpdate, maxNumberOfWaitingRequests),
 		Name:    "vllm.waitingReqChan",
 		Done:    ctx.Done(),
 	}
-	go metrics.Subscribe(ctx, m.waitingReqChan, m.waitingRequestsUpdater)
+	go common.Subscribe(ctx, m.waitingReqChan, m.waitingRequestsUpdater)
 
 	m.kvCacheUsageChan = common.Channel[GaugeUpdate]{
 		Channel: make(chan GaugeUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.kvCacheUsageChan",
 		Done:    ctx.Done(),
 	}
-	go metrics.Subscribe(ctx, m.kvCacheUsageChan, m.kvCacheUsageUpdater)
+	go common.Subscribe(ctx, m.kvCacheUsageChan, m.kvCacheUsageUpdater)
 
 	m.ttftChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.ttftChan",
 		Done:    ctx.Done(),
 	}
-	go metrics.Subscribe(ctx, m.ttftChan, m.ttftUpdater)
+	go common.Subscribe(ctx, m.ttftChan, m.ttftUpdater)
 
 	m.perTokenLatencyChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfTokens),
 		Name:    "vllm.perTokenLatencyChan",
 		Done:    ctx.Done(),
 	}
-	go metrics.Subscribe(ctx, m.perTokenLatencyChan, m.perTokenLatencyUpdater)
+	go common.Subscribe(ctx, m.perTokenLatencyChan, m.perTokenLatencyUpdater)
 
 	m.e2eReqLatencyChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.e2eReqLatencyChan",
 		Done:    ctx.Done(),
 	}
-	go metrics.Subscribe(ctx, m.e2eReqLatencyChan, m.e2eReqLatencyUpdater)
+	go common.Subscribe(ctx, m.e2eReqLatencyChan, m.e2eReqLatencyUpdater)
 
 	m.reqQueueTimeChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfWaitingRequests),
 		Name:    "vllm.reqQueueTimeChan",
 		Done:    ctx.Done(),
 	}
-	go metrics.Subscribe(ctx, m.reqQueueTimeChan, m.reqQueueTimeUpdater)
+	go common.Subscribe(ctx, m.reqQueueTimeChan, m.reqQueueTimeUpdater)
 
 	m.reqInferenceTimeChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.reqInferenceTimeChan",
 		Done:    ctx.Done(),
 	}
-	go metrics.Subscribe(ctx, m.reqInferenceTimeChan, m.reqInferenceTimeUpdater)
+	go common.Subscribe(ctx, m.reqInferenceTimeChan, m.reqInferenceTimeUpdater)
 
 	m.reqPrefillTimeChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.reqPrefillTimeChan",
 		Done:    ctx.Done(),
 	}
-	go metrics.Subscribe(ctx, m.reqPrefillTimeChan, m.reqPrefillTimeUpdater)
+	go common.Subscribe(ctx, m.reqPrefillTimeChan, m.reqPrefillTimeUpdater)
 
 	m.reqDecodeTimeChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.reqDecodeTimeChan",
 		Done:    ctx.Done(),
 	}
-	go metrics.Subscribe(ctx, m.reqDecodeTimeChan, m.reqDecodeTimeUpdater)
+	go common.Subscribe(ctx, m.reqDecodeTimeChan, m.reqDecodeTimeUpdater)
 
 	m.reqTpotChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.reqTpotChan",
 		Done:    ctx.Done(),
 	}
-	go metrics.Subscribe(ctx, m.reqTpotChan, m.reqTpotUpdater)
+	go common.Subscribe(ctx, m.reqTpotChan, m.reqTpotUpdater)
 
 	m.lorasChan = common.Channel[LoRAUpdate]{
 		Channel: make(chan LoRAUpdate, maxNumberOfRequests),
 		Name:    "vllm.lorasChan",
 		Done:    ctx.Done(),
 	}
-	go metrics.Subscribe(ctx, m.lorasChan, m.lorasUpdater)
+	go common.Subscribe(ctx, m.lorasChan, m.lorasUpdater)
 
 	m.requestPromptTokensChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.requestPromptTokensChan",
 		Done:    ctx.Done(),
 	}
-	go metrics.Subscribe(ctx, m.requestPromptTokensChan, m.requestPromptTokensUpdater)
+	go common.Subscribe(ctx, m.requestPromptTokensChan, m.requestPromptTokensUpdater)
 
 	m.requestGenerationTokensChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.requestGenerationTokensChan",
 		Done:    ctx.Done(),
 	}
-	go metrics.Subscribe(ctx, m.requestGenerationTokensChan, m.requestGenerationTokensUpdater)
+	go common.Subscribe(ctx, m.requestGenerationTokensChan, m.requestGenerationTokensUpdater)
 
 	m.maxNumGenerationTokensChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.maxNumGenerationTokensChan",
 		Done:    ctx.Done(),
 	}
-	go metrics.Subscribe(ctx, m.maxNumGenerationTokensChan, m.maxNumGenerationTokensUpdater)
+	go common.Subscribe(ctx, m.maxNumGenerationTokensChan, m.maxNumGenerationTokensUpdater)
 
 	m.requestParamsMaxTokensChan = common.Channel[HistogramUpdate]{
 		Channel: make(chan HistogramUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.requestParamsMaxTokensChan",
 		Done:    ctx.Done(),
 	}
-	go metrics.Subscribe(ctx, m.requestParamsMaxTokensChan, m.requestParamsMaxTokensUpdater)
+	go common.Subscribe(ctx, m.requestParamsMaxTokensChan, m.requestParamsMaxTokensUpdater)
 
 	m.promptTokensTotalChan = common.Channel[CounterUpdate]{
 		Channel: make(chan CounterUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.promptTokensTotalChan",
 		Done:    ctx.Done(),
 	}
-	go metrics.Subscribe(ctx, m.promptTokensTotalChan, m.promptTokensTotalUpdater)
+	go common.Subscribe(ctx, m.promptTokensTotalChan, m.promptTokensTotalUpdater)
 
 	m.generationTokensTotalChan = common.Channel[CounterUpdate]{
 		Channel: make(chan CounterUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.generationTokensTotalChan",
 		Done:    ctx.Done(),
 	}
-	go metrics.Subscribe(ctx, m.generationTokensTotalChan, m.generationTokensTotalUpdater)
+	go common.Subscribe(ctx, m.generationTokensTotalChan, m.generationTokensTotalUpdater)
 
 	m.requestSuccessTotalChan = common.Channel[RequestSuccessCounterUpdate]{
 		Channel: make(chan RequestSuccessCounterUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.requestSuccessTotalChan",
 		Done:    ctx.Done(),
 	}
-	go metrics.Subscribe(ctx, m.requestSuccessTotalChan, m.requestSuccessTotalUpdater)
+	go common.Subscribe(ctx, m.requestSuccessTotalChan, m.requestSuccessTotalUpdater)
 
 	m.prefixCacheHitsTotalChan = common.Channel[CounterUpdate]{
 		Channel: make(chan CounterUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.prefixCacheHitsTotalChan",
 		Done:    ctx.Done(),
 	}
-	go metrics.Subscribe(ctx, m.prefixCacheHitsTotalChan, m.prefixCacheHitsTotalUpdater)
+	go common.Subscribe(ctx, m.prefixCacheHitsTotalChan, m.prefixCacheHitsTotalUpdater)
 
 	m.prefixCacheQueriesTotalChan = common.Channel[CounterUpdate]{
 		Channel: make(chan CounterUpdate, maxNumberOfRunningRequests),
 		Name:    "vllm.prefixCacheQueriesTotalChan",
 		Done:    ctx.Done(),
 	}
-	go metrics.Subscribe(ctx, m.prefixCacheQueriesTotalChan, m.prefixCacheQueriesTotalUpdater)
+	go common.Subscribe(ctx, m.prefixCacheQueriesTotalChan, m.prefixCacheQueriesTotalUpdater)
 }
 
 // -- Per-metric write helpers ---------------------------------------------
@@ -1218,7 +1223,7 @@ func (m *VLLMMetricsAdapter) createAndRegisterReqPromptTokensHistogram() error {
 	m.requestPromptTokens = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    VLLMPromptTokensMetricName,
 		Help:    "Number of prefill tokens processed.",
-		Buckets: metrics.Build125Buckets(m.config.MaxModelLen),
+		Buckets: metrics.BuildBuckets(m.config.MaxModelLen, TokenBucketMantissas),
 	}, modelLabel)
 	return m.register(m.requestPromptTokens, "prometheus request_prompt_tokens histogram register failed")
 }
@@ -1227,7 +1232,7 @@ func (m *VLLMMetricsAdapter) createAndRegisterReqGenerationTokensHistogram() err
 	m.requestGenerationTokens = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    VLLMGenerationTokensMetricName,
 		Help:    "Number of generation tokens processed.",
-		Buckets: metrics.Build125Buckets(m.config.MaxModelLen),
+		Buckets: metrics.BuildBuckets(m.config.MaxModelLen, TokenBucketMantissas),
 	}, modelLabel)
 	return m.register(m.requestGenerationTokens, "prometheus request_generation_tokens histogram register failed")
 }
@@ -1236,7 +1241,7 @@ func (m *VLLMMetricsAdapter) createAndRegisterMaxNumGenerationTokensHistogram() 
 	m.maxNumGenerationTokens = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    VLLMMaxNumGenerationTokensMetricName,
 		Help:    "Histogram of maximum number of requested generation tokens.",
-		Buckets: metrics.Build125Buckets(m.config.MaxModelLen),
+		Buckets: metrics.BuildBuckets(m.config.MaxModelLen, TokenBucketMantissas),
 	}, modelLabel)
 	return m.register(m.maxNumGenerationTokens, "prometheus max_num_generation_tokens histogram register failed")
 }
@@ -1245,7 +1250,7 @@ func (m *VLLMMetricsAdapter) createAndRegisterReqParamsMaxTokensHistogram() erro
 	m.requestParamsMaxTokens = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    VLLMParamMaxTokensMetricName,
 		Help:    "Histogram of the max_tokens request parameter.",
-		Buckets: metrics.Build125Buckets(m.config.MaxModelLen),
+		Buckets: metrics.BuildBuckets(m.config.MaxModelLen, TokenBucketMantissas),
 	}, modelLabel)
 	return m.register(m.requestParamsMaxTokens, "prometheus request_params_max_tokens histogram register failed")
 }
@@ -1408,7 +1413,7 @@ func (m *VLLMMetricsAdapter) applyFakeMetrics(update *fakemetrics.Config) {
 		m.writeToReqTpot(HistogramUpdate{Reset: &HistogramReset{Buckets: common.TPOTBucketsBoundaries, Samples: update.ReqTPOTBucketValues}})
 	}
 
-	tokenBuckets := metrics.Build125Buckets(m.config.MaxModelLen)
+	tokenBuckets := metrics.BuildBuckets(m.config.MaxModelLen, TokenBucketMantissas)
 
 	if update.RequestParamsMaxTokens != nil {
 		m.writeToRequestParamsMaxTokens(HistogramUpdate{Reset: &HistogramReset{Buckets: tokenBuckets, Samples: update.RequestParamsMaxTokens}})
