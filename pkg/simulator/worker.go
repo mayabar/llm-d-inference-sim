@@ -65,7 +65,7 @@ func (s *Simulator) processRequest(reqCtx endpoint.RequestContext) {
 	startTime := time.Now()
 	req := reqCtx.Request()
 	dispModel := req.GetDisplayedModel()
-	isLoRA := req.IsLoRA()
+	isLoRA := req.IsModelLoRA()
 	respCtx, err := reqCtx.HandleRequest()
 	if err != nil {
 		common.WriteToChannel(reqCtx.ResponseChannel(),

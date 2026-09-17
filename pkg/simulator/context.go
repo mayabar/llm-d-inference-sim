@@ -387,7 +387,7 @@ func (s *SimContext) RequestStarted(req api.Request) {
 	common.WriteToChannel(s.metricsBus.RequestRunning, metrics.RequestRunning{}, s.logger)
 
 	dispModel := req.GetDisplayedModel()
-	if req.IsLoRA() {
+	if req.IsModelLoRA() {
 		req.SetModelLoraID(s.GetLoraID(dispModel))
 		common.WriteToChannel(s.metricsBus.LoRAChanged,
 			metrics.LoRAChanged{Model: dispModel, State: metrics.LoRARunning}, s.logger)

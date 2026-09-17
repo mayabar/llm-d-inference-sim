@@ -331,8 +331,8 @@ func (bc *blockCache) finishRequest(requestID string) error {
 		}
 	}
 
-	perc := float64(len(bc.usedBlocks)) / float64(bc.maxBlocks)
 	if bc.metrics != nil {
+		perc := float64(len(bc.usedBlocks)) / float64(bc.maxBlocks)
 		common.WriteToChannel(bc.metrics.KVCacheUsage, metrics.KVCacheUsageChanged{
 			KVCacheUsagePerc: perc,
 		}, bc.logger)
