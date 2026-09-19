@@ -325,6 +325,7 @@ func (s *Simulator) findRequestAndSendToProcess(worker *worker) bool {
 		s.Context.logger.V(logging.TRACE).Info("Sending request to processing", "model", nextReq.Request().GetModel(),
 			"req", nextReq.Request().GetRequestID(), "worker", worker.id)
 		common.WriteToChannel(worker.reqChan, nextReq, s.Context.logger)
+
 		return true
 	}
 
@@ -547,6 +548,12 @@ func (s *Simulator) simulateResponseProcessing(respCtx endpoint.ResponseContext)
 func (s *Simulator) onResponseProcessingFinished(reqCtx endpoint.RequestContext) {
 	// decrement running requests count
 	s.Context.nRunningReqs.Add(-1)
+
+	if reqCtx.Request().IsModelLoRA() {
+		common.WriteToChannel(s.Context.metricsBus.LoRAChanged,
+			metrics.LoRAChanged{Model: reqCtx.Request().GetDisplayedModel(), State: metrics.LoRADone},
+			s.Context.logger)
+	}
 
 	reqCtx.KVCacheOnRequestEnd()
 	reqCtx.SignalDone()

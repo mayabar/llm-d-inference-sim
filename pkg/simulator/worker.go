@@ -64,8 +64,6 @@ func (s *Simulator) processRequest(reqCtx endpoint.RequestContext) {
 
 	startTime := time.Now()
 	req := reqCtx.Request()
-	dispModel := req.GetDisplayedModel()
-	isLoRA := req.IsModelLoRA()
 	respCtx, err := reqCtx.HandleRequest()
 	if err != nil {
 		common.WriteToChannel(reqCtx.ResponseChannel(),
@@ -77,11 +75,6 @@ func (s *Simulator) processRequest(reqCtx endpoint.RequestContext) {
 				E2ELatency:    time.Since(reqCtx.StartProcessingTime()).Seconds(),
 				InferenceTime: time.Since(startTime).Seconds(),
 			}, s.Context.logger)
-		if isLoRA {
-			common.WriteToChannel(s.Context.metricsBus.LoRAChanged,
-				metrics.LoRAChanged{Model: dispModel, State: metrics.LoRADone},
-				s.Context.logger)
-		}
 		return
 	}
 
@@ -98,11 +91,6 @@ func (s *Simulator) processRequest(reqCtx endpoint.RequestContext) {
 			E2ELatency:         time.Since(reqCtx.StartProcessingTime()).Seconds(),
 			InferenceTime:      time.Since(startTime).Seconds(),
 		}, s.Context.logger)
-	if isLoRA {
-		common.WriteToChannel(s.Context.metricsBus.LoRAChanged,
-			metrics.LoRAChanged{Model: dispModel, State: metrics.LoRADone},
-			s.Context.logger)
-	}
 }
 
 // getFreeWorker returns a free worker or nil if none are available (non-blocking)

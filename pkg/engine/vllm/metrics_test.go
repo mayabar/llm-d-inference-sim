@@ -33,7 +33,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
-	"github.com/llm-d/llm-d-inference-sim/pkg/engine/vllm/fakemetrics"
 	"github.com/llm-d/llm-d-inference-sim/pkg/metrics"
 )
 
@@ -90,7 +89,7 @@ func counterValue(c *prometheus.CounterVec, labelValues ...string) func() float6
 var _ = Describe("MetricsBus", func() {
 	It("has a nil-safe ApplyFakeMetricsUpdate", func() {
 		var b *metrics.MetricsBus
-		Expect(func() { b.ApplyFakeMetricsUpdate(&fakemetrics.VLLMFakeMetrics{}) }).NotTo(Panic())
+		Expect(func() { b.ApplyFakeMetricsUpdate(&VLLMFakeMetrics{}) }).NotTo(Panic())
 	})
 
 	It("treats a nil fake-metrics update as a no-op on a live bus", func() {
@@ -172,7 +171,7 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 	Describe("fake mode", func() {
 		It("drops real-path events", func() {
 			cfg := newTestConfig()
-			cfg.FakeMetrics = &fakemetrics.VLLMFakeMetrics{}
+			cfg.FakeMetrics = &VLLMFakeMetrics{}
 			adapter, _ := newTestAdapter(cfg)
 
 			adapter.OnRequestQueued(metrics.RequestQueued{})
@@ -190,11 +189,11 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 
 		It("applies fixed scalar values via ApplyUpdate", func() {
 			cfg := newTestConfig()
-			cfg.FakeMetrics = &fakemetrics.VLLMFakeMetrics{}
+			cfg.FakeMetrics = &VLLMFakeMetrics{}
 			adapter, _ := newTestAdapter(cfg)
 
 			kv := 0.4
-			upd := &fakemetrics.VLLMFakeMetrics{
+			upd := &VLLMFakeMetrics{
 				RunningRequests:        &common.FakeMetricWithFunction{FixedValue: 3},
 				WaitingRequests:        &common.FakeMetricWithFunction{FixedValue: 7},
 				KVCacheUsagePercentage: &common.FakeMetricWithFunction{FixedValue: kv},
@@ -208,7 +207,7 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 
 		It("starts and stops the ticker as generators are enabled and cleared", func() {
 			cfg := newTestConfig()
-			cfg.FakeMetrics = &fakemetrics.VLLMFakeMetrics{}
+			cfg.FakeMetrics = &VLLMFakeMetrics{}
 			adapter, _ := newTestAdapter(cfg)
 
 			// Simulate that Start() has already run, the ticker only auto-starts
@@ -218,7 +217,7 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 			adapter.genMu.Unlock()
 
 			// Enable a generator: ticker must come up.
-			upd := &fakemetrics.VLLMFakeMetrics{
+			upd := &VLLMFakeMetrics{
 				RunningRequests: &common.FakeMetricWithFunction{
 					IsFunction: true,
 					Function: &common.FunctionInfo{
@@ -238,7 +237,7 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 
 			// Replace the generator with a fixed value: generator set becomes empty,
 			// ticker must stop.
-			upd2 := &fakemetrics.VLLMFakeMetrics{
+			upd2 := &VLLMFakeMetrics{
 				RunningRequests: &common.FakeMetricWithFunction{FixedValue: 2},
 			}
 			adapter.ApplyFakeMetricsUpdate(upd2)
@@ -251,14 +250,14 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 
 		It("stops the ticker on Close", func() {
 			cfg := newTestConfig()
-			cfg.FakeMetrics = &fakemetrics.VLLMFakeMetrics{}
+			cfg.FakeMetrics = &VLLMFakeMetrics{}
 			adapter, _ := newTestAdapter(cfg)
 
 			adapter.genMu.Lock()
 			adapter.started = true
 			adapter.genMu.Unlock()
 
-			upd := &fakemetrics.VLLMFakeMetrics{
+			upd := &VLLMFakeMetrics{
 				WaitingRequests: &common.FakeMetricWithFunction{
 					IsFunction: true,
 					Function: &common.FunctionInfo{

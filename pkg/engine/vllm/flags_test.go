@@ -27,7 +27,6 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
-	"github.com/llm-d/llm-d-inference-sim/pkg/engine/vllm/fakemetrics"
 )
 
 func createSimConfig(args []string) (*common.Configuration, error) {
@@ -220,7 +219,7 @@ var _ = Describe("Simulator configuration", func() {
 
 	// Config from config_with_fake.yaml file
 	c = createDefaultConfig(common.QwenModelName, nil)
-	c.FakeMetrics = &fakemetrics.VLLMFakeMetrics{
+	c.FakeMetrics = &VLLMFakeMetrics{
 		RunningRequests: &common.FakeMetricWithFunction{FixedValue: 16},
 		WaitingRequests: &common.FakeMetricWithFunction{
 			FixedValue: 0,
@@ -266,7 +265,7 @@ var _ = Describe("Simulator configuration", func() {
 	c = createConfigWithModel(common.TestModelName, nil)
 	c.Lora.MaxCPULoras = 1
 	c.Seed = 100
-	c.FakeMetrics = &fakemetrics.VLLMFakeMetrics{
+	c.FakeMetrics = &VLLMFakeMetrics{
 		RunningRequests: &common.FakeMetricWithFunction{
 			FixedValue: 0,
 			IsFunction: true,
@@ -297,7 +296,7 @@ var _ = Describe("Simulator configuration", func() {
 
 	// Fake metrics from both the config file and command line
 	c = createDefaultConfig(common.QwenModelName, nil)
-	c.FakeMetrics = &fakemetrics.VLLMFakeMetrics{
+	c.FakeMetrics = &VLLMFakeMetrics{
 		RunningRequests:        &common.FakeMetricWithFunction{FixedValue: 10},
 		WaitingRequests:        &common.FakeMetricWithFunction{FixedValue: 30},
 		KVCacheUsagePercentage: &common.FakeMetricWithFunction{FixedValue: 0.4},
