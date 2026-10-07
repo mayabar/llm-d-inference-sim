@@ -84,6 +84,7 @@ func (s *Simulator) processRequest(reqCtx endpoint.RequestContext) {
 	common.WriteToChannel(s.Context.metricsBus.RequestSucceeded,
 		metrics.RequestSucceeded{
 			PromptTokens:       respCtx.UsageData().PromptTokens,
+			CachedPromptTokens: respCtx.NumberCachedPromptTokens(),
 			GenerationTokens:   respCtx.UsageData().CompletionTokens,
 			GenTokensPerChoice: []int{respCtx.UsageData().CompletionTokens},
 			MaxTokens:          req.GetMaxCompletionTokens(),
