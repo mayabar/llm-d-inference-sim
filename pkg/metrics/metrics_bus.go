@@ -244,6 +244,7 @@ type PrefillStarted struct {
 // value observed on both histograms).
 type PrefillEnded struct {
 	PrefillDuration float64 // seconds
+	IsStreaming     bool
 }
 
 // DecodeStarted fires before the per-token generation loop. State marker.
@@ -276,6 +277,7 @@ type RequestSucceeded struct {
 	FinishReason       string
 	E2ELatency         float64 // seconds
 	InferenceTime      float64 // seconds
+	IsStreaming        bool
 }
 
 // RequestFailed is the terminal event for a request that errored out. Same
