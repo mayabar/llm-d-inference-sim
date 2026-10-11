@@ -233,9 +233,6 @@ type Configuration struct {
 	RenderTimeout time.Duration `yaml:"render-timeout" json:"render-timeout"`
 	// MMRenderTimeout is the timeout for multi-modal tokenizer render requests
 	MMRenderTimeout time.Duration `yaml:"mm-render-timeout" json:"mm-render-timeout"`
-	// ForceDummyTokenizer forces the use of the dummy tokenizer even if a real model name is provided.
-	// This flag is retained for backward compatibility; omit --render-url to use the simulated tokenizer.
-	ForceDummyTokenizer bool `yaml:"force-dummy-tokenizer" json:"force-dummy-tokenizer"`
 
 	// EnableLegacyRender disables the /v1/responses/render endpoint, matching
 	// vLLM versions that predate it.

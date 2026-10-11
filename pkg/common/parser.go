@@ -304,8 +304,6 @@ func ParseCommandParamsAndLoadConfig(eng Engine) (*Configuration, error) {
 	f.StringVar(&config.RenderURL, "render-url", config.RenderURL, "URL of the tokenizer render service; when unset the simulated tokenizer is used")
 	f.DurationVar(&config.RenderTimeout, "render-timeout", config.RenderTimeout, "Timeout for tokenizer render requests (e.g. 30s)")
 	f.DurationVar(&config.MMRenderTimeout, "mm-render-timeout", config.MMRenderTimeout, "Timeout for multi-modal tokenizer render requests (e.g. 60s)")
-	AddToggle(f, &config.ForceDummyTokenizer,
-		"force-dummy-tokenizer", "(deprecated) Force the use of dummy tokenizer even if a real model name is provided; omit --render-url instead", "Use the tokenizer the model name implies")
 	AddToggle(f, &config.EnableLegacyRender,
 		"enable-legacy-render", "Disable the /v1/responses/render endpoint, matching vLLM versions that predate it", "Serve the /v1/responses/render endpoint")
 

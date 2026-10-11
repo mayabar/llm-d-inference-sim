@@ -1196,7 +1196,6 @@ var _ = Describe("boolean flags", func() {
 			Expect(err).NotTo(HaveOccurred())
 		},
 		Entry("dataset-in-memory", "dataset-in-memory"),
-		Entry("force-dummy-tokenizer", "force-dummy-tokenizer"),
 		Entry("enable-request-id-headers", "enable-request-id-headers"),
 		Entry("log-http", "log-http"),
 		Entry("skip-tool-validation", "skip-tool-validation"),
