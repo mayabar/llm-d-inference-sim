@@ -248,8 +248,14 @@ func (s *Simulator) Stop() {
 	}
 }
 
-// MetricsRegistry returns the simulator's Prometheus registry.
+// MetricsRegistry returns the simulator's Prometheus registry, or nil when the
+// active engine's configuration does not export metrics, which leaves the
+// /metrics route unbound. The adapter keeps its collectors either way; nothing
+// serves them.
 func (s *Simulator) MetricsRegistry() *prometheus.Registry {
+	if !s.Context.Config().EnableMetrics {
+		return nil
+	}
 	return s.Context.prometheusRegistry
 }
 
