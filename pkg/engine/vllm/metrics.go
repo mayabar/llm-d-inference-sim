@@ -20,12 +20,12 @@ package vllm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -70,81 +70,34 @@ var modelLabel = []string{api.PromLabelModelName}
 // Reference: https://github.com/vllm-project/vllm/blob/main/vllm/engine/metrics.py#L175
 var TokenBucketMantissas = []int{1, 2, 5}
 
-// GaugeUpdate is a gauge-channel payload: either an Add delta from a real
-// event or a Reset to an absolute fake-metrics value. Exactly one variant
-// must be non-nil.
-type GaugeUpdate struct {
-	Add   *float64
-	Reset *float64
-}
-
-// HistogramUpdate is a histogram-channel payload: either a single Observe
-// or a Reset to a target bucket state. Exactly one variant must be non-nil.
-type HistogramUpdate struct {
-	Observe *float64
-	Reset   *HistogramReset
-}
-
-// HistogramReset carries the target state for a reset-shaped histogram
-// update: unregister the current collector, recreate it, then Observe once
-// per bucket according to Samples over the Buckets boundaries.
-type HistogramReset struct {
-	Buckets []float64
-	Samples []int
-}
-
-// CounterUpdate is a counter-channel payload: either an Add delta or a
-// Reset to a specific value. Exactly one variant must be non-nil.
-type CounterUpdate struct {
-	Add   *float64
-	Reset *CounterReset
-}
-
-// CounterReset carries the target state for a reset-shaped counter update:
-// unregister the current collector, recreate it, then Add Value. A nil
-// Value leaves the recreated counter with no series stamped, so it is
-// absent from /metrics rather than reporting an explicit zero.
-type CounterReset struct {
-	Value *float64
-}
-
-// SuccessTotalReset is the target state for request_success_total: one
+// successTotalReset is the target state for request_success_total: one
 // Add per (reason, count) pair after recreate.
-type SuccessTotalReset struct {
+type successTotalReset struct {
 	Reasons map[string]int64
 }
 
-// RequestSuccessCounterUpdate is a requestSuccessTotalChan payload: an
+// requestSuccessCounterUpdate is a requestSuccessTotalChan payload: an
 // Increment with the finish-reason label, or a Reset to a per-reason target
 // map. Exactly one field is non-nil.
-type RequestSuccessCounterUpdate struct {
+type requestSuccessCounterUpdate struct {
 	Increment *string
-	Reset     *SuccessTotalReset
+	Reset     *successTotalReset
 }
 
-// LoRAUpdate is the discriminated-union payload for lorasChan. Event-side
+// loraUpdate is the discriminated-union payload for lorasChan. Event-side
 // producers set Snapshot with the current per-LoRA counts; the fake-metrics
 // applier sets Reset.
-type LoRAUpdate struct {
+type loraUpdate struct {
 	Snapshot *metrics.LoRASetsChanged
-	Reset    *LoRAReset
+	Reset    *loraReset
 }
 
-// LoRAReset carries the target state for lora_requests_info: unregister,
+// loraReset carries the target state for lora_requests_info: unregister,
 // recreate, then stamp one series per entry (or a single zero-adapter row
 // with the current timestamp when Entries is empty).
-type LoRAReset struct {
+type loraReset struct {
 	MaxLoRAs int
 	Entries  []common.LorasMetrics
-}
-
-// activeGenerator is one fake-metric generator bound to the gauge channel it
-// feeds. The ticker evaluates fn on every refresh and pushes the result.
-type activeGenerator struct {
-	fn         metrics.Generator
-	params     *common.FunctionInfo
-	roundToInt bool
-	updateFunc func(upd GaugeUpdate)
 }
 
 // vllmMetricsAdapter implements metrics.EngineMetricsAdapter and produces the
@@ -157,21 +110,12 @@ type vllmMetricsAdapter struct {
 	// fake is config.FakeMetrics narrowed to vLLM's concrete type, nil when
 	// fake metrics are off or another engine owns the configuration.
 	fake *VLLMFakeMetrics
-	ctx  context.Context
 
 	registry *prometheus.Registry
 
-	// genMu guards the fake-metrics generator set and ticker lifecycle:
-	// generators, started, tickerRunning, tickerCancel, tickerStart. Held
-	// briefly by ApplyFakeMetricsUpdate, Start, Close, and tick (snapshot
-	// only) so the ticker goroutine and admin-driven updates cannot race on
-	// the map.
-	genMu         sync.Mutex
-	generators    map[string]activeGenerator
-	started       bool
-	tickerRunning bool
-	tickerCancel  context.CancelFunc
-	tickerStart   time.Time
+	// generators holds the fake-metric generators this adapter has registered
+	// and the ticker that re-evaluates them.
+	generators *metrics.FakeGenerators
 
 	// gauges
 	runningRequests        *prometheus.GaugeVec
@@ -205,30 +149,30 @@ type vllmMetricsAdapter struct {
 	// Channels: one per Prometheus metric family. Handlers push
 	// here; the updater goroutines below drain each and perform the actual
 	// Prometheus mutation. Created in Start once ctx.Done() is available.
-	runReqChan       common.Channel[GaugeUpdate]
-	waitingReqChan   common.Channel[GaugeUpdate]
-	kvCacheUsageChan common.Channel[GaugeUpdate]
+	runReqChan       common.Channel[metrics.GaugeUpdate]
+	waitingReqChan   common.Channel[metrics.GaugeUpdate]
+	kvCacheUsageChan common.Channel[metrics.GaugeUpdate]
 
-	ttftChan                    common.Channel[HistogramUpdate]
-	perTokenLatencyChan         common.Channel[HistogramUpdate]
-	e2eReqLatencyChan           common.Channel[HistogramUpdate]
-	reqQueueTimeChan            common.Channel[HistogramUpdate]
-	reqInferenceTimeChan        common.Channel[HistogramUpdate]
-	reqPrefillTimeChan          common.Channel[HistogramUpdate]
-	reqDecodeTimeChan           common.Channel[HistogramUpdate]
-	reqTpotChan                 common.Channel[HistogramUpdate]
-	requestPromptTokensChan     common.Channel[HistogramUpdate]
-	requestGenerationTokensChan common.Channel[HistogramUpdate]
-	maxNumGenerationTokensChan  common.Channel[HistogramUpdate]
-	requestParamsMaxTokensChan  common.Channel[HistogramUpdate]
+	ttftChan                    common.Channel[metrics.HistogramUpdate]
+	perTokenLatencyChan         common.Channel[metrics.HistogramUpdate]
+	e2eReqLatencyChan           common.Channel[metrics.HistogramUpdate]
+	reqQueueTimeChan            common.Channel[metrics.HistogramUpdate]
+	reqInferenceTimeChan        common.Channel[metrics.HistogramUpdate]
+	reqPrefillTimeChan          common.Channel[metrics.HistogramUpdate]
+	reqDecodeTimeChan           common.Channel[metrics.HistogramUpdate]
+	reqTpotChan                 common.Channel[metrics.HistogramUpdate]
+	requestPromptTokensChan     common.Channel[metrics.HistogramUpdate]
+	requestGenerationTokensChan common.Channel[metrics.HistogramUpdate]
+	maxNumGenerationTokensChan  common.Channel[metrics.HistogramUpdate]
+	requestParamsMaxTokensChan  common.Channel[metrics.HistogramUpdate]
 
-	promptTokensTotalChan       common.Channel[CounterUpdate]
-	generationTokensTotalChan   common.Channel[CounterUpdate]
-	prefixCacheHitsTotalChan    common.Channel[CounterUpdate]
-	prefixCacheQueriesTotalChan common.Channel[CounterUpdate]
+	promptTokensTotalChan       common.Channel[metrics.CounterUpdate]
+	generationTokensTotalChan   common.Channel[metrics.CounterUpdate]
+	prefixCacheHitsTotalChan    common.Channel[metrics.CounterUpdate]
+	prefixCacheQueriesTotalChan common.Channel[metrics.CounterUpdate]
 
-	lorasChan               common.Channel[LoRAUpdate]
-	requestSuccessTotalChan common.Channel[RequestSuccessCounterUpdate]
+	lorasChan               common.Channel[loraUpdate]
+	requestSuccessTotalChan common.Channel[requestSuccessCounterUpdate]
 
 	// nWaitingReqs / nRunningReqs are the adapter-local counters mirrored
 	// onto the num_requests_{waiting,running} gauges.
@@ -252,8 +196,7 @@ func newMetricsAdapter(ctx context.Context, registry *prometheus.Registry,
 		logger:     logger,
 		registry:   registry,
 		config:     config,
-		generators: make(map[string]activeGenerator),
-		ctx:        ctx,
+		generators: metrics.NewFakeGenerators(ctx, config.FakeMetricsRefreshInterval),
 	}
 	if fake, ok := config.FakeMetrics.(*VLLMFakeMetrics); ok {
 		m.fake = fake
@@ -269,10 +212,7 @@ func newMetricsAdapter(ctx context.Context, registry *prometheus.Registry,
 }
 
 func (m *vllmMetricsAdapter) Close() error {
-	m.genMu.Lock()
-	defer m.genMu.Unlock()
-	m.stopTickerLocked()
-	m.started = false
+	m.generators.Stop()
 
 	return nil
 }
@@ -288,13 +228,7 @@ func (m *vllmMetricsAdapter) Start(_ context.Context) error {
 		}
 		m.applyFakeMetrics(&fm)
 	}
-
-	m.genMu.Lock()
-	defer m.genMu.Unlock()
-	m.started = true
-	if len(m.generators) > 0 && !m.tickerRunning {
-		m.startTickerLocked()
-	}
+	m.generators.Start()
 
 	return nil
 }
@@ -315,7 +249,7 @@ func (m *vllmMetricsAdapter) OnRequestQueued(ev metrics.RequestQueued) {
 	if m.fake != nil {
 		return
 	}
-	common.WriteToChannel(m.waitingReqChan, gaugeAdd(1), m.logger)
+	common.WriteToChannel(m.waitingReqChan, metrics.GaugeAdd(1), m.logger)
 }
 
 // request dequeued
@@ -325,8 +259,8 @@ func (m *vllmMetricsAdapter) OnRequestDequeued(ev metrics.RequestDequeued) {
 	if m.fake != nil {
 		return
 	}
-	common.WriteToChannel(m.waitingReqChan, gaugeAdd(-1), m.logger)
-	common.WriteToChannel(m.reqQueueTimeChan, observation(ev.QueueTime), m.logger)
+	common.WriteToChannel(m.waitingReqChan, metrics.GaugeAdd(-1), m.logger)
+	common.WriteToChannel(m.reqQueueTimeChan, metrics.Observation(ev.QueueTime), m.logger)
 }
 
 // request running
@@ -335,7 +269,7 @@ func (m *vllmMetricsAdapter) OnRequestRunning(ev metrics.RequestRunning) {
 	if m.fake != nil {
 		return
 	}
-	common.WriteToChannel(m.runReqChan, gaugeAdd(1), m.logger)
+	common.WriteToChannel(m.runReqChan, metrics.GaugeAdd(1), m.logger)
 }
 
 // prefill started
@@ -350,8 +284,8 @@ func (m *vllmMetricsAdapter) OnPrefillEnded(ev metrics.PrefillEnded) {
 	if m.fake != nil {
 		return
 	}
-	common.WriteToChannel(m.reqPrefillTimeChan, observation(ev.PrefillDuration), m.logger)
-	common.WriteToChannel(m.ttftChan, observation(ev.PrefillDuration), m.logger)
+	common.WriteToChannel(m.reqPrefillTimeChan, metrics.Observation(ev.PrefillDuration), m.logger)
+	common.WriteToChannel(m.ttftChan, metrics.Observation(ev.PrefillDuration), m.logger)
 }
 
 func (m *vllmMetricsAdapter) OnDecodeStarted(_ metrics.DecodeStarted) {
@@ -364,7 +298,7 @@ func (m *vllmMetricsAdapter) OnTokenGenerated(ev metrics.TokenGenerated) {
 	if m.fake != nil {
 		return
 	}
-	common.WriteToChannel(m.perTokenLatencyChan, observation(ev.InterTokenLatency), m.logger)
+	common.WriteToChannel(m.perTokenLatencyChan, metrics.Observation(ev.InterTokenLatency), m.logger)
 }
 
 // decode ended
@@ -374,10 +308,10 @@ func (m *vllmMetricsAdapter) OnDecodeEnded(ev metrics.DecodeEnded) {
 	if m.fake != nil {
 		return
 	}
-	common.WriteToChannel(m.reqDecodeTimeChan, observation(ev.DecodeDuration), m.logger)
+	common.WriteToChannel(m.reqDecodeTimeChan, metrics.Observation(ev.DecodeDuration), m.logger)
 
 	if ev.GenerationTokens > 0 {
-		common.WriteToChannel(m.reqTpotChan, observation(ev.DecodeDuration/float64(ev.GenerationTokens)), m.logger)
+		common.WriteToChannel(m.reqTpotChan, metrics.Observation(ev.DecodeDuration/float64(ev.GenerationTokens)), m.logger)
 	}
 }
 
@@ -388,27 +322,27 @@ func (m *vllmMetricsAdapter) OnRequestSucceeded(ev metrics.RequestSucceeded) {
 	}
 
 	// update number of successful requests per finish reason
-	common.WriteToChannel(m.requestSuccessTotalChan, RequestSuccessCounterUpdate{Increment: &ev.FinishReason}, m.logger)
+	common.WriteToChannel(m.requestSuccessTotalChan, requestSuccessCounterUpdate{Increment: &ev.FinishReason}, m.logger)
 
 	// request finished successfully, update number of prompt and generated tokens
 	// both total and histogram metrics
-	common.WriteToChannel(m.requestPromptTokensChan, observation(float64(ev.PromptTokens)), m.logger)
-	common.WriteToChannel(m.requestGenerationTokensChan, observation(float64(ev.GenerationTokens)), m.logger)
+	common.WriteToChannel(m.requestPromptTokensChan, metrics.Observation(float64(ev.PromptTokens)), m.logger)
+	common.WriteToChannel(m.requestGenerationTokensChan, metrics.Observation(float64(ev.GenerationTokens)), m.logger)
 	promptTokens := float64(ev.PromptTokens)
 	generationTokens := float64(ev.GenerationTokens)
-	common.WriteToChannel(m.promptTokensTotalChan, CounterUpdate{Add: &promptTokens}, m.logger)
-	common.WriteToChannel(m.generationTokensTotalChan, CounterUpdate{Add: &generationTokens}, m.logger)
+	common.WriteToChannel(m.promptTokensTotalChan, metrics.CounterUpdate{Add: &promptTokens}, m.logger)
+	common.WriteToChannel(m.generationTokensTotalChan, metrics.CounterUpdate{Add: &generationTokens}, m.logger)
 
 	// if max_tokens is set, update the request_params_max_tokens histogram
 	if ev.MaxTokens != nil {
-		common.WriteToChannel(m.requestParamsMaxTokensChan, observation(float64(*ev.MaxTokens)), m.logger)
+		common.WriteToChannel(m.requestParamsMaxTokensChan, metrics.Observation(float64(*ev.MaxTokens)), m.logger)
 	}
 	if maxGenTokens, err := common.MaxIntSlice(ev.GenTokensPerChoice); err == nil {
-		common.WriteToChannel(m.maxNumGenerationTokensChan, observation(float64(maxGenTokens)), m.logger)
+		common.WriteToChannel(m.maxNumGenerationTokensChan, metrics.Observation(float64(maxGenTokens)), m.logger)
 	}
 
-	common.WriteToChannel(m.e2eReqLatencyChan, observation(ev.E2ELatency), m.logger)
-	common.WriteToChannel(m.reqInferenceTimeChan, observation(ev.InferenceTime), m.logger)
+	common.WriteToChannel(m.e2eReqLatencyChan, metrics.Observation(ev.E2ELatency), m.logger)
+	common.WriteToChannel(m.reqInferenceTimeChan, metrics.Observation(ev.InferenceTime), m.logger)
 
 	m.finishRunning()
 }
@@ -419,8 +353,8 @@ func (m *vllmMetricsAdapter) OnRequestFailed(ev metrics.RequestFailed) {
 	if m.fake != nil {
 		return
 	}
-	common.WriteToChannel(m.e2eReqLatencyChan, observation(ev.E2ELatency), m.logger)
-	common.WriteToChannel(m.reqInferenceTimeChan, observation(ev.InferenceTime), m.logger)
+	common.WriteToChannel(m.e2eReqLatencyChan, metrics.Observation(ev.E2ELatency), m.logger)
+	common.WriteToChannel(m.reqInferenceTimeChan, metrics.Observation(ev.InferenceTime), m.logger)
 
 	m.finishRunning()
 }
@@ -431,7 +365,7 @@ func (m *vllmMetricsAdapter) OnKVCacheUsageChanged(ev metrics.KVCacheUsageChange
 	if m.fake != nil {
 		return
 	}
-	common.WriteToChannel(m.kvCacheUsageChan, gaugeAdd(ev.KVCacheUsagePerc), m.logger)
+	common.WriteToChannel(m.kvCacheUsageChan, metrics.GaugeAdd(ev.KVCacheUsagePerc), m.logger)
 }
 
 // change in prefix cache utilization
@@ -442,8 +376,8 @@ func (m *vllmMetricsAdapter) OnPrefixCacheQueried(ev metrics.PrefixCacheQueried)
 	}
 	hit := float64(ev.CachedPromptTokens)
 	queried := float64(ev.QueriedTokens)
-	common.WriteToChannel(m.prefixCacheHitsTotalChan, CounterUpdate{Add: &hit}, m.logger)
-	common.WriteToChannel(m.prefixCacheQueriesTotalChan, CounterUpdate{Add: &queried}, m.logger)
+	common.WriteToChannel(m.prefixCacheHitsTotalChan, metrics.CounterUpdate{Add: &hit}, m.logger)
+	common.WriteToChannel(m.prefixCacheQueriesTotalChan, metrics.CounterUpdate{Add: &queried}, m.logger)
 }
 
 // OnLoRASetsChanged receives the per-LoRA waiting/running snapshot produced
@@ -453,101 +387,101 @@ func (m *vllmMetricsAdapter) OnLoRASetsChanged(ev metrics.LoRASetsChanged) {
 	if m.fake != nil {
 		return
 	}
-	common.WriteToChannel(m.lorasChan, LoRAUpdate{Snapshot: &ev}, m.logger)
+	common.WriteToChannel(m.lorasChan, loraUpdate{Snapshot: &ev}, m.logger)
 }
 
 // finishRunning decrements the running-request counter for a terminal
 // request. LoRA state transitions are handled separately via LoRAChanged.
 func (m *vllmMetricsAdapter) finishRunning() {
-	common.WriteToChannel(m.runReqChan, gaugeAdd(-1), m.logger)
+	common.WriteToChannel(m.runReqChan, metrics.GaugeAdd(-1), m.logger)
 }
 
 func (m *vllmMetricsAdapter) createAndStartPrometheusChannels(ctx context.Context) {
 	maxNumberOfRunningRequests, maxNumberOfWaitingRequests, maxNumberOfRequests, maxNumberOfTokens := metrics.ChannelCapacities(m.config)
 
-	m.runReqChan = common.NewChannel[GaugeUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
+	m.runReqChan = common.NewChannel[metrics.GaugeUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.runReqChan, m.updateRunningRequests)
 
-	m.waitingReqChan = common.NewChannel[GaugeUpdate]("vllm", maxNumberOfWaitingRequests, ctx.Done())
+	m.waitingReqChan = common.NewChannel[metrics.GaugeUpdate]("vllm", maxNumberOfWaitingRequests, ctx.Done())
 	go common.Subscribe(ctx, m.waitingReqChan, m.updateWaitingRequests)
 
-	m.kvCacheUsageChan = common.NewChannel[GaugeUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
+	m.kvCacheUsageChan = common.NewChannel[metrics.GaugeUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.kvCacheUsageChan, m.updateKVCacheUsage)
 
-	m.ttftChan = common.NewChannel[HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
+	m.ttftChan = common.NewChannel[metrics.HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.ttftChan, m.updateTTFT)
 
-	m.perTokenLatencyChan = common.NewChannel[HistogramUpdate]("vllm", maxNumberOfTokens, ctx.Done())
+	m.perTokenLatencyChan = common.NewChannel[metrics.HistogramUpdate]("vllm", maxNumberOfTokens, ctx.Done())
 	go common.Subscribe(ctx, m.perTokenLatencyChan, m.updatePerTokenLatency)
 
-	m.e2eReqLatencyChan = common.NewChannel[HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
+	m.e2eReqLatencyChan = common.NewChannel[metrics.HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.e2eReqLatencyChan, m.updateE2EReqLatency)
 
-	m.reqQueueTimeChan = common.NewChannel[HistogramUpdate]("vllm", maxNumberOfWaitingRequests, ctx.Done())
+	m.reqQueueTimeChan = common.NewChannel[metrics.HistogramUpdate]("vllm", maxNumberOfWaitingRequests, ctx.Done())
 	go common.Subscribe(ctx, m.reqQueueTimeChan, m.updateReqQueueTime)
 
-	m.reqInferenceTimeChan = common.NewChannel[HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
+	m.reqInferenceTimeChan = common.NewChannel[metrics.HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.reqInferenceTimeChan, m.updateReqInferenceTime)
 
-	m.reqPrefillTimeChan = common.NewChannel[HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
+	m.reqPrefillTimeChan = common.NewChannel[metrics.HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.reqPrefillTimeChan, m.updateReqPrefillTime)
 
-	m.reqDecodeTimeChan = common.NewChannel[HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
+	m.reqDecodeTimeChan = common.NewChannel[metrics.HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.reqDecodeTimeChan, m.updateReqDecodeTime)
 
-	m.reqTpotChan = common.NewChannel[HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
+	m.reqTpotChan = common.NewChannel[metrics.HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.reqTpotChan, m.updateReqTpot)
 
-	m.lorasChan = common.NewChannel[LoRAUpdate]("vllm", maxNumberOfRequests, ctx.Done())
+	m.lorasChan = common.NewChannel[loraUpdate]("vllm", maxNumberOfRequests, ctx.Done())
 	go common.Subscribe(ctx, m.lorasChan, m.updateLoRAs)
 
-	m.requestPromptTokensChan = common.NewChannel[HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
+	m.requestPromptTokensChan = common.NewChannel[metrics.HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.requestPromptTokensChan, m.updateRequestPromptTokens)
 
-	m.requestGenerationTokensChan = common.NewChannel[HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
+	m.requestGenerationTokensChan = common.NewChannel[metrics.HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.requestGenerationTokensChan, m.updateRequestGenerationTokens)
 
-	m.maxNumGenerationTokensChan = common.NewChannel[HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
+	m.maxNumGenerationTokensChan = common.NewChannel[metrics.HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.maxNumGenerationTokensChan, m.updateMaxNumGenerationTokens)
 
-	m.requestParamsMaxTokensChan = common.NewChannel[HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
+	m.requestParamsMaxTokensChan = common.NewChannel[metrics.HistogramUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.requestParamsMaxTokensChan, m.updateRequestParamsMaxTokens)
 
-	m.promptTokensTotalChan = common.NewChannel[CounterUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
+	m.promptTokensTotalChan = common.NewChannel[metrics.CounterUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.promptTokensTotalChan, m.updatePromptTokensTotal)
 
-	m.generationTokensTotalChan = common.NewChannel[CounterUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
+	m.generationTokensTotalChan = common.NewChannel[metrics.CounterUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.generationTokensTotalChan, m.updateGenerationTokensTotal)
 
-	m.requestSuccessTotalChan = common.NewChannel[RequestSuccessCounterUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
+	m.requestSuccessTotalChan = common.NewChannel[requestSuccessCounterUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.requestSuccessTotalChan, m.updateRequestSuccessTotal)
 
-	m.prefixCacheHitsTotalChan = common.NewChannel[CounterUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
+	m.prefixCacheHitsTotalChan = common.NewChannel[metrics.CounterUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.prefixCacheHitsTotalChan, m.updatePrefixCacheHitsTotal)
 
-	m.prefixCacheQueriesTotalChan = common.NewChannel[CounterUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
+	m.prefixCacheQueriesTotalChan = common.NewChannel[metrics.CounterUpdate]("vllm", maxNumberOfRunningRequests, ctx.Done())
 	go common.Subscribe(ctx, m.prefixCacheQueriesTotalChan, m.updatePrefixCacheQueriesTotal)
 }
 
 // -- Per-metric updaters --------------------------------------------------
 
-func (m *vllmMetricsAdapter) updateRequestPromptTokens(upd HistogramUpdate) {
+func (m *vllmMetricsAdapter) updateRequestPromptTokens(upd metrics.HistogramUpdate) {
 	m.updateHistogram(&m.requestPromptTokens, m.createAndRegisterReqPromptTokensHistogram, upd)
 }
 
-func (m *vllmMetricsAdapter) updateRequestGenerationTokens(upd HistogramUpdate) {
+func (m *vllmMetricsAdapter) updateRequestGenerationTokens(upd metrics.HistogramUpdate) {
 	m.updateHistogram(&m.requestGenerationTokens, m.createAndRegisterReqGenerationTokensHistogram, upd)
 }
 
-func (m *vllmMetricsAdapter) updateMaxNumGenerationTokens(upd HistogramUpdate) {
+func (m *vllmMetricsAdapter) updateMaxNumGenerationTokens(upd metrics.HistogramUpdate) {
 	m.updateHistogram(&m.maxNumGenerationTokens, m.createAndRegisterMaxNumGenerationTokensHistogram, upd)
 }
 
-func (m *vllmMetricsAdapter) updateRequestParamsMaxTokens(upd HistogramUpdate) {
+func (m *vllmMetricsAdapter) updateRequestParamsMaxTokens(upd metrics.HistogramUpdate) {
 	m.updateHistogram(&m.requestParamsMaxTokens, m.createAndRegisterReqParamsMaxTokensHistogram, upd)
 }
 
-func (m *vllmMetricsAdapter) updatePromptTokensTotal(upd CounterUpdate) {
+func (m *vllmMetricsAdapter) updatePromptTokensTotal(upd metrics.CounterUpdate) {
 	switch {
 	case upd.Add != nil:
 		if m.fake != nil {
@@ -560,7 +494,7 @@ func (m *vllmMetricsAdapter) updatePromptTokensTotal(upd CounterUpdate) {
 	}
 }
 
-func (m *vllmMetricsAdapter) updateGenerationTokensTotal(upd CounterUpdate) {
+func (m *vllmMetricsAdapter) updateGenerationTokensTotal(upd metrics.CounterUpdate) {
 	switch {
 	case upd.Add != nil:
 		if m.fake != nil {
@@ -573,7 +507,7 @@ func (m *vllmMetricsAdapter) updateGenerationTokensTotal(upd CounterUpdate) {
 	}
 }
 
-func (m *vllmMetricsAdapter) updateRequestSuccessTotal(upd RequestSuccessCounterUpdate) {
+func (m *vllmMetricsAdapter) updateRequestSuccessTotal(upd requestSuccessCounterUpdate) {
 	switch {
 	case upd.Increment != nil:
 		if m.fake != nil {
@@ -585,7 +519,7 @@ func (m *vllmMetricsAdapter) updateRequestSuccessTotal(upd RequestSuccessCounter
 	}
 }
 
-func (m *vllmMetricsAdapter) updatePrefixCacheHitsTotal(upd CounterUpdate) {
+func (m *vllmMetricsAdapter) updatePrefixCacheHitsTotal(upd metrics.CounterUpdate) {
 	switch {
 	case upd.Add != nil:
 		if m.fake != nil {
@@ -598,7 +532,7 @@ func (m *vllmMetricsAdapter) updatePrefixCacheHitsTotal(upd CounterUpdate) {
 	}
 }
 
-func (m *vllmMetricsAdapter) updatePrefixCacheQueriesTotal(upd CounterUpdate) {
+func (m *vllmMetricsAdapter) updatePrefixCacheQueriesTotal(upd metrics.CounterUpdate) {
 	switch {
 	case upd.Add != nil:
 		if m.fake != nil {
@@ -611,43 +545,23 @@ func (m *vllmMetricsAdapter) updatePrefixCacheQueriesTotal(upd CounterUpdate) {
 	}
 }
 
-// observation wraps a single Observe value for a histogram-family channel.
-func observation(v float64) HistogramUpdate {
-	return HistogramUpdate{Observe: &v}
-}
-
-// gaugeAdd wraps a real-event delta for a gauge channel.
-func gaugeAdd(v float64) GaugeUpdate {
-	return GaugeUpdate{Add: &v}
-}
-
-// gaugeReset wraps an absolute fake-metrics value for a gauge channel.
-func gaugeReset(v float64) GaugeUpdate {
-	return GaugeUpdate{Reset: &v}
-}
-
 // updateHistogram records an Observe, or on Reset unregisters the
 // collector, recreates it, and replays the target bucket state.
-func (m *vllmMetricsAdapter) updateHistogram(histPP **prometheus.HistogramVec, recreate func() error, upd HistogramUpdate) {
+func (m *vllmMetricsAdapter) updateHistogram(histPP **prometheus.HistogramVec, recreate func() error, upd metrics.HistogramUpdate) {
 	switch {
 	case upd.Observe != nil:
 		if m.fake != nil {
 			return
 		}
-		if *histPP != nil {
-			(*histPP).WithLabelValues(m.config.DisplayModelName).Observe(*upd.Observe)
-		}
+		(*histPP).WithLabelValues(m.config.DisplayModelName).Observe(*upd.Observe)
 	case upd.Reset != nil:
-		m.registry.Unregister(*histPP)
-		if err := recreate(); err != nil {
-			m.logger.Error(err, "failed to recreate histogram during fake-metrics reset")
-			return
-		}
-		metrics.InitFakeHistogram(*histPP, m.config.DisplayModelName, upd.Reset.Buckets, upd.Reset.Samples)
+		m.resetCollector(*histPP, recreate, "failed to recreate histogram during fake-metrics reset", func() {
+			metrics.InitFakeHistogram(*histPP, upd.Reset.Buckets, upd.Reset.Samples, m.config.DisplayModelName)
+		})
 	}
 }
 
-func (m *vllmMetricsAdapter) updateWaitingRequests(upd GaugeUpdate) {
+func (m *vllmMetricsAdapter) updateWaitingRequests(upd metrics.GaugeUpdate) {
 	switch {
 	case upd.Add != nil && m.fake == nil:
 		m.nWaitingReqs += int64(*upd.Add)
@@ -659,7 +573,7 @@ func (m *vllmMetricsAdapter) updateWaitingRequests(upd GaugeUpdate) {
 	m.reportWaitingRequests()
 }
 
-func (m *vllmMetricsAdapter) updateRunningRequests(upd GaugeUpdate) {
+func (m *vllmMetricsAdapter) updateRunningRequests(upd metrics.GaugeUpdate) {
 	switch {
 	case upd.Add != nil && m.fake == nil:
 		m.nRunningReqs += int64(*upd.Add)
@@ -671,7 +585,7 @@ func (m *vllmMetricsAdapter) updateRunningRequests(upd GaugeUpdate) {
 	m.reportRunningRequests()
 }
 
-func (m *vllmMetricsAdapter) updateKVCacheUsage(upd GaugeUpdate) {
+func (m *vllmMetricsAdapter) updateKVCacheUsage(upd metrics.GaugeUpdate) {
 	switch {
 	case upd.Add != nil && m.fake == nil:
 		m.reportKVCacheUsage(*upd.Add)
@@ -680,42 +594,42 @@ func (m *vllmMetricsAdapter) updateKVCacheUsage(upd GaugeUpdate) {
 	}
 }
 
-func (m *vllmMetricsAdapter) updateTTFT(upd HistogramUpdate) {
+func (m *vllmMetricsAdapter) updateTTFT(upd metrics.HistogramUpdate) {
 	m.updateHistogram(&m.ttft, m.createAndRegisterTTFTHistogram, upd)
 }
 
-func (m *vllmMetricsAdapter) updatePerTokenLatency(upd HistogramUpdate) {
+func (m *vllmMetricsAdapter) updatePerTokenLatency(upd metrics.HistogramUpdate) {
 	m.updateHistogram(&m.tpot, m.createAndRegisterTPOTHistogram, upd)
 	m.updateHistogram(&m.interTokenLatency, m.createAndRegisterInterTokenLatencyHistogram, upd)
 }
 
-func (m *vllmMetricsAdapter) updateE2EReqLatency(upd HistogramUpdate) {
+func (m *vllmMetricsAdapter) updateE2EReqLatency(upd metrics.HistogramUpdate) {
 	m.updateHistogram(&m.e2eReqLatency, m.createAndRegisterE2EReqLatencyHistogram, upd)
 }
 
-func (m *vllmMetricsAdapter) updateReqQueueTime(upd HistogramUpdate) {
+func (m *vllmMetricsAdapter) updateReqQueueTime(upd metrics.HistogramUpdate) {
 	m.updateHistogram(&m.reqQueueTime, m.createAndRegisterReqQueueTimeHistogram, upd)
 }
 
-func (m *vllmMetricsAdapter) updateReqInferenceTime(upd HistogramUpdate) {
+func (m *vllmMetricsAdapter) updateReqInferenceTime(upd metrics.HistogramUpdate) {
 	m.updateHistogram(&m.reqInferenceTime, m.createAndRegisterReqInferenceTimeHistogram, upd)
 }
 
-func (m *vllmMetricsAdapter) updateReqPrefillTime(upd HistogramUpdate) {
+func (m *vllmMetricsAdapter) updateReqPrefillTime(upd metrics.HistogramUpdate) {
 	m.updateHistogram(&m.reqPrefillTime, m.createAndRegisterReqPrefillTimeHistogram, upd)
 }
 
-func (m *vllmMetricsAdapter) updateReqDecodeTime(upd HistogramUpdate) {
+func (m *vllmMetricsAdapter) updateReqDecodeTime(upd metrics.HistogramUpdate) {
 	m.updateHistogram(&m.reqDecodeTime, m.createAndRegisterReqDecodeTimeHistogram, upd)
 }
 
-func (m *vllmMetricsAdapter) updateReqTpot(upd HistogramUpdate) {
+func (m *vllmMetricsAdapter) updateReqTpot(upd metrics.HistogramUpdate) {
 	m.updateHistogram(&m.reqTpot, m.createAndRegisterReqTpotHistogram, upd)
 }
 
 // lorasUpdater republishes lora_requests_info from Snapshot events, or on
 // Reset recreates the collector and stamps the supplied entries.
-func (m *vllmMetricsAdapter) updateLoRAs(upd LoRAUpdate) {
+func (m *vllmMetricsAdapter) updateLoRAs(upd loraUpdate) {
 	switch {
 	case upd.Snapshot != nil:
 		m.reportLoras(*upd.Snapshot)
@@ -724,16 +638,10 @@ func (m *vllmMetricsAdapter) updateLoRAs(upd LoRAUpdate) {
 	}
 }
 
-// resetCollector unregisters current, recreates it via recreate, then calls
-// populate to stamp the recreated collector's series. Called only from
-// updater goroutines.
+// resetCollector binds this adapter's registry and logger to
+// metrics.ResetCollector.
 func (m *vllmMetricsAdapter) resetCollector(current prometheus.Collector, recreate func() error, errMsg string, populate func()) {
-	m.registry.Unregister(current)
-	if err := recreate(); err != nil {
-		m.logger.Error(err, errMsg)
-		return
-	}
-	populate()
+	metrics.ResetCollector(m.registry, m.logger, current, recreate, errMsg, populate)
 }
 
 // resetCounter resets *counterPP and records the target value via a
@@ -761,7 +669,7 @@ func (m *vllmMetricsAdapter) resetSuccessTotal(reasons map[string]int64) {
 // resetLoRA resets loraInfo, then stamps one series per entry. Empty
 // entries emits a single zero-adapter row with the current timestamp
 // (matching the fake-metrics default).
-func (m *vllmMetricsAdapter) resetLoRA(reset *LoRAReset) {
+func (m *vllmMetricsAdapter) resetLoRA(reset *loraReset) {
 	m.resetCollector(m.loraInfo, m.createAndRegisterLoraInfoGauge, "failed to recreate lora_requests_info gauge during fake-metrics reset", func() {
 		if len(reset.Entries) == 0 {
 			m.loraInfo.WithLabelValues(
@@ -1136,25 +1044,6 @@ func (m *vllmMetricsAdapter) setInitialValues() {
 }
 
 // -------- Fake Metrics ------
-func (m *vllmMetricsAdapter) updateScalarLocked(key string, fm *common.FakeMetricWithFunction, updateFunc func(upd GaugeUpdate), roundToInt bool) {
-	if fm.IsFunction {
-		gen := activeGenerator{
-			fn:         metrics.Dispatch(fm.Function.Name),
-			params:     fm.Function,
-			roundToInt: roundToInt,
-			updateFunc: updateFunc,
-		}
-		m.generators[key] = gen
-		value := gen.fn(gen.params, 0)
-		if roundToInt {
-			value = float64(int64(value))
-		}
-		updateFunc(gaugeReset(value))
-		return
-	}
-	delete(m.generators, key)
-	updateFunc(gaugeReset(fm.FixedValue))
-}
 
 func float64Ptr(v *int64) *float64 {
 	if v == nil {
@@ -1172,16 +1061,27 @@ func resolveTokenTotal(buckets []float64, samples []int, explicit *float64) *flo
 		return explicit
 	}
 
-	return metrics.InitFakeHistogram(nil, "", buckets, samples)
+	return metrics.InitFakeHistogram(nil, buckets, samples)
 }
 
 // ApplyFakeMetricsUpdate narrows the engine-owned fake-metrics configuration
 // to vLLM's concrete type and applies it. A configuration belonging to another
-// engine is logged and dropped.
+// engine, or one arriving while this adapter reports real metrics, is logged
+// and dropped.
 func (m *vllmMetricsAdapter) ApplyFakeMetricsUpdate(update common.FakeMetrics) {
 	vllmUpdate, ok := update.(*VLLMFakeMetrics)
 	if !ok || vllmUpdate == nil {
 		m.logger.Error(fmt.Errorf("unexpected fake-metrics configuration type %T", update),
+			"ignoring fake-metrics update")
+		return
+	}
+	if m.fake == nil {
+		// Applying it would stamp fake values while the event handlers, which
+		// gate on fake being set, keep reporting real ones, and the two are
+		// never reported together. Configuration.Update refuses a body carrying
+		// fake metrics in this state, so this is reached only if that gate is
+		// bypassed.
+		m.logger.Error(errors.New("the simulator is reporting real metrics"),
 			"ignoring fake-metrics update")
 		return
 	}
@@ -1191,151 +1091,94 @@ func (m *vllmMetricsAdapter) ApplyFakeMetricsUpdate(update common.FakeMetrics) {
 // applyFakeMetrics enqueues the update on the per-metric channels and returns.
 // The updater goroutines perform the collector unregister/recreate, logging and
 // skipping any metric that fails to re-register.
+//
+// Only the scalar metrics run inside Apply, since they are the ones that
+// register or clear a generator. The rest only write to a channel.
 func (m *vllmMetricsAdapter) applyFakeMetrics(update *VLLMFakeMetrics) {
-	m.genMu.Lock()
-	defer m.genMu.Unlock()
-	generatorsWereEmpty := len(m.generators) == 0
-
-	if update.RunningRequests != nil {
-		m.updateScalarLocked(VLLMReqRunningMetricName, update.RunningRequests, func(upd GaugeUpdate) {
-			common.WriteToChannel(m.runReqChan, upd, m.logger)
-		}, true)
-	}
-	if update.WaitingRequests != nil {
-		m.updateScalarLocked(VLLMReqWaitingMetricName, update.WaitingRequests, func(upd GaugeUpdate) {
-			common.WriteToChannel(m.waitingReqChan, upd, m.logger)
-		}, true)
-	}
-	if update.KVCacheUsagePercentage != nil {
-		m.updateScalarLocked(VLLMKVCacheUsageMetricName, update.KVCacheUsagePercentage, func(upd GaugeUpdate) {
-			common.WriteToChannel(m.kvCacheUsageChan, upd, m.logger)
-		}, false)
-	}
+	m.generators.Apply(func(gens *metrics.GeneratorSet) {
+		if update.RunningRequests != nil {
+			gens.Set(VLLMReqRunningMetricName, update.RunningRequests, func(upd metrics.GaugeUpdate) {
+				common.WriteToChannel(m.runReqChan, upd, m.logger)
+			}, true)
+		}
+		if update.WaitingRequests != nil {
+			gens.Set(VLLMReqWaitingMetricName, update.WaitingRequests, func(upd metrics.GaugeUpdate) {
+				common.WriteToChannel(m.waitingReqChan, upd, m.logger)
+			}, true)
+		}
+		if update.KVCacheUsagePercentage != nil {
+			gens.Set(VLLMKVCacheUsageMetricName, update.KVCacheUsagePercentage, func(upd metrics.GaugeUpdate) {
+				common.WriteToChannel(m.kvCacheUsageChan, upd, m.logger)
+			}, false)
+		}
+	})
 
 	if update.TTFTBucketValues != nil {
-		common.WriteToChannel(m.ttftChan, HistogramUpdate{Reset: &HistogramReset{Buckets: common.TTFTBucketsBoundaries, Samples: update.TTFTBucketValues}}, m.logger)
+		common.WriteToChannel(m.ttftChan, metrics.HistogramUpdate{Reset: &metrics.HistogramReset{Buckets: common.TTFTBucketsBoundaries, Samples: update.TTFTBucketValues}}, m.logger)
 	}
 	if update.TPOTBucketValues != nil {
-		common.WriteToChannel(m.perTokenLatencyChan, HistogramUpdate{Reset: &HistogramReset{Buckets: common.TPOTBucketsBoundaries, Samples: update.TPOTBucketValues}}, m.logger)
+		common.WriteToChannel(m.perTokenLatencyChan, metrics.HistogramUpdate{Reset: &metrics.HistogramReset{Buckets: common.TPOTBucketsBoundaries, Samples: update.TPOTBucketValues}}, m.logger)
 	}
 	if update.E2ERequestLatencyBucketValues != nil {
-		common.WriteToChannel(m.e2eReqLatencyChan, HistogramUpdate{Reset: &HistogramReset{Buckets: common.RequestLatencyBucketsBoundaries, Samples: update.E2ERequestLatencyBucketValues}}, m.logger)
+		common.WriteToChannel(m.e2eReqLatencyChan, metrics.HistogramUpdate{Reset: &metrics.HistogramReset{Buckets: common.RequestLatencyBucketsBoundaries, Samples: update.E2ERequestLatencyBucketValues}}, m.logger)
 	}
 	if update.ReqQueueTimeBucketValues != nil {
-		common.WriteToChannel(m.reqQueueTimeChan, HistogramUpdate{Reset: &HistogramReset{Buckets: common.RequestLatencyBucketsBoundaries, Samples: update.ReqQueueTimeBucketValues}}, m.logger)
+		common.WriteToChannel(m.reqQueueTimeChan, metrics.HistogramUpdate{Reset: &metrics.HistogramReset{Buckets: common.RequestLatencyBucketsBoundaries, Samples: update.ReqQueueTimeBucketValues}}, m.logger)
 	}
 	if update.ReqInfTimeBucketValues != nil {
-		common.WriteToChannel(m.reqInferenceTimeChan, HistogramUpdate{Reset: &HistogramReset{Buckets: common.RequestLatencyBucketsBoundaries, Samples: update.ReqInfTimeBucketValues}}, m.logger)
+		common.WriteToChannel(m.reqInferenceTimeChan, metrics.HistogramUpdate{Reset: &metrics.HistogramReset{Buckets: common.RequestLatencyBucketsBoundaries, Samples: update.ReqInfTimeBucketValues}}, m.logger)
 	}
 	if update.ReqPrefillTimeBucketValues != nil {
-		common.WriteToChannel(m.reqPrefillTimeChan, HistogramUpdate{Reset: &HistogramReset{Buckets: common.RequestLatencyBucketsBoundaries, Samples: update.ReqPrefillTimeBucketValues}}, m.logger)
+		common.WriteToChannel(m.reqPrefillTimeChan, metrics.HistogramUpdate{Reset: &metrics.HistogramReset{Buckets: common.RequestLatencyBucketsBoundaries, Samples: update.ReqPrefillTimeBucketValues}}, m.logger)
 	}
 	if update.ReqDecodeTimeBucketValues != nil {
-		common.WriteToChannel(m.reqDecodeTimeChan, HistogramUpdate{Reset: &HistogramReset{Buckets: common.RequestLatencyBucketsBoundaries, Samples: update.ReqDecodeTimeBucketValues}}, m.logger)
+		common.WriteToChannel(m.reqDecodeTimeChan, metrics.HistogramUpdate{Reset: &metrics.HistogramReset{Buckets: common.RequestLatencyBucketsBoundaries, Samples: update.ReqDecodeTimeBucketValues}}, m.logger)
 	}
 	if update.ReqTPOTBucketValues != nil {
-		common.WriteToChannel(m.reqTpotChan, HistogramUpdate{Reset: &HistogramReset{Buckets: common.TPOTBucketsBoundaries, Samples: update.ReqTPOTBucketValues}}, m.logger)
+		common.WriteToChannel(m.reqTpotChan, metrics.HistogramUpdate{Reset: &metrics.HistogramReset{Buckets: common.TPOTBucketsBoundaries, Samples: update.ReqTPOTBucketValues}}, m.logger)
 	}
 
 	tokenBuckets := metrics.BuildBuckets(m.config.MaxModelLen, TokenBucketMantissas)
 
 	if update.RequestParamsMaxTokens != nil {
-		common.WriteToChannel(m.requestParamsMaxTokensChan, HistogramUpdate{Reset: &HistogramReset{Buckets: tokenBuckets, Samples: update.RequestParamsMaxTokens}}, m.logger)
+		common.WriteToChannel(m.requestParamsMaxTokensChan, metrics.HistogramUpdate{Reset: &metrics.HistogramReset{Buckets: tokenBuckets, Samples: update.RequestParamsMaxTokens}}, m.logger)
 	}
 	if update.RequestMaxGenerationTokens != nil {
-		common.WriteToChannel(m.maxNumGenerationTokensChan, HistogramUpdate{Reset: &HistogramReset{Buckets: tokenBuckets, Samples: update.RequestMaxGenerationTokens}}, m.logger)
+		common.WriteToChannel(m.maxNumGenerationTokensChan, metrics.HistogramUpdate{Reset: &metrics.HistogramReset{Buckets: tokenBuckets, Samples: update.RequestMaxGenerationTokens}}, m.logger)
 	}
 
 	// update histogram of the prompt tokens
 	if update.RequestPromptTokens != nil {
-		common.WriteToChannel(m.requestPromptTokensChan, HistogramUpdate{Reset: &HistogramReset{Buckets: tokenBuckets, Samples: update.RequestPromptTokens}}, m.logger)
+		common.WriteToChannel(m.requestPromptTokensChan, metrics.HistogramUpdate{Reset: &metrics.HistogramReset{Buckets: tokenBuckets, Samples: update.RequestPromptTokens}}, m.logger)
 	}
 	// update the total prompt tokens counter according the histogram (if the total is not provided) or
 	// according to the explicit total (if provided)
 	if update.RequestPromptTokens != nil || update.TotalPromptTokens != nil {
 		total := resolveTokenTotal(tokenBuckets, update.RequestPromptTokens, float64Ptr(update.TotalPromptTokens))
-		common.WriteToChannel(m.promptTokensTotalChan, CounterUpdate{Reset: &CounterReset{Value: total}}, m.logger)
+		common.WriteToChannel(m.promptTokensTotalChan, metrics.CounterUpdate{Reset: &metrics.CounterReset{Value: total}}, m.logger)
 	}
 
 	if update.RequestGenerationTokens != nil {
-		common.WriteToChannel(m.requestGenerationTokensChan, HistogramUpdate{Reset: &HistogramReset{Buckets: tokenBuckets, Samples: update.RequestGenerationTokens}}, m.logger)
+		common.WriteToChannel(m.requestGenerationTokensChan, metrics.HistogramUpdate{Reset: &metrics.HistogramReset{Buckets: tokenBuckets, Samples: update.RequestGenerationTokens}}, m.logger)
 	}
 	if update.RequestGenerationTokens != nil || update.TotalGenerationTokens != nil {
 		total := resolveTokenTotal(tokenBuckets, update.RequestGenerationTokens, float64Ptr(update.TotalGenerationTokens))
-		common.WriteToChannel(m.generationTokensTotalChan, CounterUpdate{Reset: &CounterReset{Value: total}}, m.logger)
+		common.WriteToChannel(m.generationTokensTotalChan, metrics.CounterUpdate{Reset: &metrics.CounterReset{Value: total}}, m.logger)
 	}
 
 	if update.PrefixCacheQueries != nil {
-		common.WriteToChannel(m.prefixCacheQueriesTotalChan, CounterUpdate{Reset: &CounterReset{Value: float64Ptr(update.PrefixCacheQueries)}}, m.logger)
+		common.WriteToChannel(m.prefixCacheQueriesTotalChan, metrics.CounterUpdate{Reset: &metrics.CounterReset{Value: float64Ptr(update.PrefixCacheQueries)}}, m.logger)
 	}
 	if update.PrefixCacheHits != nil {
-		common.WriteToChannel(m.prefixCacheHitsTotalChan, CounterUpdate{Reset: &CounterReset{Value: float64Ptr(update.PrefixCacheHits)}}, m.logger)
+		common.WriteToChannel(m.prefixCacheHitsTotalChan, metrics.CounterUpdate{Reset: &metrics.CounterReset{Value: float64Ptr(update.PrefixCacheHits)}}, m.logger)
 	}
 
 	if update.RequestSuccessTotal != nil {
-		common.WriteToChannel(m.requestSuccessTotalChan, RequestSuccessCounterUpdate{Reset: &SuccessTotalReset{Reasons: update.RequestSuccessTotal}}, m.logger)
+		common.WriteToChannel(m.requestSuccessTotalChan, requestSuccessCounterUpdate{Reset: &successTotalReset{Reasons: update.RequestSuccessTotal}}, m.logger)
 	}
 
 	if update.LoraMetrics != nil {
-		common.WriteToChannel(m.lorasChan, LoRAUpdate{Reset: &LoRAReset{MaxLoRAs: m.config.Lora.MaxLoras, Entries: update.LoraMetrics}}, m.logger)
+		common.WriteToChannel(m.lorasChan, loraUpdate{Reset: &loraReset{MaxLoRAs: m.config.Lora.MaxLoras, Entries: update.LoraMetrics}}, m.logger)
 	}
 
-	generatorsAreEmpty := len(m.generators) == 0
-
-	if m.started {
-		switch {
-		case generatorsWereEmpty && !generatorsAreEmpty:
-			m.startTickerLocked()
-		case !generatorsWereEmpty && generatorsAreEmpty:
-			m.stopTickerLocked()
-		}
-	}
-}
-
-func (m *vllmMetricsAdapter) startTickerLocked() {
-	tickerCtx, cancel := context.WithCancel(m.ctx)
-	m.tickerCancel = cancel
-	m.tickerRunning = true
-	m.tickerStart = time.Now()
-	interval := m.config.FakeMetricsRefreshInterval
-	go m.runTicker(tickerCtx, interval, m.tickerStart)
-}
-
-func (m *vllmMetricsAdapter) stopTickerLocked() {
-	if !m.tickerRunning {
-		return
-	}
-	m.tickerCancel()
-	m.tickerCancel = nil
-	m.tickerRunning = false
-}
-
-func (m *vllmMetricsAdapter) runTicker(ctx context.Context, interval time.Duration, start time.Time) {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			m.tick(time.Since(start))
-		}
-	}
-}
-
-func (m *vllmMetricsAdapter) tick(t time.Duration) {
-	m.genMu.Lock()
-	snapshot := make([]activeGenerator, 0, len(m.generators))
-	for _, gen := range m.generators {
-		snapshot = append(snapshot, gen)
-	}
-	m.genMu.Unlock()
-
-	for _, gen := range snapshot {
-		value := gen.fn(gen.params, t)
-		if gen.roundToInt {
-			value = float64(int64(value))
-		}
-		gen.updateFunc(gaugeReset(value))
-	}
 }
