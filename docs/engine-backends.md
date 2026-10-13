@@ -26,6 +26,10 @@ no metrics, no LoRA adapters, and no KV cache. Because the settings behind those
 a configuration file asking for one is rejected rather than silently ignored, and the corresponding flags
 do not exist. `/metrics` serves an empty body.
 
+The experimental SGLang backend does not apply strict request validation. Its
+`NewRequestValidator` hook returns no validator, so the completion endpoints retain their
+ordinary request checks even when `strict` is enabled in the configuration.
+
 Every completion choice carries SGLang's `matched_stop` field, naming which `stop` string or
 `stop_token_ids` entry ended generation. It is always `null` today: matching a stop condition requires
 `stop`/`stop_token_ids` request handling, which neither engine implements yet. This gap is expected to
@@ -42,6 +46,7 @@ close as SGLang support matures, not a permanent design boundary the way the vLL
 | `BindFlags` | The engine's CLI flags, and unmarshaling its own YAML blocks out of the raw config tree | [flags.go](../pkg/engine/vllm/flags.go) |
 | `ApplyEnv` | The engine's environment variables | [env.go](../pkg/engine/vllm/env.go) |
 | `ValidateConfig` | Validation rules for the engine's own fields | [validate.go](../pkg/engine/vllm/validate.go) |
+| `NewRequestValidator` | Strict request schemas and semantic validation rules | [strict_schema.go](../pkg/engine/vllm/strict_schema.go), [strict_validation.go](../pkg/engine/vllm/strict_validation.go) |
 | `BindHTTP` | HTTP routes beyond the OpenAI-compatible set | [transport.go](../pkg/engine/vllm/transport.go) |
 | `BindGRPC` | The gRPC service, and whether the engine has one at all | [transport.go](../pkg/engine/vllm/transport.go) |
 | `ErrorBody`, `StreamErrorBody` | How an error object is framed in a response body | [transport.go](../pkg/engine/vllm/transport.go) |
@@ -102,8 +107,9 @@ The order matters because each step's output is the next step's input. `main` re
 2. `simulator.Start` builds each rank's `SimContext`, which calls `NewMetricsAdapter` to wire the metrics
    bus and, when the KV cache is enabled and multi-modal encoder-only mode is not, `NewKVEventEncoder` to
    wire the block cache.
-3. `Communication.Start` consults `BindGRPC` first, unless multi-modal encoder-only mode is enabled, and
-   opens a gRPC listener only if it returns true. It then calls `BindHTTP` while building the HTTP router.
+3. `Communication.Start` calls `NewRequestValidator` when strict validation is enabled. It consults
+   `BindGRPC`, unless multi-modal encoder-only mode is enabled, and opens a gRPC listener only if it
+   returns true. It then calls `BindHTTP` while building the HTTP router.
 
 
 ## How an error is framed

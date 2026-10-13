@@ -298,6 +298,19 @@ func (c *Communication) handleHTTP(req endpoint.Request, respBuilder responseBui
 		return
 	}
 
+	path := string(ctx.Path())
+	if c.runtime.Config().StrictRequestValidation && c.strictValidator != nil &&
+		(path == "/v1/chat/completions" || path == "/v1/completions") {
+		if err := validateStrictHeaders(&ctx.Request.Header); err != nil {
+			c.sendError(ctx, err, false)
+			return
+		}
+		if err := c.strictValidator.Validate(ctx.Request.Body(), path); err != nil {
+			c.sendError(ctx, err, false)
+			return
+		}
+	}
+
 	if err := req.Unmarshal(ctx.Request.Body()); err != nil {
 		c.logger.Error(err, "failed to read and parse request body")
 		errToSend := api.NewError("Failed to read and parse request body, "+err.Error(), fasthttp.StatusBadRequest, nil)
