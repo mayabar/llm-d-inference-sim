@@ -194,21 +194,31 @@ var _ = Describe("Simulator", forEachEngine(func() {
 		Expect(message["content"]).To(Equal(testUserMessage))
 	})
 
-	It("rejects min_tokens above the echoed prompt length", func() {
+	It("pads the echoed last message to min_tokens when the full prompt is longer", func() {
 		ctx := context.TODO()
 		client, err := startServer(ctx, common.ModeEcho)
 		Expect(err).NotTo(HaveOccurred())
 
-		reqBody := fmt.Sprintf(`{"model":%q,"messages":[{"role":"user","content":%q}],"min_tokens":100}`,
-			common.TestModelName, testUserMessage)
+		systemMessage := strings.Repeat("system message ", 20)
+		minTokens := getTextPromptTokensCountForTestModel(testUserMessage) + 5
+		reqBody := fmt.Sprintf(`{"model":%q,"messages":[{"role":"system","content":%q},{"role":"user","content":%q}],"min_tokens":%d}`,
+			common.TestModelName, systemMessage, testUserMessage, minTokens)
 		resp, err := client.Post("http://localhost/v1/chat/completions", "application/json", strings.NewReader(reqBody))
 		Expect(err).NotTo(HaveOccurred())
 		defer func() { Expect(resp.Body.Close()).To(Succeed()) }()
-		Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
 		body, err := io.ReadAll(resp.Body)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(string(body)).To(ContainSubstring("min_tokens must not exceed the prompt length"))
+		var response map[string]any
+		Expect(json.Unmarshal(body, &response)).To(Succeed())
+		usage := response["usage"].(map[string]any)
+		Expect(usage["completion_tokens"]).To(BeNumerically("==", minTokens))
+		choices := response["choices"].([]any)
+		Expect(choices[0].(map[string]any)["finish_reason"]).To(Equal(common.StopFinishReason))
+		content := choices[0].(map[string]any)["message"].(map[string]any)["content"].(string)
+		Expect(content).To(HavePrefix(testUserMessage))
+		Expect(dataset.IsValidText(strings.TrimPrefix(content, testUserMessage))).To(BeTrue())
 	})
 
 	DescribeTable("chat completions",

@@ -160,41 +160,24 @@ func (b *baseRequestContext) tokenize() *api.Error {
 // validate context window and other token-count-dependent request constraints,
 // which can only be checked once the prompt is tokenized
 func (b *baseRequestContext) validateTokenizedRequest() (string, int) {
-	promptTokens := getNumberOfPromptTokens(b.Request())
+	req := b.Request()
+	promptTokens := getNumberOfPromptTokens(req)
 	maxModelLen := b.runtime.Config().MaxModelLen
-	mode := b.runtime.Config().Mode
 
-	if !common.ValidateContextWindow(promptTokens, maxModelLen, mode) {
-		var message string
-		if mode == common.ModeEcho {
-			message = fmt.Sprintf("This model's maximum context length is %d tokens. However, the prompt has %d tokens, and in echo mode the prompt is echoed back as the response, requiring %d tokens in total. Please reduce the length of the messages",
-				maxModelLen, promptTokens, promptTokens*2)
-		} else {
-			message = fmt.Sprintf("This model's maximum context length is %d tokens. However, you requested %d tokens in the messages. Please reduce the length of the messages",
-				maxModelLen, promptTokens)
-		}
+	if !common.ValidateContextWindow(promptTokens, maxModelLen) {
+		message := fmt.Sprintf("This model's maximum context length is %d tokens. However, you requested %d tokens in the messages. Please reduce the length of the messages",
+			maxModelLen, promptTokens)
 		return message, fasthttp.StatusBadRequest
 	}
 
-	if mode == common.ModeRandom {
-		effectiveMaxTokens := maxModelLen - promptTokens
-		if maxTokens := b.Request().GetMaxCompletionTokens(); maxTokens != nil && *maxTokens < int64(effectiveMaxTokens) {
-			effectiveMaxTokens = int(*maxTokens)
-		}
-
-		if minTokens := b.Request().GetMinTokens(); minTokens != nil && *minTokens > int64(effectiveMaxTokens) {
-			message := fmt.Sprintf("min_tokens must be less than or equal to max_tokens=%d, got %d.",
-				effectiveMaxTokens, *minTokens)
-			return message, fasthttp.StatusBadRequest
-		}
+	effectiveMaxTokens := maxModelLen - promptTokens
+	if maxTokens := req.GetMaxCompletionTokens(); maxTokens != nil && *maxTokens < int64(effectiveMaxTokens) {
+		effectiveMaxTokens = int(*maxTokens)
 	}
-
-	if mode == common.ModeEcho {
-		if minTokens := b.Request().GetMinTokens(); minTokens != nil && int64(promptTokens) < *minTokens {
-			message := fmt.Sprintf("In echo mode the full prompt is returned as the response, so min_tokens must not exceed the prompt length. min_tokens is %d, but the prompt has %d tokens. Please decrease min_tokens or increase the length of the messages",
-				*minTokens, promptTokens)
-			return message, fasthttp.StatusBadRequest
-		}
+	if minTokens := req.GetMinTokens(); minTokens != nil && *minTokens > int64(effectiveMaxTokens) {
+		message := fmt.Sprintf("min_tokens must be less than or equal to max_tokens=%d, got %d.",
+			effectiveMaxTokens, *minTokens)
+		return message, fasthttp.StatusBadRequest
 	}
 
 	return "", fasthttp.StatusOK
