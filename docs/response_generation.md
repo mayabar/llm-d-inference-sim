@@ -13,12 +13,12 @@ In this mode, the simulator acts as a loopback mechanism.
 - **`min_tokens`:** If the response is still shorter than `min_tokens`, it is padded up to `min_tokens` with predefined text. Negative values and a value above the maximum length return `400 Bad Request`.
 - **Response length:** The echoed text's token count, after truncation or padding as described above.
 - **Finish reason:** `LENGTH` if the response length reaches the maximum length, otherwise `STOP`.
-- **Context window:** `max_tokens` is not considered when validating the request against the context window, the request is rejected with `400 Bad Request` unless `<input_length> + 1 <= <context_window>`.
+- **Context window:** The request is rejected with `400 Bad Request` if `<input_length> >= <context_window>`. The response length is still bounded by the remaining context window.
 
 ## Random Mode
 In this mode, the simulator generates synthetic responses. The length and content depend on the request parameters.
 
-**Context window:** `max_tokens` is not considered when validating the request against the context window — only the prompt itself needs to leave room for at least one response token (`<input_length> + 1 <= <context_window>`). The response length is still bounded by the remaining context window; see below.
+**Context window:** The request is rejected with `400 Bad Request` if `<input_length> >= <context_window>`. The response length is still bounded by the remaining context window; see below.
 
 ### Response Length Calculation
 `min_tokens` sets the lower bound for generated chat-completion response length. A value of zero is valid and preserves the default lower bound of one token. Negative values, a minimum greater than the requested maximum, and a minimum greater than the context-clamped maximum return `400 Bad Request`.
