@@ -19,6 +19,7 @@ package dataset
 import (
 	"context"
 	"math"
+	"slices"
 
 	"github.com/go-logr/logr"
 	"github.com/llm-d/llm-d-inference-sim/pkg/api"
@@ -49,28 +50,35 @@ type Dataset interface {
 	GetResponseTokens(req api.Request) (*api.Tokenized, string, error)
 }
 
-type EchoDataset struct{}
+type EchoDataset struct {
+	DefaultDataset
+}
 
 // GetResponseTokens returns response tokens when simulator is in echo mode
 // for /completion request the prompt is returned
 // for /chat/completion request the last user message is returned (if there is no user messages, last message is used)
-// the response is truncated to the first max_tokens tokens if the request defines
-// max_tokens and the echo is longer than it
-// if the response is truncated, finish reason is set to LENGTH, otherwise finish reason is STOP
+// the maximum response length is max_tokens capped by the room left in the context window,
+// or the room left in the context window if the request does not define max_tokens
+// the response is truncated to the first maximum response length tokens if the echo is longer
+// if ignore_eos is true and max_tokens is longer than the echo, the echo is padded up to the maximum response length,
+// otherwise if min_tokens is longer than the echo, the echo is padded up to min_tokens,
+// padding tokens are taken from the predefined sentences
+// if the response reaches the maximum response length, finish reason is set to LENGTH, otherwise finish reason is STOP
 func (ed *EchoDataset) GetResponseTokens(req api.Request) (*api.Tokenized, string, error) {
 	tokens := req.TokenizedPromptForEcho()
-	maxTokens := req.GetMaxCompletionTokens()
+	maxLen, isMaxTokensInReq := ed.calculateResponseMaxLen(req)
+	n := common.EchoResponseLen(tokens.Length(), req.GetMinTokens(), maxLen, req.GetIgnoreEOS() && isMaxTokensInReq)
 
-	if maxTokens != nil && int(*maxTokens) < tokens.Length() {
-		n := int(*maxTokens)
+	switch {
+	case n < tokens.Length():
 		tokens = &api.Tokenized{Tokens: tokens.Tokens[:n], Strings: tokens.Strings[:n]}
+	case n > tokens.Length():
+		padded := api.Tokenized{Tokens: slices.Clone(tokens.Tokens), Strings: slices.Clone(tokens.Strings)}
+		padded.Append(ed.generatePresetRandomTokens(n - tokens.Length()))
+		tokens = &padded
 	}
 
-	return tokens, common.FinishReason(maxTokens, tokens.Length()), nil
-}
-
-func (ed *EchoDataset) Close() error {
-	return nil
+	return tokens, common.FinishReason(new(int64(maxLen)), tokens.Length()), nil
 }
 
 type MMEncoderOnlyDataset struct {
@@ -217,10 +225,15 @@ func (d *DefaultDataset) calculateResponseMinLen(req api.Request) int {
 
 // getRandomResponseLenByDistribution returns int in range [minLen, maxLen]
 // numbers are chosen according a gaussian distribution with mean responseLenMean, and standard deviation responseLenStddev
+// if minLen is greater than responseLenMean+responseLenStddev, the mean is responseLenMean+minLen
 // note: this implementation can be too expensive for small maxLen.
 func (d *DefaultDataset) getRandomResponseLenByGaussian(minLen int, maxLen int) int {
+	mean := responseLenMean
+	if minLen > responseLenMean+responseLenStddev {
+		mean = responseLenMean + minLen
+	}
 	for {
-		val := d.random.RandomNorm(responseLenMean, responseLenStddev)
+		val := d.random.RandomNorm(mean, responseLenStddev)
 		if val >= float64(minLen) && val <= float64(maxLen) {
 			return int(math.Round(val))
 		}

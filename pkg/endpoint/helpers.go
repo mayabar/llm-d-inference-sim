@@ -39,17 +39,10 @@ func validateRequest(req api.Request) *api.Error {
 		return &err
 	}
 
-	if minTokens := req.GetMinTokens(); minTokens != nil {
-		if *minTokens < 0 {
-			err := api.NewError(fmt.Sprintf("min_tokens must be greater than or equal to 0, got %d.", *minTokens),
-				fasthttp.StatusBadRequest, nil)
-			return &err
-		}
-		if maxTokens := req.GetMaxCompletionTokens(); maxTokens != nil && *minTokens > *maxTokens {
-			err := api.NewError(fmt.Sprintf("min_tokens must be less than or equal to max_tokens=%d, got %d.",
-				*maxTokens, *minTokens), fasthttp.StatusBadRequest, nil)
-			return &err
-		}
+	if minTokens := req.GetMinTokens(); minTokens != nil && *minTokens < 0 {
+		err := api.NewError(fmt.Sprintf("min_tokens must be greater than or equal to 0, got %d.", *minTokens),
+			fasthttp.StatusBadRequest, nil)
+		return &err
 	}
 
 	if req.IsDoRemoteDecode() && req.IsStream() {

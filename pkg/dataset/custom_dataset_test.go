@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/api"
@@ -337,6 +338,10 @@ var _ = Describe("CustomDataset", Ordered, func() {
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(tokens.Length()).To(Equal(int(minTokens)))
+			Expect(tokens.Tokens).To(HaveLen(int(minTokens)))
+			respLen := validDB[0].respTokens.Length()
+			Expect(tokens.Strings[:respLen]).To(Equal(validDB[0].respTokens.Strings))
+			Expect(IsValidText(strings.Join(tokens.Strings[respLen:], ""))).To(BeTrue())
 			Expect(finishReason).To(Equal(common.StopFinishReason))
 		})
 
