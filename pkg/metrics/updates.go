@@ -15,8 +15,7 @@ limitations under the License.
 */
 
 // The channel payloads an engine's MetricsAdapter carries from its event
-// handlers to its per-metric updater goroutines, and the collector reset those
-// updaters perform.
+// handlers to its per-metric updater goroutines.
 //
 // Each payload is a two-variant union: a value a real event produced, or the
 // absolute target state of a fake-metrics configuration. Both engines need the
@@ -24,11 +23,6 @@ limitations under the License.
 // whose variants carry engine-specific labels stays with its engine.
 
 package metrics
-
-import (
-	"github.com/go-logr/logr"
-	"github.com/prometheus/client_golang/prometheus"
-)
 
 // GaugeUpdate is a gauge-channel payload. Exactly one variant must be non-nil.
 //
@@ -49,8 +43,8 @@ type HistogramUpdate struct {
 }
 
 // HistogramReset carries the target state for a reset-shaped histogram
-// update: unregister the current collector, recreate it, then Observe once
-// per bucket according to Samples over the Buckets boundaries.
+// update: clear the histogram's series, then Observe once per bucket
+// according to Samples over the Buckets boundaries.
 type HistogramReset struct {
 	Buckets []float64
 	Samples []int
@@ -64,9 +58,9 @@ type CounterUpdate struct {
 }
 
 // CounterReset carries the target state for a reset-shaped counter update:
-// unregister the current collector, recreate it, then Add Value. A nil
-// Value leaves the recreated counter with no series stamped, so it is
-// absent from /metrics rather than reporting an explicit zero.
+// clear the counter's series, then Add Value. A nil Value leaves the
+// counter with no series stamped, so it is absent from /metrics rather
+// than reporting an explicit zero.
 type CounterReset struct {
 	Value *float64
 }
@@ -95,23 +89,4 @@ func CounterAdd(v float64) CounterUpdate {
 // nil value resets the counter to no series at all.
 func CounterResetTo(v *float64) CounterUpdate {
 	return CounterUpdate{Reset: &CounterReset{Value: v}}
-}
-
-// ResetCollector unregisters current from registry, recreates it via recreate,
-// then calls populate to stamp the recreated collector's series. A collector
-// that fails to re-register is logged under errMsg and left unpopulated, so a
-// caller cannot observe the failure; call only from an updater goroutine.
-//
-// Recreating is what makes a reset absolute: a Prometheus collector's value can
-// only grow for a counter and only be stamped per series for any of them, so a
-// fake-metrics configuration replacing the current state has to replace the
-// collector behind it.
-func ResetCollector(registry *prometheus.Registry, logger logr.Logger, current prometheus.Collector,
-	recreate func() error, errMsg string, populate func()) {
-	registry.Unregister(current)
-	if err := recreate(); err != nil {
-		logger.Error(err, errMsg)
-		return
-	}
-	populate()
 }
