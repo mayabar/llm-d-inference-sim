@@ -294,7 +294,7 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 				TotalPromptTokens:   &firstTotal,
 				RequestSuccessTotal: map[string]int64{"stop": 3, "length": 2},
 			})
-			Eventually(counterValue(adapter.promptTokensTotal, common.TestModelName)).Should(Equal(float64(10)))
+			Eventually(counterValue(adapter.promptTokensTotal, common.TestModelName)).Should(Equal(float64(firstTotal)))
 			Eventually(func() int { return testutil.CollectAndCount(adapter.requestSuccessTotal) }).Should(Equal(2))
 
 			adapter.ApplyFakeMetricsUpdate(&VLLMFakeMetrics{
@@ -302,7 +302,7 @@ var _ = Describe("VLLMMetricsAdapter", func() {
 				TotalPromptTokens:   &secondTotal,
 				RequestSuccessTotal: map[string]int64{"stop": 1},
 			})
-			Eventually(counterValue(adapter.promptTokensTotal, common.TestModelName)).Should(Equal(float64(4)))
+			Eventually(counterValue(adapter.promptTokensTotal, common.TestModelName)).Should(Equal(float64(secondTotal)))
 			Eventually(func() int { return testutil.CollectAndCount(adapter.requestSuccessTotal) }).Should(Equal(1))
 			Expect(counterValue(adapter.requestSuccessTotal, common.TestModelName, "stop")()).To(Equal(float64(1)))
 
