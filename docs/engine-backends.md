@@ -68,7 +68,7 @@ well, since the set of fakeable fields mirrors its own real metrics.
 
 What an adapter does *not* own is the plumbing between its event handlers and its Prometheus
 collectors: the channel payload shapes, the generator ticker behind function-valued fake metrics, and
-the unregister-recreate-restamp a reset performs are the same for every engine and live in
+the clear-and-restamp a reset performs are the same for every engine and live in
 [pkg/metrics](../pkg/metrics). A payload whose variants carry engine-specific labels stays with its
 engine, which is why vLLM keeps its LoRA and finish-reason payloads and SGLang its `is_streaming` ones.
 
