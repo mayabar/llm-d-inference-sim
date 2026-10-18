@@ -874,12 +874,7 @@ var _ = Describe("Fake metrics", Ordered, func() {
 			Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
 			eventuallyThenConsistentlyMetrics(client, func(g Gomega, metricsData string) {
-
-				// Old lora entries should be gone, only a new empty one present
-				g.Expect(metricsData).NotTo(ContainSubstring("lora4"))
-				g.Expect(metricsData).NotTo(ContainSubstring("lora5"))
-				g.Expect(metricsData).NotTo(ContainSubstring("lora6"))
-				g.Expect(metricsData).To(ContainSubstring(`vllm:lora_requests_info{max_lora="1",running_lora_adapters="",waiting_lora_adapters=""}`))
+				g.Expect(metricsData).NotTo(ContainSubstring(vllm.VLLMLoRARequestsMetricName))
 			})
 		})
 
