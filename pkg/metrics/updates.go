@@ -79,14 +79,3 @@ func GaugeReset(v float64) GaugeUpdate {
 func Observation(v float64) HistogramUpdate {
 	return HistogramUpdate{Observe: &v}
 }
-
-// CounterAdd wraps a real event's delta for a counter channel.
-func CounterAdd(v float64) CounterUpdate {
-	return CounterUpdate{Add: &v}
-}
-
-// CounterResetTo wraps an absolute fake-metrics value for a counter channel. A
-// nil value resets the counter to no series at all.
-func CounterResetTo(v *float64) CounterUpdate {
-	return CounterUpdate{Reset: &CounterReset{Value: v}}
-}
