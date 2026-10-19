@@ -89,3 +89,11 @@ func InitFakeHistogram(hist *prometheus.HistogramVec, bucketsBoundaries []float6
 
 	return &total
 }
+
+func Int64ToFloat64(v *int64) *float64 {
+	if v == nil {
+		return nil
+	}
+	f := float64(*v)
+	return &f
+}

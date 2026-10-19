@@ -1036,14 +1036,6 @@ func (m *vllmMetricsAdapter) setInitialValues() {
 
 // -------- Fake Metrics ------
 
-func float64Ptr(v *int64) *float64 {
-	if v == nil {
-		return nil
-	}
-	f := float64(*v)
-	return &f
-}
-
 // resolveTokenTotal returns the target absolute value for a token counter
 // paired with a histogram: explicit wins when set, else the sum of the
 // histogram Samples.
@@ -1141,7 +1133,7 @@ func (m *vllmMetricsAdapter) applyFakeMetrics(update *VLLMFakeMetrics) {
 	// update the total prompt tokens counter according the histogram (if the total is not provided) or
 	// according to the explicit total (if provided)
 	if update.RequestPromptTokens != nil || update.TotalPromptTokens != nil {
-		total := resolveTokenTotal(tokenBuckets, update.RequestPromptTokens, float64Ptr(update.TotalPromptTokens))
+		total := resolveTokenTotal(tokenBuckets, update.RequestPromptTokens, metrics.Int64ToFloat64(update.TotalPromptTokens))
 		common.WriteToChannel(m.promptTokensTotalChan, metrics.CounterUpdate{Reset: &metrics.CounterReset{Value: total}}, m.logger)
 	}
 
@@ -1149,15 +1141,15 @@ func (m *vllmMetricsAdapter) applyFakeMetrics(update *VLLMFakeMetrics) {
 		common.WriteToChannel(m.requestGenerationTokensChan, metrics.HistogramUpdate{Reset: &metrics.HistogramReset{Buckets: tokenBuckets, Samples: update.RequestGenerationTokens}}, m.logger)
 	}
 	if update.RequestGenerationTokens != nil || update.TotalGenerationTokens != nil {
-		total := resolveTokenTotal(tokenBuckets, update.RequestGenerationTokens, float64Ptr(update.TotalGenerationTokens))
+		total := resolveTokenTotal(tokenBuckets, update.RequestGenerationTokens, metrics.Int64ToFloat64(update.TotalGenerationTokens))
 		common.WriteToChannel(m.generationTokensTotalChan, metrics.CounterUpdate{Reset: &metrics.CounterReset{Value: total}}, m.logger)
 	}
 
 	if update.PrefixCacheQueries != nil {
-		common.WriteToChannel(m.prefixCacheQueriesTotalChan, metrics.CounterUpdate{Reset: &metrics.CounterReset{Value: float64Ptr(update.PrefixCacheQueries)}}, m.logger)
+		common.WriteToChannel(m.prefixCacheQueriesTotalChan, metrics.CounterUpdate{Reset: &metrics.CounterReset{Value: metrics.Int64ToFloat64(update.PrefixCacheQueries)}}, m.logger)
 	}
 	if update.PrefixCacheHits != nil {
-		common.WriteToChannel(m.prefixCacheHitsTotalChan, metrics.CounterUpdate{Reset: &metrics.CounterReset{Value: float64Ptr(update.PrefixCacheHits)}}, m.logger)
+		common.WriteToChannel(m.prefixCacheHitsTotalChan, metrics.CounterUpdate{Reset: &metrics.CounterReset{Value: metrics.Int64ToFloat64(update.PrefixCacheHits)}}, m.logger)
 	}
 
 	if update.RequestSuccessTotal != nil {
