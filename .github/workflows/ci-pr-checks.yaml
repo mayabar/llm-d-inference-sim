@@ -61,11 +61,6 @@ jobs:
           args: "--config=./.golangci.yml"
           skip-cache: true
 
-      - name: Run govulncheck
-        run: |
-          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
-          govulncheck ./...
-
       - name: Run make build
         shell: bash
         run: make build
@@ -73,3 +68,9 @@ jobs:
       - name: Run make test
         shell: bash
         run: make test          
+
+      - name: Run govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          govulncheck ./...
+
