@@ -173,6 +173,19 @@ func (c *Communication) HandleGenerate(ctx *fasthttp.RequestCtx) {
 	c.handleHTTP(&endpoint.GenerateRequest{}, &generateHTTPRespBuilder{}, ctx)
 }
 
+func (c *Communication) HandleSystemOne(ctx *fasthttp.RequestCtx) {
+	c.handleDecision(ctx, endpoint.SystemOneProtocol)
+}
+
+func (c *Communication) HandleDecisions(ctx *fasthttp.RequestCtx) {
+	c.handleDecision(ctx, endpoint.DecisionsProtocol)
+}
+
+func (c *Communication) handleDecision(ctx *fasthttp.RequestCtx, protocol endpoint.DecisionProtocol) {
+	req := &endpoint.DecisionRequest{Protocol: protocol, DefaultModel: c.runtime.Config().DisplayModelName}
+	c.handleHTTP(req, &decisionHTTPRespBuilder{request: req}, ctx)
+}
+
 // HandleChatCompletionsRender http handler for /v1/chat/completions/render
 func (c *Communication) HandleChatCompletionsRender(ctx *fasthttp.RequestCtx) {
 	c.handleRender(&endpoint.ChatCompletionsRequest{}, &chatComplHTTPRespBuilder{}, false, ctx)
