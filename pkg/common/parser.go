@@ -117,14 +117,14 @@ func rejectSeparateBoolValue(f *pflag.FlagSet, args []string) error {
 	return nil
 }
 
-// rejectUnexpectedArgs refuses any raw argument pflag left unconsumed that is
-// not one of the several space-separated values a flag like served-model-name
-// or lora-modules deliberately leaves behind for GetParamValueFromArgs to
-// collect. This tool takes no positional arguments (model is set with
-// --model, not with a positional the way "vllm serve <model>" takes one), so
-// anything else left over is a mistake: a value stranded next to a flag
-// written as "--flag=value", a typo, or a leftover from editing a command
-// line, rather than something to silently ignore.
+// strayArgs returns every raw argument pflag left unconsumed that is not one
+// of the several space-separated values a flag like served-model-name or
+// lora-modules deliberately leaves behind for GetParamValueFromArgs to
+// collect. The only positional argument this tool takes is the model, and only
+// as the first argument, as in "vllm serve <model>", so anything else left over
+// is a mistake: a value stranded next to a flag written as "--flag=value", a
+// typo, or a leftover from editing a command line, rather than something to
+// silently ignore.
 //
 // f.Parse has already succeeded by the time this runs, so every "--name"
 // token here names a registered flag; how many of the following raw
@@ -133,7 +133,7 @@ func rejectSeparateBoolValue(f *pflag.FlagSet, args []string) error {
 // dummy sentinel for the several-values flags (every following argument up
 // to the next "--flag"), and anything else for an ordinary flag (exactly
 // one).
-func rejectUnexpectedArgs(f *pflag.FlagSet, args []string) error {
+func strayArgs(f *pflag.FlagSet, args []string) []string {
 	var stray []string
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -161,10 +161,7 @@ func rejectUnexpectedArgs(f *pflag.FlagSet, args []string) error {
 			i++
 		}
 	}
-	if len(stray) == 0 {
-		return nil
-	}
-	return fmt.Errorf("unrecognized arguments: %s", strings.Join(stray, " "))
+	return stray
 }
 
 // AddToggle registers two distinct flags pointing to one variable
@@ -384,16 +381,24 @@ func ParseCommandParamsAndLoadConfig(eng Engine) (*Configuration, error) {
 	if err := rejectSeparateBoolValue(f, os.Args[1:]); err != nil {
 		return nil, err
 	}
-	if err := rejectUnexpectedArgs(f, os.Args[1:]); err != nil {
-		return nil, err
+	stray := strayArgs(f, os.Args[1:])
+	// The first positional argument is the model, if present. Any others are an error.
+	positionalModel := len(stray) > 0 && stray[0] == os.Args[1]
+	if positionalModel && f.Changed("model") {
+		return nil, fmt.Errorf("model is given both as a positional argument (%q) and with --model", stray[0])
+	}
+	if positionalModel && len(stray) == 1 {
+		config.Model = stray[0]
+	} else if len(stray) > 0 {
+		return nil, fmt.Errorf("unrecognized arguments: %s", strings.Join(stray, " "))
 	}
 
 	// Set the values for Pod Name and Pod Namespace
 	config.PodName = os.Getenv(PodNameEnv)
 	config.PodNameSpace = os.Getenv(PodNsEnv)
 
-	// Precedence for model: command-line flag > this env var > YAML > defaults.
-	if !f.Changed("model") {
+	// Precedence for model: command line (flag or positional) > this env var > YAML > defaults.
+	if !f.Changed("model") && !positionalModel {
 		if v := os.Getenv(ModelEnv); v != "" {
 			config.Model = v
 		}
