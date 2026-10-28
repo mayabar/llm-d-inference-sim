@@ -864,6 +864,21 @@ var _ = Describe("Simulator configuration", func() {
 			args:          []string{"cmd", "--config", "../../../manifests/vllm-config.yaml", "--max-request-body-size-mb", "513"},
 			expectedError: "max-request-body-size-mb must be between 1 MB and 512 MB",
 		},
+		{
+			name:          "valueless fake-metrics on its own",
+			args:          []string{"cmd", "--model", common.TestModelName, "--fake-metrics"},
+			expectedError: "--fake-metrics requires a JSON value",
+		},
+		{
+			name:          "valueless fake-metrics followed by another flag",
+			args:          []string{"cmd", "--model", common.TestModelName, "--fake-metrics", "--max-loras", "2"},
+			expectedError: "--fake-metrics requires a JSON value",
+		},
+		{
+			name:          "fake-metrics with an empty value",
+			args:          []string{"cmd", "--model", common.TestModelName, "--fake-metrics", ""},
+			expectedError: "--fake-metrics requires a JSON value",
+		},
 	}
 
 	for _, test := range invalidTests {
