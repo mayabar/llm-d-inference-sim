@@ -257,7 +257,7 @@ func ParseCommandParamsAndLoadConfig(eng Engine) (*Configuration, error) {
 	f.IntVar(&config.Port, "port", config.Port, "Port")
 	f.IntVar(&config.MaxRequestBodySizeMB, "max-request-body-size-mb", config.MaxRequestBodySizeMB, "Maximum allowed size of an HTTP request body in megabytes, must be between 1 and 512, default is 4 (matching the fasthttp built-in default)")
 	f.StringVar(&config.Model, "model", config.Model,
-		"Currently 'loaded' model (if omitted on the command line, "+ModelEnv+" may set the model; see docs)")
+		"Currently 'loaded' model, can also be given as the first argument (if omitted on the command line, "+ModelEnv+" may set the model; see docs)")
 	f.StringVar(&config.Mode, "mode", config.Mode, "Simulator mode: echo - returns the same text that was sent in the request, for chat completion returns the last message; random - returns random sentence from a bank of pre-defined sentences")
 	f.DurationVar(&config.Latencies.InterTokenLatency, "inter-token-latency", config.Latencies.InterTokenLatency, "Time to generate one token, e.g. 100ms")
 	f.DurationVar(&config.Latencies.TimeToFirstToken, "time-to-first-token", config.Latencies.TimeToFirstToken, "Time to first token, e.g. 100ms")
@@ -387,9 +387,11 @@ func ParseCommandParamsAndLoadConfig(eng Engine) (*Configuration, error) {
 	if positionalModel && f.Changed("model") {
 		return nil, fmt.Errorf("model is given both as a positional argument (%q) and with --model", stray[0])
 	}
-	if positionalModel && len(stray) == 1 {
+	if positionalModel {
 		config.Model = stray[0]
-	} else if len(stray) > 0 {
+		stray = stray[1:]
+	}
+	if len(stray) > 0 {
 		return nil, fmt.Errorf("unrecognized arguments: %s", strings.Join(stray, " "))
 	}
 

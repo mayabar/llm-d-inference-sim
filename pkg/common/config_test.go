@@ -733,7 +733,7 @@ var _ = Describe("positional arguments", func() {
 
 	It("rejects more than one positional argument", func() {
 		_, err := parseArgs([]string{"cmd", TestModelName, "garbage"})
-		Expect(err).To(MatchError(ContainSubstring("unrecognized arguments: " + TestModelName + " garbage")))
+		Expect(err).To(MatchError(ContainSubstring("unrecognized arguments: garbage")))
 	})
 
 	It("rejects a stray argument that is not any flag's value", func() {
