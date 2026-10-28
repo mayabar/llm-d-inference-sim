@@ -22,7 +22,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strconv"
 	"strings"
 	"time"
 
@@ -1389,8 +1388,7 @@ var _ = Describe("Setting names", func() {
 				}
 
 				Expect(createWithSamples(len(buckets)+1)).To(Succeed(), key)
-				Expect(createWithSamples(len(buckets)+2)).To(MatchError(ContainSubstring(
-					fmt.Sprintf("fake metrics %s is too long", key))))
+				Expect(createWithSamples(len(buckets) + 2)).To(MatchError(ContainSubstring(fmt.Sprintf("fake metrics %s is too long", key))))
 			}
 		},
 		Entry("default max-model-len", 1024),
