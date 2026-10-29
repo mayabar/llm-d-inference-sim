@@ -137,17 +137,7 @@ func (r *Random) RandomNormTruncated(mean int, stddev int) int {
 }
 
 func (r *Random) RandomNormDuration(mean, stddev time.Duration) time.Duration {
-	meanMilliseconds := mean.Milliseconds()
-	stddevMilliseconds := stddev.Milliseconds()
-	value := r.RandomNorm(int(meanMilliseconds), int(stddevMilliseconds))
-	mean_ := float64(meanMilliseconds)
-	if value < 0.3*mean_ {
-		value = 0.3 * mean_
-	} else if value > 1.7*mean_ {
-		value = 1.7 * mean_
-	}
-
-	return time.Millisecond * time.Duration(value)
+	return time.Duration(r.RandomNormTruncated(int(mean), int(stddev)))
 }
 
 // GenerateUUIDString generates a UUID string under a lock
